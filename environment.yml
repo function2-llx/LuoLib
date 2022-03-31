@@ -1,0 +1,24 @@
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9.12
+  - ruamel.yaml=0.17.21
+
+  - pytorch::pytorch=1.11.0
+  - cudatoolkit=11.5.1
+  - pytorch::torchvision=0.12.0
+  - pytorch-lightning=1.6.0
+  - wandb=0.12.11
+  - numpy=1.22.3
+  - scikit-learn=1.0.2
+  - pandas=1.4.1
+  - openpyxl=3.0.9
+  - matplotlib=3.5.1
+
+  # work around for: https://github.com/SimpleITK/SimpleITK/issues/1433, waiting for ITK 5.3
+  - SimpleITK::SimpleITK=2.0.2
+
+  - pip=22.0.4
+  - pip:
+    - itk==5.2.1.post1
+    - -e third-party/MONAI

@@ -1,0 +1,3 @@
+[submodule "third-party/MONAI"]
+	path = third-party/MONAI
+	url = git@github.com:function2-llx/MONAI.git
