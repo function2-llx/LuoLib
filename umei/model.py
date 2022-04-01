@@ -1,31 +1,29 @@
-from pytorch_lightning import LightningModule
-from pytorch_lightning.utilities.types import STEP_OUTPUT
+from dataclasses import dataclass, field
+
 import torch
 from torch import nn
 
-U_ENCODER_OUTPUT = list[torch.Tensor]
+@dataclass
+class UEncoderOutput:
+    cls_feature: torch.FloatTensor = None
+    feature_maps: list[torch.FloatTensor] = field(default_factory=list)
 
 class UEncoderBase(nn.Module):
-    def forward(self, img: torch.FloatTensor) -> U_ENCODER_OUTPUT:
-        pass
+    def forward(self, img: torch.FloatTensor) -> UEncoderOutput:
+        raise NotImplementedError
+
+    @property
+    def cls_feature_size(self) -> int:
+        raise NotImplementedError
+
+@dataclass
+class UDecoderOutput:
+    feature_maps: list[torch.FloatTensor]
+
+class UDecoderBase(nn.Module):
+    def forward(self, encoder_feature_maps: list[torch.FloatTensor]) -> list[torch.FloatTensor]:
+        raise not NotImplementedError
 
     @property
     def feature_sizes(self) -> list[int]:
         raise NotImplementedError
-
-class UDecoderBase(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-
-class UMeI(LightningModule):
-    def __init__(self, encoder: UEncoderBase, decoder: UDecoderBase, num_classes: int):
-        super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-
-    def configure_optimizers(self):
-        pass
-
-    def training_step(self, *args, **kwargs) -> STEP_OUTPUT:
-        pass
