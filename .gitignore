@@ -130,4 +130,3 @@ dmypy.json
 .vscode/
 .idea/
 output/
-umei/data/datasets/*/origin

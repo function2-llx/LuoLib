@@ -10,7 +10,7 @@ import torch
 from monai.data import Dataset
 
 from umei.argparse import UMeIParser
-from umei.args import UMeIArgs
+from umei.utils.args import UMeIArgs
 from umei.umei import UMeI
 from umei.model import UEncoderBase
 

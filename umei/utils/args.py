@@ -20,6 +20,7 @@ class UMeIArgs(TrainingArguments):
     amp: bool = field(default=True)
     dataloader_num_workers: int = field(default=multiprocessing.cpu_count())
     monitor: str = field(default='cls_loss')
+    num_folds: int = field(default=5)
 
     @property
     def precision(self):

@@ -10,7 +10,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from monai.losses import DiceFocalLoss
 
-from .args import UMeIArgs
+from umei.utils.args import UMeIArgs
 from .model import UDecoderBase, UDecoderOutput, UEncoderBase, UEncoderOutput
 
 class UMeI(LightningModule):
