@@ -1,3 +1,8 @@
 origin/
-lungmask/
+lungmask-test/
 cropped/
+cropped.zip
+resampled/
+lungmask/
+stat.yml
+reference.csv

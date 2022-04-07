@@ -56,6 +56,9 @@ class UMeI(LightningModule):
             loss += seg_loss * self.args.seg_loss_factor
         return loss
 
+    def validation_step(self, *args, **kwargs) -> Optional[STEP_OUTPUT]:
+        pass
+
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
         return {
