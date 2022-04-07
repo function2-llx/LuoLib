@@ -14,5 +14,5 @@ conda env create -n umei
 ```zsh
 conda activate umei
 wandb login
-python main.py conf/<name>.yml [args...]
+python train_<task>.py conf/<conf yaml file>
 ```

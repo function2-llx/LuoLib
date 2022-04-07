@@ -9,7 +9,6 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from monai.losses import DiceFocalLoss
-
 from umei.utils.args import UMeIArgs
 from .model import UDecoderBase, UDecoderOutput, UEncoderBase, UEncoderOutput
 
@@ -26,7 +25,7 @@ class UMeI(LightningModule):
         self.args = args
         self.encoder = encoder
         self.decoder = decoder
-        self.cls_head = nn.Linear(encoder.cls_feature_size, args.num_cls_classes)
+        self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
         self.cls_loss_fn = nn.CrossEntropyLoss()
 
         if decoder is not None:
@@ -37,14 +36,16 @@ class UMeI(LightningModule):
             ])
             self.seg_loss_fn = DiceFocalLoss(to_onehot_y=False, sigmoid=True, squared_pred=True)
 
-    def training_step(self, batch: dict, *args) -> STEP_OUTPUT:
+    def forward(self, batch: dict[str, torch.Tensor]) -> dict:
         encoder_out: UEncoderOutput = self.encoder(batch[self.args.img_key])
-        loss = torch.tensor(0, device=self.device, dtype=torch.float)
+        ret = {'loss': torch.tensor(0., device=self.device)}
         if self.args.cls_key in batch:
-            cls_out = self.cls_head(encoder_out.cls_feature)
+            cls_out = self.cls_head(torch.cat((encoder_out.cls_feature, batch[self.args.clinical_key]), dim=1))
             cls_loss = self.cls_loss_fn(cls_out, batch[self.args.cls_key])
-            self.log('cls_loss', cls_loss, prog_bar=True)
-            loss += cls_loss * self.args.cls_loss_factor
+            # self.log('cls_loss', cls_loss, prog_bar=True)
+            ret['loss'] += cls_loss * self.args.cls_loss_factor
+            ret['cls_loss'] = cls_loss
+            ret['cls_logit'] = cls_out
         if self.decoder is not None and self.args.seg_key in batch:
             seg_label: torch.IntTensor = batch[self.args.seg_key]
             decoder_out: UDecoderOutput = self.decoder(encoder_out.feature_maps)
@@ -52,12 +53,24 @@ class UMeI(LightningModule):
                 self.seg_loss_fn(interpolate(seg_head(feature_map), seg_label.shape[2:]), seg_label) / 2 ** i
                 for i, (feature_map, seg_head) in enumerate(zip(decoder_out.feature_maps[::-1], self.seg_heads))
             ])) / (1 - 1 / 2 ** len(self.seg_heads))
-            self.log('seg_loss', seg_loss, prog_bar=True)
-            loss += seg_loss * self.args.seg_loss_factor
-        return loss
+            # self.log('seg_loss', seg_loss, prog_bar=True)
+            ret['loss'] += seg_loss * self.args.seg_loss_factor
+            ret['seg_loss'] = seg_loss
+        return ret
 
-    def validation_step(self, *args, **kwargs) -> Optional[STEP_OUTPUT]:
-        pass
+    def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
+        output = self.forward(batch)
+        for k in ['cls_loss', 'seg_loss']:
+            if k in output:
+                self.log(f'train/{k}', output[k])
+        return output
+
+    def validation_step(self, batch: dict[str, torch.Tensor], *args, **kwargs) -> Optional[STEP_OUTPUT]:
+        output = self.forward(batch)
+        for k in ['cls_loss', 'seg_loss']:
+            if k in output:
+                self.log(f'val/{k}', output[k])
+        return output
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
@@ -65,6 +78,6 @@ class UMeI(LightningModule):
             'optimizer': optimizer,
             'lr_scheduler': {
                 'scheduler': ReduceLROnPlateau(optimizer, patience=self.args.patience, verbose=True),
-                'monitor': 'cls_loss',
+                'monitor': f'val/{self.args.monitor}',
             }
         }

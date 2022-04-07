@@ -1,10 +1,8 @@
 from collections.abc import Callable
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
-from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from ruamel.yaml import YAML
 
@@ -13,6 +11,7 @@ from monai.data import DataLoader, Dataset, DatasetSummary, partition_dataset_cl
 import monai.transforms
 from monai.utils import InterpolateMode, NumpyPadMode
 from umei.utils.args import UMeIArgs
+from umei.utils.cv_datamodule import CVDataModule
 
 yaml = YAML()
 DATASET_ROOT = Path(__file__).parent
@@ -37,11 +36,10 @@ class SpatialSquarePadD(monai.transforms.SpatialPadD):
     ) -> None:
         super().__init__(keys, -1, **kwargs)
 
-class Stoic2021DataModule(LightningDataModule):
+class Stoic2021DataModule(CVDataModule):
     def __init__(self, args: UMeIArgs):
         super().__init__()
         self.args = args
-        self.val_id = -1
         ref = pd.read_csv(DATASET_ROOT / 'reference.csv')
         assert len(ref[(ref['probCOVID'] == 0) & (ref['probSevere'] == 1)]) == 0
         self.train_cohort = [
@@ -62,10 +60,6 @@ class Stoic2021DataModule(LightningDataModule):
             seed=args.seed,
         )
 
-    def setup(self, stage: Optional[str] = None) -> None:
-        if stage == 'fit':
-            self.val_id += 1
-
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return DataLoader(
             dataset=Dataset(
@@ -77,7 +71,7 @@ class Stoic2021DataModule(LightningDataModule):
             ),
             num_workers=self.args.dataloader_num_workers,
             persistent_workers=True,
-            batch_size=self.args.train_batch_size,
+            batch_size=self.args.per_device_train_batch_size,
             shuffle=True,
         )
 
@@ -86,7 +80,7 @@ class Stoic2021DataModule(LightningDataModule):
             dataset=Dataset(self.partitions[self.val_id], transform=self.eval_transform),
             num_workers=self.args.dataloader_num_workers,
             persistent_workers=True,
-            batch_size=self.args.eval_batch_size,
+            batch_size=self.args.per_device_eval_batch_size,
         )
 
     @property
@@ -132,7 +126,7 @@ class Stoic2021DataModule(LightningDataModule):
     def input_transform(self) -> Callable:
         return monai.transforms.Compose([
             monai.transforms.ConcatItemsD([self.args.img_key, self.args.mask_key], name=self.args.img_key),
-            monai.transforms.CastToTypeD(self.args.img_key, dtype=np.float32),
+            monai.transforms.CastToTypeD([self.args.img_key, self.args.clinical_key], dtype=np.float32),
             monai.transforms.SelectItemsD([self.args.img_key, self.args.clinical_key, self.args.cls_key]),
         ])
 

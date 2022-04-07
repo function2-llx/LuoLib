@@ -10,8 +10,8 @@ class UMeIArgs(TrainingArguments):
     log: bool = field(default=True)
     output_dir: Path = field(default=None)
     patience: int = field(default=5)
-    sample_size: int = field(default=224)
-    sample_slices: int = field(default=256)
+    sample_size: int = field(default=144)
+    sample_slices: int = field(default=160)
     cls_loss_factor: float = field(default=1)
     seg_loss_factor: float = field(default=1)
     img_key: str = field(default='img')
@@ -25,6 +25,8 @@ class UMeIArgs(TrainingArguments):
     dataloader_num_workers: int = field(default=multiprocessing.cpu_count())
     monitor: str = field(default='cls_loss')
     num_folds: int = field(default=5)
+    model_name: str = field(default='resnet')
+    model_depth: int = field(default=50)
 
     @property
     def precision(self):
@@ -36,9 +38,17 @@ class UMeIArgs(TrainingArguments):
         return 2
 
     @property
+    def clinical_feature_size(self) -> int:
+        return 3
+
+    @property
     def num_cls_classes(self) -> int:
         return 3
 
     @property
     def num_seg_classes(self) -> int:
+        pass
+
+    # without this (even empty), `output_dir` will restore str type (in the base class), no idea why
+    def __post_init__(self):
         pass
