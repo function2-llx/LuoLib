@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 import multiprocessing
 from pathlib import Path
+from typing import Optional
 
 from transformers import TrainingArguments
 
@@ -27,6 +28,8 @@ class UMeIArgs(TrainingArguments):
     num_folds: int = field(default=5)
     model_name: str = field(default='resnet')
     model_depth: int = field(default=50)
+    pretrain_path: Optional[Path] = field(default=None)
+    resnet_shortcut: str = field(default=None)
 
     @property
     def precision(self):

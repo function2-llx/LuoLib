@@ -29,6 +29,8 @@ class UMeI(LightningModule):
         self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
         self.cls_loss_fn = nn.CrossEntropyLoss()
 
+        nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
+
         if decoder is not None:
             assert 1 <= num_seg_heads <= len(decoder.feature_sizes)
             self.seg_heads = nn.ModuleList([
