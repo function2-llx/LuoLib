@@ -104,26 +104,30 @@ class Stoic2021DataModule(CVDataModule):
             monai.transforms.OrientationD([self.args.img_key, self.args.mask_key], axcodes='RAS'),
             monai.transforms.NormalizeIntensityD(self.args.img_key, subtrahend=stat['mean'], divisor=stat['std']),
             SpatialSquarePadD([self.args.img_key, self.args.mask_key], mode=NumpyPadMode.EDGE),
-            monai.transforms.ResizeD(
-                [self.args.img_key, self.args.mask_key],
-                spatial_size=[self.args.sample_size, self.args.sample_size, self.args.sample_slices],
-                mode=[InterpolateMode.AREA, InterpolateMode.NEAREST],
-            ),
-
         ])
 
     @property
     def aug_transform(self) -> Callable:
         return monai.transforms.Compose([
-            monai.transforms.RandFlipD(self.args.img_key, prob=0.5, spatial_axis=0),
-            monai.transforms.RandFlipD(self.args.img_key, prob=0.5, spatial_axis=1),
-            monai.transforms.RandFlipD(self.args.img_key, prob=0.5, spatial_axis=2),
-            monai.transforms.RandRotate90D(self.args.img_key, prob=0.5, max_k=1, spatial_axes=(0, 1)),
+            monai.transforms.RandFlipD([self.args.img_key, self.args.mask_key], prob=0.5, spatial_axis=0),
+            monai.transforms.RandFlipD([self.args.img_key, self.args.mask_key], prob=0.5, spatial_axis=1),
+            monai.transforms.RandFlipD([self.args.img_key, self.args.mask_key], prob=0.5, spatial_axis=2),
+            monai.transforms.RandRotate90D(
+                [self.args.img_key, self.args.mask_key],
+                prob=0.5,
+                max_k=1,
+                spatial_axes=(0, 1)
+            ),
         ])
 
     @property
     def input_transform(self) -> Callable:
         return monai.transforms.Compose([
+            monai.transforms.ResizeD(
+                [self.args.img_key, self.args.mask_key],
+                spatial_size=[self.args.sample_size, self.args.sample_size, self.args.sample_slices],
+                mode=[InterpolateMode.AREA, InterpolateMode.NEAREST],
+            ),
             monai.transforms.ConcatItemsD([self.args.img_key, self.args.mask_key], name=self.args.img_key),
             monai.transforms.CastToTypeD([self.args.img_key, self.args.clinical_key], dtype=np.float32),
             monai.transforms.SelectItemsD([self.args.img_key, self.args.clinical_key, self.args.cls_key]),
