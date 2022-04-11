@@ -62,9 +62,10 @@ class Stoic2021Model(UMeI):
             for k in ['val', 'test', 'combined']
         })
 
-    def validation_step(self, splits_batch: dict[str, dict[str, torch.Tensor]]):
+    def validation_step(self, splits_batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         splits_output = super().validation_step(splits_batch)
         for split, batch in splits_batch.items():
+            batch_size = batch[self.args.img_key].shape[0]
             output = splits_output[split]
             pred = F.softmax(output['cls_logit'], dim=1)
             positive_idx: torch.Tensor = batch[self.args.cls_key] >= 1  # type: ignore
@@ -77,15 +78,15 @@ class Stoic2021Model(UMeI):
                         preds=severity_pred,
                         target=severity_target,
                     )
-                    self.log(f'{k}/auc-severity', self.severity_auc[k])
+                    self.log(f'{k}/auc-severity', self.severity_auc[k], batch_size=batch_size)  # type: ignore
             for k in [split, 'combined']:
                 positivity_pred = pred[:, 1:].sum(dim=1)
                 positivity_target = batch[self.args.cls_key] >= 1
-                self.positivity_auc[split](
+                self.positivity_auc[k](
                     preds=positivity_pred,
                     target=positivity_target,
                 )
-                self.log(f'{k}/auc-positivity', self.positivity_auc[k])
+                self.log(f'{k}/auc-positivity', self.positivity_auc[k], batch_size=batch_size)  # type: ignore
 
         return splits_output
 
@@ -98,7 +99,7 @@ def main():
         range(args.num_runs),
         SeedSequence(args.seed).generate_state(args.num_runs),
     ):
-        for val_fold_id in zip(range(datamodule.num_cv_folds)):
+        for val_fold_id in range(datamodule.num_cv_folds):
             pl.seed_everything(seed)
 
             output_dir = args.output_dir / f'fold{val_fold_id}' / f'run{run}'
@@ -111,29 +112,30 @@ def main():
                     name=f'{args.exp_name}/fold{val_fold_id}/run{run}',
                     save_dir=str(output_dir),
                     group=args.exp_name,
-                ) if args.log else None,
-                gpus=args.n_gpu,
-                precision=args.precision,
-                benchmark=True,
-                max_epochs=int(args.num_train_epochs),
+                ),
                 callbacks=[
                     ModelCheckpoint(
                         dirpath=output_dir,
-                        filename=f'{args.monitor}={{val/{args.monitor}:.3f}}',
+                        filename=f'{args.monitor}={{combined/{args.monitor}:.3f}}',
                         auto_insert_metric_name=False,
-                        monitor=f'val/{args.monitor}',
+                        monitor=f'combined/{args.monitor}',
                         mode=args.monitor_mode,
                         verbose=True,
                         save_last=True,
                         save_top_k=2,
                     ),
                     EarlyStopping(
-                        monitor=f'val/{args.monitor}',
+                        monitor=f'combined/{args.monitor}',
                         patience=3 * args.patience,
                         mode=args.monitor_mode,
                         verbose=True,
                     ),
                 ],
+                num_nodes=args.num_nodes,
+                gpus=args.n_gpu,
+                precision=args.precision,
+                benchmark=True,
+                max_epochs=int(args.num_train_epochs),
                 num_sanity_val_steps=0,
                 strategy=DDPStrategy(find_unused_parameters=False),
                 # limit_train_batches=0.1,

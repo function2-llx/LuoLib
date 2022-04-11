@@ -8,7 +8,7 @@ from transformers import TrainingArguments
 @dataclass
 class UMeIArgs(TrainingArguments):
     exp_name: str = field(default=None)
-    log: bool = field(default=True)
+    num_nodes: int = field(default=1)
     output_dir: Path = field(default=None)
     patience: int = field(default=5)
     sample_size: int = field(default=144)

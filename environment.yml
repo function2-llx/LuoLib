@@ -8,6 +8,7 @@ dependencies:
   - cudatoolkit=11.5.1
   - pytorch::torchvision=0.12.0
   - pytorch-lightning=1.6.0
+  - wandb==0.12.14
   - scikit-learn=1.0.2
   - pandas=1.4.2
   - openpyxl=3.0.9
@@ -20,7 +21,6 @@ dependencies:
   - pip=22.0.4
   - pip:
 #    - itk==5.2.1.post1
-    - wandb==0.12.13
     - git+https://github.com/JoHof/lungmask
     - -e third-party/MONAI
     - -e third-party/transformers

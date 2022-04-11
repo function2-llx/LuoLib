@@ -73,28 +73,30 @@ class Stoic2021DataModule(CVDataModule):
                 ),
                 transform=self.train_transform,
             ),
-            num_workers=self.args.dataloader_num_workers,
-            persistent_workers=True,
             batch_size=self.args.per_device_train_batch_size,
             shuffle=True,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=True,
+            persistent_workers=True,
         )
 
     def val_dataloader(self):
         val_ids = list(self.val_parts.values())
         if not all(
-            len(self.partitions[val_ids[0]]) == self.partitions[val_ids[i]]
+            len(self.partitions[val_ids[0]]) == len(self.partitions[val_ids[i]])
             for i in range(1, len(val_ids))
         ):
             import warnings
-            warnings.warn('length of val and test folds are not equal')
+            warnings.warn(f'length of val{self.val_id} and test folds are not equal')
 
         return CombinedLoader(
             loaders={
                 split: DataLoader(
                     dataset=Dataset(self.partitions[part_id], transform=self.eval_transform),
                     num_workers=self.args.dataloader_num_workers,
-                    persistent_workers=True,
                     batch_size=self.args.per_device_eval_batch_size,
+                    pin_memory=True,
+                    persistent_workers=True,
                 )
                 for split, part_id in self.val_parts.items()
             },

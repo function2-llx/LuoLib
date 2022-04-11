@@ -68,14 +68,15 @@ class UMeI(LightningModule):
                 self.log(f'train/{k}', output[k])
         return output
 
-    def validation_step(self, splits_batch: dict[str, dict[str, torch.Tensor]]) -> Optional[STEP_OUTPUT]:
+    def validation_step(self, splits_batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs) -> Optional[STEP_OUTPUT]:
         splits_output = {}
         for split, batch in splits_batch.items():
+            batch_size = batch[self.args.img_key].shape[0]
             output = self.forward(batch)
             for k in ['cls_loss', 'seg_loss']:
                 if k in output:
-                    self.log(f'{split}/{k}', output[k])
-                    self.log(f'combined/{k}', output[k])
+                    self.log(f'{split}/{k}', output[k], batch_size=batch_size)
+                    self.log(f'combined/{k}', output[k], batch_size=batch_size)
             splits_output[split] = output
         return splits_output
 
@@ -91,6 +92,6 @@ class UMeI(LightningModule):
                     patience=self.args.patience,
                     verbose=True,
                 ),
-                'monitor': f'val/{self.args.monitor}',
+                'monitor': f'combined/{self.args.monitor}',
             }
         }
