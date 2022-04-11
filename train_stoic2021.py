@@ -1,8 +1,11 @@
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
+import numpy as np
+from numpy.random import SeedSequence
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from pytorch_lightning.strategies import DDPStrategy
 import torch
 from torch import nn
@@ -12,7 +15,7 @@ import wandb
 
 from umei import UEncoderBase, UMeI
 from umei.datasets import Stoic2021DataModule
-from umei.utils import UMeIArgs, UMeIParser
+from umei.utils import MyWandbLogger, UMeIArgs, UMeIParser
 
 torch.multiprocessing.set_sharing_strategy('file_system')
 
@@ -47,11 +50,11 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
     else:
         raise NotImplementedError
 
-# cannot wait: https://github.com/PyTorchLightning/pytorch-lightning/pull/12172/
-class MyWandbLogger(WandbLogger):
-    @WandbLogger.name.getter
-    def name(self) -> Optional[str]:
-        return self._experiment.name if self._experiment else self._name
+@dataclass
+class Stoic2021Args(UMeIArgs):
+    monitor: str = field(default='auc-severity')
+    monitor_mode: str = field(default='max')
+    output_root: Path = field(default=Path('output/stoic2021'))
 
 class Stoic2021(UMeI):
     def __init__(self, *args, **kwargs):
@@ -78,44 +81,60 @@ class Stoic2021(UMeI):
         return output
 
 def main():
-    parser = UMeIParser((UMeIArgs,), use_conf=True)
-    args: UMeIArgs = parser.parse_args_into_dataclasses()[0]
+    parser = UMeIParser((Stoic2021Args,), use_conf=True)
+    args: Stoic2021Args = parser.parse_args_into_dataclasses()[0]
     datamodule = Stoic2021DataModule(args)
-    for fold_id in range(args.num_folds):
-        output_dir = args.output_dir / f'fold{fold_id}'
-        output_dir.mkdir(exist_ok=True, parents=True)
-        datamodule.val_id = fold_id
 
-        model = Stoic2021(args, encoder=build_encoder(args))
-        trainer = pl.Trainer(
-            logger=MyWandbLogger(
-                name=f'{args.exp_name}/fold{fold_id}',
-                save_dir=str(output_dir),
-            ) if args.log else None,
-            gpus=args.n_gpu,
-            precision=args.precision,
-            benchmark=True,
-            max_epochs=int(args.num_train_epochs),
-            callbacks=[
-                ModelCheckpoint(
-                    dirpath=output_dir,
-                    filename=f'{args.monitor}={{val/{args.monitor}:.3f}}',
-                    auto_insert_metric_name=False,
-                    monitor=f'val/{args.monitor}',
-                    verbose=True,
-                    save_last=True,
-                    save_top_k=2,
-                ),
-            ],
-            num_sanity_val_steps=0,
-            log_every_n_steps=20,
-            strategy=DDPStrategy(find_unused_parameters=False),
-            # limit_train_batches=0.1,
-            # limit_val_batches=0.2,
-        )
-        trainer.fit(model, datamodule=datamodule)
+    num_runs = 3
+    for run, seeds in zip(
+        range(num_runs), 
+        SeedSequence(args.seed).generate_state(num_runs * args.num_folds).reshape(num_runs, args.num_folds),
+    ):
+        for fold_id, seed in zip(range(args.num_folds), seeds):
+            pl.seed_everything(seed)
 
-        wandb.finish()
+            output_dir = args.output_dir / f'fold{fold_id}' / f'run{run}'
+            output_dir.mkdir(exist_ok=True, parents=True)
+            datamodule.val_id = fold_id
+
+            model = Stoic2021(args, encoder=build_encoder(args))
+            trainer = pl.Trainer(
+                logger=MyWandbLogger(
+                    name=f'{args.exp_name}/fold{fold_id}/run{run}',
+                    save_dir=str(output_dir),
+                    group=args.exp_name,
+                ) if args.log else None,
+                gpus=args.n_gpu,
+                precision=args.precision,
+                benchmark=True,
+                max_epochs=int(args.num_train_epochs),
+                callbacks=[
+                    ModelCheckpoint(
+                        dirpath=output_dir,
+                        filename=f'{args.monitor}={{val/{args.monitor}:.3f}}',
+                        auto_insert_metric_name=False,
+                        monitor=f'val/{args.monitor}',
+                        mode=args.monitor_mode,
+                        verbose=True,
+                        save_last=True,
+                        save_top_k=2,
+                    ),
+                    EarlyStopping(
+                        monitor=f'val/{args.monitor}',
+                        patience=3 * args.patience,
+                        mode=args.monitor_mode,
+                        verbose=True,
+                    ),
+                ],
+                num_sanity_val_steps=0,
+                log_every_n_steps=20,
+                strategy=DDPStrategy(find_unused_parameters=False),
+                # limit_train_batches=0.1,
+                # limit_val_batches=0.2,
+            )
+            trainer.fit(model, datamodule=datamodule)
+
+            wandb.finish()
 
 if __name__ == '__main__':
     main()

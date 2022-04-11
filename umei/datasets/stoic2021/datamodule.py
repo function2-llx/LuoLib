@@ -23,7 +23,7 @@ class SpatialSquarePad(monai.transforms.SpatialPad):
         super().__init__(-1, **kwargs)
 
     def __call__(self, data: NdarrayOrTensor, **kwargs):
-        size = np.array(data.shape[1:3]).max()
+        size = max(data.shape[1:3])
         self.spatial_size = [size, size, -1]
         return super().__call__(data, **kwargs)
 
@@ -58,6 +58,9 @@ class Stoic2021DataModule(CVDataModule):
             shuffle=True,
             seed=args.seed,
         )
+        # print(sum(x[args.clinical_key][0] * 100 for x in self.train_cohort) / len(self.train_cohort))
+        # for i, part in enumerate(self.partitions):
+        #     print(i, sum(x[args.clinical_key][0] * 100 for x in part) / len(part))
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return DataLoader(

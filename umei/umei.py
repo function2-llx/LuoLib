@@ -80,7 +80,13 @@ class UMeI(LightningModule):
         return {
             'optimizer': optimizer,
             'lr_scheduler': {
-                'scheduler': ReduceLROnPlateau(optimizer, patience=self.args.patience, verbose=True),
+                'scheduler': ReduceLROnPlateau(
+                    optimizer,
+                    mode=self.args.monitor_mode,
+                    factor=self.args.lr_reduce_factor,
+                    patience=self.args.patience,
+                    verbose=True,
+                ),
                 'monitor': f'val/{self.args.monitor}',
             }
         }

@@ -1,7 +1,8 @@
 per_device_train_batch_size: 8
-learning_rate: 1e-4
-num_train_epochs: 25
+learning_rate: 1e-3
+num_train_epochs: 35
 model_name: resnet
 model_depth: 50
 sample_size: 144
 sample_slices: 160
+resnet_shortcut: B

@@ -25,11 +25,13 @@ class UMeIArgs(TrainingArguments):
     amp: bool = field(default=True)
     dataloader_num_workers: int = field(default=multiprocessing.cpu_count())
     monitor: str = field(default='cls_loss')
+    monitor_mode: str = field(default='min')
+    lr_reduce_factor: float = field(default=0.1)
     num_folds: int = field(default=5)
     model_name: str = field(default='resnet')
     model_depth: int = field(default=50)
     pretrain_path: Optional[Path] = field(default=None)
-    resnet_shortcut: str = field(default=None)
+    resnet_shortcut: str = field(default=None, metadata={'choices': ['A', 'B']})
 
     @property
     def precision(self):
@@ -52,6 +54,6 @@ class UMeIArgs(TrainingArguments):
     def num_seg_classes(self) -> int:
         pass
 
-    # without this (even empty), `output_dir` will restore str type (in the base class), no idea why
+    # disable super().__post__init__ or `output_dir` will restore str type specified in the base class
     def __post_init__(self):
         pass
