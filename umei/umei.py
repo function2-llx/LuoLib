@@ -5,13 +5,13 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 from torch import nn
 from torch.nn.functional import interpolate
-from torch.optim import AdamW
+from torch.optim import RAdam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from monai.losses import DiceFocalLoss
 
-from .utils import UMeIArgs
 from .model import UDecoderBase, UDecoderOutput, UEncoderBase, UEncoderOutput
+from .utils import UMeIArgs
 
 class UMeI(LightningModule):
     def __init__(
@@ -68,15 +68,19 @@ class UMeI(LightningModule):
                 self.log(f'train/{k}', output[k])
         return output
 
-    def validation_step(self, batch: dict[str, torch.Tensor], *args, **kwargs) -> Optional[STEP_OUTPUT]:
-        output = self.forward(batch)
-        for k in ['cls_loss', 'seg_loss']:
-            if k in output:
-                self.log(f'val/{k}', output[k])
-        return output
+    def validation_step(self, splits_batch: dict[str, dict[str, torch.Tensor]]) -> Optional[STEP_OUTPUT]:
+        splits_output = {}
+        for split, batch in splits_batch.items():
+            output = self.forward(batch)
+            for k in ['cls_loss', 'seg_loss']:
+                if k in output:
+                    self.log(f'{split}/{k}', output[k])
+                    self.log(f'combined/{k}', output[k])
+            splits_output[split] = output
+        return splits_output
 
     def configure_optimizers(self):
-        optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
+        optimizer = RAdam(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
         return {
             'optimizer': optimizer,
             'lr_scheduler': {

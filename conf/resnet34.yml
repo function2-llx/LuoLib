@@ -6,4 +6,6 @@ model_depth: 34
 sample_size: 160
 sample_slices: 160
 num_folds: 10
-resnet_shortcut: A
+resnet_shortcut: B
+resnet_conv1_size: 5
+resnet_conv1_stride: 2

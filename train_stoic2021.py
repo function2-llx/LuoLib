@@ -1,8 +1,5 @@
-from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Optional
 
-import numpy as np
 from numpy.random import SeedSequence
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
@@ -14,7 +11,7 @@ import torchmetrics
 import wandb
 
 from umei import UEncoderBase, UMeI
-from umei.datasets import Stoic2021DataModule
+from umei.datasets import Stoic2021DataModule, Stoic2021Args
 from umei.utils import MyWandbLogger, UMeIArgs, UMeIParser
 
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -22,12 +19,15 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 def build_encoder(args: UMeIArgs) -> UEncoderBase:
     from monai.networks import nets
     if args.model_name == 'resnet':
-        resnet = getattr(nets, f'resnet{args.model_depth}')
-        model: nn.Module = resnet(
+        resnet_builder = getattr(nets, f'resnet{args.model_depth}')
+        model: nn.Module = resnet_builder(
             n_input_channels=args.num_input_channels,
             feed_forward=False,
+            conv1_t_size=args.resnet_conv1_size,
+            conv1_t_stride=args.resnet_conv1_stride,
             shortcut_type=args.resnet_shortcut,
         )
+
         if args.pretrain_path is not None:
             # assume pre-trained weights are from https://github.com/Tencent/MedicalNet
             dp_model = nn.DataParallel(model)
@@ -50,57 +50,65 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
     else:
         raise NotImplementedError
 
-@dataclass
-class Stoic2021Args(UMeIArgs):
-    monitor: str = field(default='auc-severity')
-    monitor_mode: str = field(default='max')
-    output_root: Path = field(default=Path('output/stoic2021'))
-
-class Stoic2021(UMeI):
+class Stoic2021Model(UMeI):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.severity_auc = torchmetrics.AUROC(pos_label=1)
-        self.positivity_auc = torchmetrics.AUROC(pos_label=1)
+        self.severity_auc = nn.ModuleDict({
+            k: torchmetrics.AUROC(pos_label=1)
+            for k in ['val', 'test', 'combined']
+        })
+        self.positivity_auc = nn.ModuleDict({
+            k: torchmetrics.AUROC(pos_label=1)
+            for k in ['val', 'test', 'combined']
+        })
 
-    def validation_step(self, batch: dict[str, torch.Tensor], *args, **kwargs):
-        output = super().validation_step(batch, *args, **kwargs)
-        pred = F.softmax(output['cls_logit'], dim=1)
-        positive_idx: torch.Tensor = batch[self.args.cls_key] >= 1  # type: ignore
-        if positive_idx.sum() > 0:
-            severity_pred = pred[positive_idx, 2] / pred[positive_idx, 1:].sum(dim=1)
-            self.severity_auc(
-                preds=severity_pred,
-                target=batch[self.args.cls_key][positive_idx] == 2,
-            )
-            self.log('val/auc-severity', self.severity_auc)
-        self.positivity_auc(
-            preds=pred[:, 1:].sum(dim=1),
-            target=batch[self.args.cls_key] >= 1,
-        )
-        self.log('val/auc-positivity', self.positivity_auc)
-        return output
+    def validation_step(self, splits_batch: dict[str, dict[str, torch.Tensor]]):
+        splits_output = super().validation_step(splits_batch)
+        for split, batch in splits_batch.items():
+            output = splits_output[split]
+            pred = F.softmax(output['cls_logit'], dim=1)
+            positive_idx: torch.Tensor = batch[self.args.cls_key] >= 1  # type: ignore
+            if positive_idx.sum() > 0:
+                # P(severe | positive)
+                severity_pred = pred[positive_idx, 2] / pred[positive_idx, 1:].sum(dim=1)
+                severity_target = batch[self.args.cls_key][positive_idx] == 2
+                for k in [split, 'combined']:
+                    self.severity_auc[k](
+                        preds=severity_pred,
+                        target=severity_target,
+                    )
+                    self.log(f'{k}/auc-severity', self.severity_auc[k])
+            for k in [split, 'combined']:
+                positivity_pred = pred[:, 1:].sum(dim=1)
+                positivity_target = batch[self.args.cls_key] >= 1
+                self.positivity_auc[split](
+                    preds=positivity_pred,
+                    target=positivity_target,
+                )
+                self.log(f'{k}/auc-positivity', self.positivity_auc[k])
+
+        return splits_output
 
 def main():
     parser = UMeIParser((Stoic2021Args,), use_conf=True)
     args: Stoic2021Args = parser.parse_args_into_dataclasses()[0]
     datamodule = Stoic2021DataModule(args)
 
-    num_runs = 3
-    for run, seeds in zip(
-        range(num_runs), 
-        SeedSequence(args.seed).generate_state(num_runs * args.num_folds).reshape(num_runs, args.num_folds),
+    for run, seed in zip(
+        range(args.num_runs),
+        SeedSequence(args.seed).generate_state(args.num_runs),
     ):
-        for fold_id, seed in zip(range(args.num_folds), seeds):
+        for val_fold_id in zip(range(datamodule.num_cv_folds)):
             pl.seed_everything(seed)
 
-            output_dir = args.output_dir / f'fold{fold_id}' / f'run{run}'
+            output_dir = args.output_dir / f'fold{val_fold_id}' / f'run{run}'
             output_dir.mkdir(exist_ok=True, parents=True)
-            datamodule.val_id = fold_id
+            datamodule.val_id = val_fold_id
 
-            model = Stoic2021(args, encoder=build_encoder(args))
+            model = Stoic2021Model(args, encoder=build_encoder(args))
             trainer = pl.Trainer(
                 logger=MyWandbLogger(
-                    name=f'{args.exp_name}/fold{fold_id}/run{run}',
+                    name=f'{args.exp_name}/fold{val_fold_id}/run{run}',
                     save_dir=str(output_dir),
                     group=args.exp_name,
                 ) if args.log else None,
@@ -127,7 +135,6 @@ def main():
                     ),
                 ],
                 num_sanity_val_steps=0,
-                log_every_n_steps=20,
                 strategy=DDPStrategy(find_unused_parameters=False),
                 # limit_train_batches=0.1,
                 # limit_val_batches=0.2,

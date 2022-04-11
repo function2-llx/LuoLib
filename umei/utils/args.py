@@ -28,10 +28,14 @@ class UMeIArgs(TrainingArguments):
     monitor_mode: str = field(default='min')
     lr_reduce_factor: float = field(default=0.1)
     num_folds: int = field(default=5)
+    use_test_fold: bool = field(default=True)
+    num_runs: int = field(default=3)
     model_name: str = field(default='resnet')
     model_depth: int = field(default=50)
     pretrain_path: Optional[Path] = field(default=None)
     resnet_shortcut: str = field(default=None, metadata={'choices': ['A', 'B']})
+    resnet_conv1_size: int = field(default=7)
+    resnet_conv1_stride: int = field(default=2)
 
     @property
     def precision(self):

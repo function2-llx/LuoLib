@@ -3,6 +3,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from pytorch_lightning.trainer.supporters import CombinedLoader
 from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from ruamel.yaml import YAML
 
@@ -10,7 +11,9 @@ import monai
 from monai.config import KeysCollection, NdarrayOrTensor
 from monai.data import DataLoader, Dataset, DatasetSummary, partition_dataset_classes, select_cross_validation_folds
 from monai.utils import InterpolateMode, NumpyPadMode
-from umei.utils import UMeIArgs, CVDataModule
+
+from umei.utils import CVDataModule
+from .args import Stoic2021Args
 
 yaml = YAML()
 DATASET_ROOT = Path(__file__).parent
@@ -36,9 +39,8 @@ class SpatialSquarePadD(monai.transforms.SpatialPadD):
         super().__init__(keys, -1, **kwargs)
 
 class Stoic2021DataModule(CVDataModule):
-    def __init__(self, args: UMeIArgs):
-        super().__init__()
-        self.args = args
+    def __init__(self, args: Stoic2021Args):
+        super().__init__(args)
         ref = pd.read_csv(DATASET_ROOT / 'reference.csv')
         assert len(ref[(ref['probCOVID'] == 0) & (ref['probSevere'] == 1)]) == 0
         self.train_cohort = [
@@ -67,7 +69,7 @@ class Stoic2021DataModule(CVDataModule):
             dataset=Dataset(
                 select_cross_validation_folds(
                     self.partitions,
-                    folds=np.delete(range(self.args.num_folds), self.val_id)
+                    folds=np.delete(range(self.num_cv_folds), self.val_id)
                 ),
                 transform=self.train_transform,
             ),
@@ -77,12 +79,26 @@ class Stoic2021DataModule(CVDataModule):
             shuffle=True,
         )
 
-    def val_dataloader(self) -> EVAL_DATALOADERS:
-        return DataLoader(
-            dataset=Dataset(self.partitions[self.val_id], transform=self.eval_transform),
-            num_workers=self.args.dataloader_num_workers,
-            persistent_workers=True,
-            batch_size=self.args.per_device_eval_batch_size,
+    def val_dataloader(self):
+        val_ids = list(self.val_parts.values())
+        if not all(
+            len(self.partitions[val_ids[0]]) == self.partitions[val_ids[i]]
+            for i in range(1, len(val_ids))
+        ):
+            import warnings
+            warnings.warn('length of val and test folds are not equal')
+
+        return CombinedLoader(
+            loaders={
+                split: DataLoader(
+                    dataset=Dataset(self.partitions[part_id], transform=self.eval_transform),
+                    num_workers=self.args.dataloader_num_workers,
+                    persistent_workers=True,
+                    batch_size=self.args.per_device_eval_batch_size,
+                )
+                for split, part_id in self.val_parts.items()
+            },
+            mode='max_size_cycle',
         )
 
     @property
