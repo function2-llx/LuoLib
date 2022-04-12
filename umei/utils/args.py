@@ -26,7 +26,7 @@ class UMeIArgs(TrainingArguments):
     dataloader_num_workers: int = field(default=multiprocessing.cpu_count())
     monitor: str = field(default='cls_loss')
     monitor_mode: str = field(default='min')
-    lr_reduce_factor: float = field(default=0.1)
+    lr_reduce_factor: float = field(default=0.2)
     num_folds: int = field(default=5)
     use_test_fold: bool = field(default=True)
     num_runs: int = field(default=3)

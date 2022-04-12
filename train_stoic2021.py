@@ -26,11 +26,13 @@ def main():
             pl.seed_everything(seed)
 
             output_dir = args.output_dir / f'fold{val_fold_id}' / f'run{run}'
-            if output_dir.exists() and not args.overwrite_output_dir:
-                print(f'{output_dir} exists, skip')
-                continue
-
             output_dir.mkdir(exist_ok=True, parents=True)
+            conf_save_path = output_dir / 'conf.yml'
+            # save tmp to handle multiple processes
+            conf_tmp_path = output_dir / 'conf-tmp.yml'
+            if conf_save_path.exists() and not args.overwrite_output_dir:
+                print(f'{conf_save_path} exists (fit complete), skip')
+                continue
 
             datamodule.val_id = val_fold_id
 
@@ -81,14 +83,9 @@ def main():
                 # limit_train_batches=0.1,
                 # limit_val_batches=0.2,
             )
-            conf_save_path = output_dir / 'conf.yml'
-            if not conf_save_path.exists() or args.overwrite_output_dir:
-                UMeIParser.save_args_as_conf(args, conf_save_path)
-            else:
-                import warnings
-                warnings.warn(f'cannot save conf to {conf_save_path}')
-
+            UMeIParser.save_args_as_conf(args, conf_tmp_path)
             trainer.fit(model, datamodule=datamodule, ckpt_path=last_ckpt_path)
+            conf_tmp_path.rename(conf_save_path)
 
             wandb.finish()
 
