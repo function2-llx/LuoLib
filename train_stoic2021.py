@@ -104,12 +104,23 @@ def main():
 
             output_dir = args.output_dir / f'fold{val_fold_id}' / f'run{run}'
             output_dir.mkdir(exist_ok=True, parents=True)
+
             datamodule.val_id = val_fold_id
 
-            model = Stoic2021Model(args, encoder=build_encoder(args))
+            encoder = build_encoder(args)
+            model = Stoic2021Model(args, encoder=encoder)
+            if (last_ckpt_path := output_dir / 'last.ckpt').exists():
+                model.load_from_checkpoint(str(last_ckpt_path), args=args, encoder=encoder)
+                latest_run_id = (output_dir / 'wandb/latest-run').resolve().name.split('-')[-1]
+                print('latest wandb id:', latest_run_id)
+            else:
+                last_ckpt_path = None
+                latest_run_id = None
+
             trainer = pl.Trainer(
                 logger=MyWandbLogger(
                     name=f'{args.exp_name}/fold{val_fold_id}/run{run}',
+                    id=latest_run_id,
                     save_dir=str(output_dir),
                     group=args.exp_name,
                 ),
@@ -123,12 +134,14 @@ def main():
                         verbose=True,
                         save_last=True,
                         save_top_k=2,
+                        save_on_train_epoch_end=False,
                     ),
                     EarlyStopping(
                         monitor=f'combined/{args.monitor}',
                         patience=3 * args.patience,
                         mode=args.monitor_mode,
                         verbose=True,
+                        check_on_train_epoch_end=False,
                     ),
                 ],
                 num_nodes=args.num_nodes,
@@ -141,7 +154,7 @@ def main():
                 # limit_train_batches=0.1,
                 # limit_val_batches=0.2,
             )
-            trainer.fit(model, datamodule=datamodule)
+            trainer.fit(model, datamodule=datamodule, ckpt_path=last_ckpt_path)
 
             wandb.finish()
 
