@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from pytorch_lightning.trainer.supporters import CombinedLoader
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
+from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 from ruamel.yaml import YAML
 
 import monai

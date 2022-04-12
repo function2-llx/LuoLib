@@ -51,8 +51,10 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
         raise NotImplementedError
 
 class Stoic2021Model(UMeI):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, args: Stoic2021Args, encoder: UEncoderBase):
+        super().__init__(args, encoder)
+        self.cls_loss_fn.__init__()
+        self.cls_loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([1, args.cls_weight, args.cls_weight]).float())
         self.severity_auc = nn.ModuleDict({
             k: torchmetrics.AUROC(pos_label=1)
             for k in ['val', 'test', 'combined']
