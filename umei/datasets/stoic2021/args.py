@@ -9,3 +9,4 @@ class Stoic2021Args(UMeIArgs):
     monitor_mode: str = field(default='max')
     output_root: Path = field(default=Path('output/stoic2021'))
     cls_weight: float = field(default=5, metadata={'help': 'classification weight for positive samples'})
+    lr_reduce_factor: float = field(default=0.2)
