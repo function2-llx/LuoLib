@@ -1,3 +1,4 @@
+from ruamel.yaml import YAML
 from numpy.random import SeedSequence
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
@@ -9,6 +10,7 @@ from umei.datasets import Stoic2021DataModule, Stoic2021Args, Stoic2021Model
 from umei.model import build_encoder
 from umei.utils import MyWandbLogger, UMeIParser
 
+yaml = YAML()
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 def main():
@@ -71,10 +73,17 @@ def main():
                 benchmark=True,
                 max_epochs=int(args.num_train_epochs),
                 num_sanity_val_steps=0,
-                strategy=DDPStrategy(find_unused_parameters=False),
+                strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),
                 # limit_train_batches=0.1,
                 # limit_val_batches=0.2,
             )
+            conf_save_path = output_dir / 'conf.yml'
+            if not conf_save_path.exists() or args.overwrite_output_dir:
+                UMeIParser.save_args_as_conf(args, conf_save_path)
+            else:
+                import warnings
+                warnings.warn(f'cannot save conf to {conf_save_path}')
+
             trainer.fit(model, datamodule=datamodule, ckpt_path=last_ckpt_path)
 
             wandb.finish()

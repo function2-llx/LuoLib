@@ -3,8 +3,8 @@ learning_rate: 2e-4
 num_train_epochs: 35
 model_name: resnet
 model_depth: 34
-sample_size: 256
-sample_slices: 256
+sample_size: 224
+sample_slices: 224
 num_folds: 10
 resnet_shortcut: B
 resnet_conv1_size: 7

@@ -36,6 +36,7 @@ class UMeIArgs(TrainingArguments):
     resnet_shortcut: str = field(default=None, metadata={'choices': ['A', 'B']})
     resnet_conv1_size: int = field(default=7)
     resnet_conv1_stride: int = field(default=2)
+    ddp_find_unused_parameters: bool = field(default=True)
 
     @property
     def precision(self):
@@ -58,6 +59,7 @@ class UMeIArgs(TrainingArguments):
     def num_seg_classes(self) -> int:
         pass
 
-    # disable super().__post__init__ or `output_dir` will restore str type specified in the base class
     def __post_init__(self):
+        # disable super().__post__init__ or `output_dir` will restore str type specified in the base class
+        # super().__post_init__()
         pass

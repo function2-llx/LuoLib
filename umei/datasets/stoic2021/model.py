@@ -4,7 +4,7 @@ from torch.nn import functional as F
 import torchmetrics
 
 from umei import UEncoderBase, UMeI
-from umei.datasets import Stoic2021Args
+from .args import Stoic2021Args
 
 class Stoic2021Model(UMeI):
     def __init__(self, args: Stoic2021Args, encoder: UEncoderBase):
@@ -50,4 +50,10 @@ class Stoic2021Model(UMeI):
         return splits_output
 
     def predict_step(self, batch: dict[str, torch.Tensor], *args, **kwargs):
-        pass
+        output = self.forward(batch)
+        pred = F.softmax(output['cls_logit'], dim=1)
+        return {
+            'severity_pred': pred[:, 2] / pred[:, 1:].sum(dim=1),
+            'positivity_pred': pred[:, 1:].sum(dim=1),
+            self.args.cls_key: batch[self.args.cls_key],
+        }

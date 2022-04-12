@@ -103,6 +103,17 @@ class Stoic2021DataModule(CVDataModule):
             mode='max_size_cycle',
         )
 
+    def test_dataloader(self):
+        assert self.args.use_test_fold
+
+        return DataLoader(
+            dataset=Dataset(self.partitions[-1], transform=self.eval_transform),
+            num_workers=self.args.dataloader_num_workers,
+            batch_size=self.args.per_device_eval_batch_size,
+            pin_memory=True,
+            persistent_workers=True,
+        )
+
     @property
     def preprocess_transform(self) -> Callable:
         stat_path = DATASET_ROOT / 'stat.yml'

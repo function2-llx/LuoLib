@@ -15,7 +15,7 @@ class UMeIParser(HfArgumentParser):
         self.use_conf = use_conf
 
     @staticmethod
-    def _save_args_as_conf(args: Namespace, save_path: Path):
+    def save_args_as_conf(args, save_path: Path):
         save_path.parent.mkdir(parents=True, exist_ok=True)
         args_dict = deepcopy(vars(args))
         for k, v in args_dict.items():
@@ -75,6 +75,6 @@ class UMeIParser(HfArgumentParser):
                 args.output_dir = Path(args.output_root) / args.exp_name
 
         output_dir = Path(args.output_dir)
-        self._save_args_as_conf(args, output_dir / 'conf.yml')
+        self.save_args_as_conf(args, output_dir / 'conf.yml')
         # compatible interface
         return self.parse_dict(vars(args))
