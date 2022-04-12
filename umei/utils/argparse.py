@@ -19,7 +19,8 @@ class UMeIParser(HfArgumentParser):
         save_path.parent.mkdir(parents=True, exist_ok=True)
         args_dict = deepcopy(vars(args))
         for k, v in args_dict.items():
-            if isinstance(v, Path):
+            # if isinstance(v, Path):
+            if type(v) not in [int, float, str, list, bool, type(None)]:
                 args_dict[k] = str(v)
         yaml.dump(args_dict, save_path)
 

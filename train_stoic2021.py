@@ -26,6 +26,10 @@ def main():
             pl.seed_everything(seed)
 
             output_dir = args.output_dir / f'fold{val_fold_id}' / f'run{run}'
+            if output_dir.exists() and not args.overwrite_output_dir:
+                print(f'{output_dir} exists, skip')
+                continue
+
             output_dir.mkdir(exist_ok=True, parents=True)
 
             datamodule.val_id = val_fold_id
