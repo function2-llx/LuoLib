@@ -85,7 +85,8 @@ def main():
             )
             UMeIParser.save_args_as_conf(args, conf_tmp_path)
             trainer.fit(model, datamodule=datamodule, ckpt_path=last_ckpt_path)
-            conf_tmp_path.rename(conf_save_path)
+            if conf_tmp_path.exists():
+                conf_tmp_path.rename(conf_save_path)
 
             wandb.finish()
 
