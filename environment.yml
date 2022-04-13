@@ -21,6 +21,7 @@ dependencies:
   - pip=22.0.4
   - pip:
 #    - itk==5.2.1.post1
+    - evalutils==0.3.1
     - git+https://github.com/JoHof/lungmask
     - -e third-party/MONAI
     - -e third-party/transformers

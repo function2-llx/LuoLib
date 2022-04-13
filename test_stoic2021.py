@@ -1,25 +1,29 @@
 import pytorch_lightning as pl
+import torch
 from torchmetrics import AUROC
 from tqdm import tqdm
 
 from umei.datasets import Stoic2021Args, Stoic2021DataModule, Stoic2021Model
 from umei.model import build_encoder
-from umei.utils import MyWandbLogger, UMeIParser
+from umei.utils import UMeIParser
+
+torch.multiprocessing.set_sharing_strategy('file_system')
 
 def main():
     parser = UMeIParser((Stoic2021Args,), use_conf=True)
     args: Stoic2021Args = parser.parse_args_into_dataclasses()[0]
-    test_dataloader = Stoic2021DataModule(args).test_dataloader()
+    args.sample_size = args.sample_slices = -1
+    args.per_device_eval_batch_size = 1
     ensemble_output_dir = args.output_dir / 'ensemble'
     ensemble_output_dir.mkdir(parents=True, exist_ok=True)
-    logger = MyWandbLogger(
-        name=f'{args.exp_name}/ensemble',
-        save_dir=str(ensemble_output_dir),
-        group=args.exp_name,
-    )
     encoder = build_encoder(args)
     model = Stoic2021Model(args, encoder)
     trainer = pl.Trainer(
+        # logger=MyWandbLogger(
+        #     name=f'{args.exp_name}/ensemble',
+        #     save_dir=str(ensemble_output_dir),
+        #     group=args.exp_name,
+        # ),
         gpus=1,
         benchmark=True,
     )
@@ -30,7 +34,7 @@ def main():
         severity_auc = AUROC(pos_label=1)
         positivity_auc = AUROC(pos_label=1)
 
-        for result, batch in zip(results, tqdm(test_dataloader)):
+        for result, batch in zip(results, tqdm(Stoic2021DataModule(args).test_dataloader())):
             positive_idx = batch[args.cls_key] >= 1
             if positive_idx.sum() > 0:
                 severity_auc.update(result['severity_pred'][positive_idx],
@@ -42,11 +46,11 @@ def main():
         }
 
     for run in range(1):
-        for val_fold_id in range(3):
+        for val_fold_id in range(8):
             output_dir = args.output_dir / f'fold{val_fold_id}' / f'run{run}'
             ckpt_path = list(output_dir.glob('auc-severity=*.ckpt'))[-1]
             # print(ckpt_path)
-            test_outputs = trainer.predict(model, test_dataloader, ckpt_path=str(ckpt_path))
+            test_outputs = trainer.predict(model, Stoic2021DataModule(args).test_dataloader(), ckpt_path=str(ckpt_path))
             print(cal_auc(test_outputs))
 
             for i, result in enumerate(test_outputs):

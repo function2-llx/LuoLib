@@ -8,58 +8,41 @@ from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 from ruamel.yaml import YAML
 
 import monai
-from monai.config import KeysCollection, NdarrayOrTensor
 from monai.data import DataLoader, Dataset, DatasetSummary, partition_dataset_classes, select_cross_validation_folds
 from monai.utils import InterpolateMode, NumpyPadMode
 
+import umei
 from umei.utils import CVDataModule
 from .args import Stoic2021Args
 
 yaml = YAML()
 DATASET_ROOT = Path(__file__).parent
 
-class SpatialSquarePad(monai.transforms.SpatialPad):
-    def __init__(
-        self,
-        **kwargs,
-    ) -> None:
-        super().__init__(-1, **kwargs)
-
-    def __call__(self, data: NdarrayOrTensor, **kwargs):
-        size = max(data.shape[1:3])
-        self.spatial_size = [size, size, -1]
-        return super().__call__(data, **kwargs)
-
-class SpatialSquarePadD(monai.transforms.SpatialPadD):
-    def __init__(
-        self,
-        keys: KeysCollection,
-        **kwargs,
-    ) -> None:
-        super().__init__(keys, -1, **kwargs)
-
 class Stoic2021DataModule(CVDataModule):
+    args: Stoic2021Args
+
     def __init__(self, args: Stoic2021Args):
         super().__init__(args)
-        ref = pd.read_csv(DATASET_ROOT / 'reference.csv')
-        assert len(ref[(ref['probCOVID'] == 0) & (ref['probSevere'] == 1)]) == 0
-        self.train_cohort = [
-            {
-                args.img_key: DATASET_ROOT / 'cropped' / f'{patient_id}.nii.gz',
-                args.mask_key: DATASET_ROOT / 'cropped' / f'{patient_id}_mask.nii.gz',
-                args.cls_key: pcr + severe,
-                args.clinical_key: np.array([age / 100, sex, sex ^ 1]),
-            }
-            for _, (patient_id, pcr, severe, age, sex) in ref.iterrows()
-        ]
+        if not args.on_submit:
+            ref = pd.read_csv(DATASET_ROOT / 'reference.csv')
+            assert len(ref[(ref['probCOVID'] == 0) & (ref['probSevere'] == 1)]) == 0
+            self.train_cohort = [
+                {
+                    args.img_key: DATASET_ROOT / 'cropped' / f'{patient_id}.nii.gz',
+                    args.mask_key: DATASET_ROOT / 'cropped' / f'{patient_id}_mask.nii.gz',
+                    args.cls_key: pcr + severe,
+                    args.clinical_key: np.array([age / 100, sex, sex ^ 1]),
+                }
+                for _, (patient_id, pcr, severe, age, sex) in ref.iterrows()
+            ]
 
-        self.partitions = partition_dataset_classes(
-            self.train_cohort,
-            classes=pd.DataFrame.from_records(self.train_cohort)[args.cls_key],
-            num_partitions=args.num_folds,
-            shuffle=True,
-            seed=args.seed,
-        )
+            self.partitions = partition_dataset_classes(
+                self.train_cohort,
+                classes=pd.DataFrame.from_records(self.train_cohort)[args.cls_key],
+                num_partitions=args.num_folds,
+                shuffle=True,
+                seed=args.seed,
+            )
         # print(sum(x[args.clinical_key][0] * 100 for x in self.train_cohort) / len(self.train_cohort))
         # for i, part in enumerate(self.partitions):
         #     print(i, sum(x[args.clinical_key][0] * 100 for x in part) / len(part))
@@ -135,7 +118,7 @@ class Stoic2021DataModule(CVDataModule):
             monai.transforms.AddChannelD([self.args.img_key, self.args.mask_key]),
             monai.transforms.OrientationD([self.args.img_key, self.args.mask_key], axcodes='RAS'),
             monai.transforms.NormalizeIntensityD(self.args.img_key, subtrahend=stat['mean'], divisor=stat['std']),
-            SpatialSquarePadD([self.args.img_key, self.args.mask_key], mode=NumpyPadMode.EDGE),
+            umei.transforms.SpatialSquarePadD([self.args.img_key, self.args.mask_key], mode=NumpyPadMode.EDGE),
         ])
 
     @property

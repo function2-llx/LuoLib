@@ -37,6 +37,7 @@ class UMeIArgs(TrainingArguments):
     resnet_conv1_size: int = field(default=7)
     resnet_conv1_stride: int = field(default=2)
     ddp_find_unused_parameters: bool = field(default=False)
+    on_submit: bool = field(default=False)
 
     @property
     def precision(self):
