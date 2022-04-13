@@ -10,3 +10,4 @@ class Stoic2021Args(UMeIArgs):
     output_root: Path = field(default=Path('output/stoic2021'))
     cls_weight: float = field(default=5, metadata={'help': 'classification weight for positive samples'})
     lr_reduce_factor: float = field(default=0.2)
+    # model_ckpts: list[str] = field(default_factory=list)

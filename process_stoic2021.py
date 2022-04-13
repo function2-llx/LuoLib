@@ -1,6 +1,7 @@
+from copy import deepcopy
 import json
 from pathlib import Path
-from typing import Callable, Dict
+from typing import Dict
 
 import SimpleITK as sitk
 from evalutils.evalutils import Algorithm
@@ -9,15 +10,12 @@ import lungmask.mask as lungmask
 import numpy as np
 import pandas as pd
 from ruamel.yaml import YAML
-import torch
+import pytorch_lightning as pl
 
-import monai
-from monai.utils import InterpolateMode, NumpyPadMode
-import umei
-from umei.datasets import Stoic2021Args
-from umei.datasets.stoic2021.datamodule import DATASET_ROOT
+from umei.datasets import Stoic2021Args, Stoic2021Model
+from umei.datasets.stoic2021.datamodule import Stoic2021DataModule
+from umei.model import build_encoder
 from umei.utils import UMeIParser
-from utils import device, to_input_format
 
 yaml = YAML()
 
@@ -41,9 +39,10 @@ class StoicAlgorithm(Algorithm):
             input_path=Path("/input/images/ct/"),
             output_path=Path("/output/")
         )
-
+        args.dataloader_num_workers = 0
         self.args = args
-        self.lungmask_model = lungmask.get_model('unet', 'R231').to(device)
+        self.lungmask_model = lungmask.get_model('unet', 'R231').eval()
+
         # load model
         # self.model = I3D(nr_outputs=2)
         # self.model = self.model.to(device)
@@ -67,64 +66,50 @@ class StoicAlgorithm(Algorithm):
         out.CopyInformation(img)
         sitk.WriteImage(out, str(MASK_PATH))
 
-    @property
-    def preprocess_transform(self) -> Callable:
-        stat_path = DATASET_ROOT / 'stat.yml'
-        stat = yaml.load(stat_path)
-
-        return monai.transforms.Compose([
-            monai.transforms.LoadImageD([self.args.img_key, self.args.mask_key]),
-            monai.transforms.AddChannelD([self.args.img_key, self.args.mask_key]),
-            monai.transforms.OrientationD([self.args.img_key, self.args.mask_key], axcodes='RAS'),
-            monai.transforms.ThresholdIntensityD('img', threshold=MIN_HU, above=True, cval=MIN_HU),
-            monai.transforms.LambdaD('img', lambda x: x - MIN_HU),
-            monai.transforms.MaskIntensityD('img', mask_key='mask'),
-            monai.transforms.LambdaD('img', lambda x: x + MIN_HU),
-            monai.transforms.CropForegroundD(['img', 'mask'], source_key='mask'),
-            monai.transforms.NormalizeIntensityD(self.args.img_key, subtrahend=stat['mean'], divisor=stat['std']),
-            umei.transforms.SpatialSquarePadD([self.args.img_key, self.args.mask_key], mode=NumpyPadMode.EDGE),
-        ])
-
-    @property
-    def input_transform(self) -> Callable:
-        return monai.transforms.Compose([
-            monai.transforms.ResizeD(
-                [self.args.img_key, self.args.mask_key],
-                spatial_size=[self.args.sample_size, self.args.sample_size, self.args.sample_slices],
-                mode=[InterpolateMode.AREA, InterpolateMode.NEAREST],
-            ),
-            monai.transforms.ConcatItemsD([self.args.img_key, self.args.mask_key], name=self.args.img_key),
-            monai.transforms.CastToTypeD([self.args.img_key, self.args.clinical_key], dtype=np.float32),
-            monai.transforms.SelectItemsD([self.args.img_key, self.args.clinical_key, self.args.cls_key]),
-        ])
-
     def process_case(self, *, idx: int, case: pd.DataFrame) -> Dict:
         img_path = Path(case['path'])
         self.lungmask(img_path)
         age, sex = self.collect_clinical(img_path)
-        data = self.preprocess_transform({
+        data = {
             self.args.img_key: img_path,
             self.args.mask_key: MASK_PATH,
             self.args.clinical_key: np.array([age / 100, sex, sex ^ 1]),
-        })
+        }
+
+        def get_dataloaders():
+            ret = [Stoic2021DataModule(self.args, predict_case=data).predict_dataloader()]
+            args = deepcopy(self.args)
+            # keep original shape
+            args.sample_size = args.sample_slices = -1
+            ret.append(Stoic2021DataModule(args, predict_case=data).predict_dataloader())
+            return ret
+
+        dataloaders = get_dataloaders()
+        trainer = pl.Trainer(
+            logger=False,
+            gpus=1,
+            benchmark=True,
+        )
+        pred = {
+            'severity_pred': 0,
+            'positivity_pred': 0,
+        }
+        encoder = build_encoder(self.args)
+        num_models = 0
+        for model_ckpt in Path(self.args.output_dir).glob('fold*/run0/*.ckpt'):
+            model = Stoic2021Model.load_from_checkpoint(str(model_ckpt), args=self.args, encoder=encoder)
+            num_models += len(dataloaders)
+            for result in trainer.predict(model, dataloaders):
+                for k, v in result[0].items():
+                    pred[k] += v.item()
+
+        return {
+            SEVERE_OUTPUT_NAME: pred['severity_pred'] / num_models,
+            COVID_OUTPUT_NAME: pred['positivity_pred'] / num_models,
+        }
 
     def predict(self, *args, **kwargs):
         pass
-
-    # def predict(self, *, input_image: SimpleITK.Image) -> Dict:
-    #     # pre-processing
-    #     input_image = preprocess(input_image)
-    #     input_image = to_input_format(input_image)
-    #
-    #     # run model
-    #     with torch.no_grad():
-    #         output = torch.sigmoid(self.model(input_image))
-    #     prob_covid, prob_severe = unpack_single_output(output)
-    #
-    #     return {
-    #         COVID_OUTPUT_NAME: prob_covid,
-    #         SEVERE_OUTPUT_NAME: prob_severe
-    #     }
 
     def save(self):
         if len(self._case_results) > 1:
@@ -137,7 +122,7 @@ class StoicAlgorithm(Algorithm):
 
 def main():
     import sys
-    sys.argv.insert(1, 'conf/stoic2021.yml')
+    sys.argv.insert(1, 'conf/stoic2021/infer.yml')
     parser = UMeIParser((Stoic2021Args, ), use_conf=True)
     args: Stoic2021Args = parser.parse_args_into_dataclasses()[0]
     StoicAlgorithm(args).process()

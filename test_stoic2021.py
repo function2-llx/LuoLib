@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pytorch_lightning as pl
 import torch
 from torchmetrics import AUROC
@@ -7,18 +9,21 @@ from umei.datasets import Stoic2021Args, Stoic2021DataModule, Stoic2021Model
 from umei.model import build_encoder
 from umei.utils import UMeIParser
 
-torch.multiprocessing.set_sharing_strategy('file_system')
+# torch.multiprocessing.set_sharing_strategy('file_system')
 
 def main():
     parser = UMeIParser((Stoic2021Args,), use_conf=True)
     args: Stoic2021Args = parser.parse_args_into_dataclasses()[0]
-    args.sample_size = args.sample_slices = -1
+    args.dataloader_num_workers = 10
     args.per_device_eval_batch_size = 1
+    args2 = deepcopy(args)
+    args.sample_size = args.sample_slices = -1
     ensemble_output_dir = args.output_dir / 'ensemble'
     ensemble_output_dir.mkdir(parents=True, exist_ok=True)
     encoder = build_encoder(args)
     model = Stoic2021Model(args, encoder)
     trainer = pl.Trainer(
+        logger=False,
         # logger=MyWandbLogger(
         #     name=f'{args.exp_name}/ensemble',
         #     save_dir=str(ensemble_output_dir),
@@ -27,8 +32,6 @@ def main():
         gpus=1,
         benchmark=True,
     )
-    test_results = []
-    num_models = 0
 
     def cal_auc(results):
         severity_auc = AUROC(pos_label=1)
@@ -45,25 +48,38 @@ def main():
             'auc-positivity': positivity_auc.compute()
         }
 
+    test_results = []
+    num_models = 0
+
+    def update(results: list[dict], i: int, result: dict):
+        if len(results) == i:
+            results.append(result)
+        else:
+            for k, v in result.items():
+                results[i][k] += v
+
+    def reduce(results: list[dict], n: int):
+        for result in results:
+            for k in ['severity_pred', 'positivity_pred']:
+                result[k] /= n
+
     for run in range(1):
-        for val_fold_id in range(8):
+        for val_fold_id in range(9):
             output_dir = args.output_dir / f'fold{val_fold_id}' / f'run{run}'
             ckpt_path = list(output_dir.glob('auc-severity=*.ckpt'))[-1]
-            # print(ckpt_path)
-            test_outputs = trainer.predict(model, Stoic2021DataModule(args).test_dataloader(), ckpt_path=str(ckpt_path))
-            print(cal_auc(test_outputs))
+            cur_test_results = []
+            for a in [args, args2]:
+                test_outputs = trainer.predict(model, Stoic2021DataModule(a).test_dataloader(), ckpt_path=str(ckpt_path))
+                for i, result in enumerate(test_outputs):
+                    update(cur_test_results, i, result)
+                    update(test_results, i, result)
 
-            for i, result in enumerate(test_outputs):
-                if len(test_results) == i:
-                    test_results.append(result)
-                else:
-                    for k, v in result.items():
-                        test_results[i][k] += v
-            num_models += 1
+                num_models += 1
 
-    for result in test_results:
-        for k in ['severity_pred', 'positivity_pred']:
-            result[k] /= num_models
+            reduce(cur_test_results, 2)
+            print(cal_auc(cur_test_results))
+
+    reduce(test_results, num_models)
     print(cal_auc(test_results))
 
 if __name__ == '__main__':

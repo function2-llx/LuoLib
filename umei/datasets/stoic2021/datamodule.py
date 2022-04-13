@@ -1,5 +1,7 @@
 from collections.abc import Callable
+from copy import deepcopy
 from pathlib import Path
+from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -10,7 +12,6 @@ from ruamel.yaml import YAML
 import monai
 from monai.data import DataLoader, Dataset, DatasetSummary, partition_dataset_classes, select_cross_validation_folds
 from monai.utils import InterpolateMode, NumpyPadMode
-
 import umei
 from umei.utils import CVDataModule
 from .args import Stoic2021Args
@@ -18,12 +19,16 @@ from .args import Stoic2021Args
 yaml = YAML()
 DATASET_ROOT = Path(__file__).parent
 
+MIN_HU = -1024
+
 class Stoic2021DataModule(CVDataModule):
     args: Stoic2021Args
 
-    def __init__(self, args: Stoic2021Args):
+    def __init__(self, args: Stoic2021Args, predict_case: Optional[dict] = None):
         super().__init__(args)
-        if not args.on_submit:
+        if args.on_submit:
+            self.predict_case = self.infer_transform(predict_case)
+        else:
             ref = pd.read_csv(DATASET_ROOT / 'reference.csv')
             assert len(ref[(ref['probCOVID'] == 0) & (ref['probSevere'] == 1)]) == 0
             self.train_cohort = [
@@ -97,8 +102,17 @@ class Stoic2021DataModule(CVDataModule):
             persistent_workers=True,
         )
 
+    def predict_dataloader(self):
+        assert self.args.on_submit
+
+        return DataLoader(
+            dataset=Dataset([self.predict_case]),
+            batch_size=1,
+            pin_memory=True,
+        )
+
     @property
-    def preprocess_transform(self) -> Callable:
+    def stat(self):
         stat_path = DATASET_ROOT / 'stat.yml'
         if not stat_path.exists():
             summary = DatasetSummary(
@@ -111,13 +125,34 @@ class Stoic2021DataModule(CVDataModule):
             print(summary.data_mean)
             print(summary.data_std)
             yaml.dump({'mean': summary.data_mean, 'std': summary.data_std}, stat_path)
-        stat = yaml.load(stat_path)
+        return yaml.load(stat_path)
 
+    @property
+    def loader_transform(self) -> Callable:
         return monai.transforms.Compose([
             monai.transforms.LoadImageD([self.args.img_key, self.args.mask_key]),
             monai.transforms.AddChannelD([self.args.img_key, self.args.mask_key]),
             monai.transforms.OrientationD([self.args.img_key, self.args.mask_key], axcodes='RAS'),
-            monai.transforms.NormalizeIntensityD(self.args.img_key, subtrahend=stat['mean'], divisor=stat['std']),
+        ])
+
+    @property
+    def crop_transform(self) -> Callable:
+        return monai.transforms.Compose([
+            monai.transforms.ThresholdIntensityD('img', threshold=MIN_HU, above=True, cval=MIN_HU),
+            monai.transforms.LambdaD('img', lambda x: x - MIN_HU),
+            monai.transforms.MaskIntensityD('img', mask_key='mask'),
+            monai.transforms.LambdaD('img', lambda x: x + MIN_HU),
+            monai.transforms.CropForegroundD(['img', 'mask'], source_key='mask'),
+        ])
+
+    @property
+    def normalize_transform(self) -> Callable:
+        return monai.transforms.Compose([
+            monai.transforms.NormalizeIntensityD(
+                self.args.img_key,
+                subtrahend=self.stat['mean'],
+                divisor=self.stat['std'],
+            ),
             umei.transforms.SpatialSquarePadD([self.args.img_key, self.args.mask_key], mode=NumpyPadMode.EDGE),
         ])
 
@@ -151,7 +186,8 @@ class Stoic2021DataModule(CVDataModule):
     @property
     def train_transform(self) -> Callable:
         return monai.transforms.Compose([
-            self.preprocess_transform,
+            self.loader_transform,
+            self.normalize_transform,
             self.aug_transform,
             self.input_transform,
         ])
@@ -159,6 +195,16 @@ class Stoic2021DataModule(CVDataModule):
     @property
     def eval_transform(self) -> Callable:
         return monai.transforms.Compose([
-            self.preprocess_transform,
+            self.loader_transform,
+            self.normalize_transform,
+            self.input_transform,
+        ])
+
+    @property
+    def infer_transform(self) -> Callable:
+        return monai.transforms.Compose([
+            self.loader_transform,
+            self.crop_transform,
+            self.normalize_transform,
             self.input_transform,
         ])

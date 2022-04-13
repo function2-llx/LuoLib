@@ -13,6 +13,7 @@ class SpatialSquarePad(monai.transforms.SpatialPad):
         self.spatial_size = [size, size, -1]
         return super().__call__(data, **kwargs)
 
+# FIXME: set padder
 class SpatialSquarePadD(monai.transforms.SpatialPadD):
     def __init__(
         self,

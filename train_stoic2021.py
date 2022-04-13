@@ -62,7 +62,6 @@ def main():
                         mode=args.monitor_mode,
                         verbose=True,
                         save_last=True,
-                        save_top_k=2,
                         save_on_train_epoch_end=False,
                     ),
                     EarlyStopping(

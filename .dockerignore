@@ -1,0 +1,17 @@
+# Git
+.git
+.gitignore
+
+# Docker
+docker-compose.yml
+.docker
+
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+**/*.py[cod]
+
+**/wandb
+**/last.ckpt
+pretrained/
+
+**/*.nii.gz
