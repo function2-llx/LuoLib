@@ -19,15 +19,20 @@ WORKDIR /opt/algorithm
 ENV PATH="/home/algorithm/.local/bin:${PATH}"
 
 COPY --chown=algorithm:algorithm environment.yml /opt/algorithm/
+COPY --chown=algorithm:algorithm third-party /opt/algorithm/third-party
 RUN conda env create -n umei
-RUN conda activate umei
-
-COPY --chown=algorithm:algorithm . /opt/algorithm/
-
+SHELL ["conda", "run", "-n", "umei", "/bin/bash", "-c"]
 # download pre-trained model for lungmask
 RUN python -c 'from lungmask.mask import get_model; get_model("unet", "R231")'
+COPY --chown=algorithm:algorithm submit /opt/algorithm/submit
+COPY --chown=algorithm:algorithm test /opt/algorithm/test
+RUN pip install itk==5.2.1.post1
+COPY --chown=algorithm:algorithm conf /opt/algorithm/conf
+COPY --chown=algorithm:algorithm umei /opt/algorithm/umei
+COPY --chown=algorithm:algorithm process_stoic2021.py /opt/algorithm/process.py
 
-ENTRYPOINT python -m process $0 $@
+ENTRYPOINT ["conda", "run", "-n", "umei", "python", "-m", "process", "conf/stoic2021/infer.yml"]
+#ENTRYPOINT python -m process $0 $@
 
 ## ALGORITHM LABELS ##
 

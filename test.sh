@@ -2,7 +2,7 @@
 
 SCRIPTPATH="$( cd "$(dirname "$0")" ; pwd -P )"
 
-./build.sh
+#./build.sh
 
 docker volume create stoicalgorithm-output
 

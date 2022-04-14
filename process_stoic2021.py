@@ -9,8 +9,8 @@ from evalutils.validators import UniqueImagesValidator, UniquePathIndicesValidat
 import lungmask.mask as lungmask
 import numpy as np
 import pandas as pd
-from ruamel.yaml import YAML
 import pytorch_lightning as pl
+from ruamel.yaml import YAML
 
 from umei.datasets import Stoic2021Args, Stoic2021Model
 from umei.datasets.stoic2021.datamodule import Stoic2021DataModule
@@ -22,7 +22,7 @@ yaml = YAML()
 COVID_OUTPUT_NAME = Path("probability-covid-19")
 SEVERE_OUTPUT_NAME = Path("probability-severe-covid-19")
 
-MASK_PATH = Path('/input/images/umei-lungmask.nii.gz')
+MASK_PATH = Path('umei-lungmask.nii.gz')
 # CROPPED_PATH.parent.mkdir(exist_ok=True, parents=True)
 
 MIN_HU = -1024
@@ -65,6 +65,7 @@ class StoicAlgorithm(Algorithm):
         out = sitk.GetImageFromArray(mask)
         out.CopyInformation(img)
         sitk.WriteImage(out, str(MASK_PATH))
+        print(list(MASK_PATH.parent.glob('*.nii.gz')))
 
     def process_case(self, *, idx: int, case: pd.DataFrame) -> Dict:
         img_path = Path(case['path'])
@@ -121,8 +122,6 @@ class StoicAlgorithm(Algorithm):
                 json.dump(result, f)
 
 def main():
-    import sys
-    sys.argv.insert(1, 'conf/stoic2021/infer.yml')
     parser = UMeIParser((Stoic2021Args, ), use_conf=True)
     args: Stoic2021Args = parser.parse_args_into_dataclasses()[0]
     StoicAlgorithm(args).process()

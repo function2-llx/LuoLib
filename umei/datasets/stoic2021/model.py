@@ -5,6 +5,7 @@ import torchmetrics
 
 from umei import UEncoderBase, UMeI
 from .args import Stoic2021Args
+from ...model import UEncoderOutput
 
 class Stoic2021Model(UMeI):
     def __init__(self, args: Stoic2021Args, encoder: UEncoderBase):
@@ -50,10 +51,10 @@ class Stoic2021Model(UMeI):
         return splits_output
 
     def predict_step(self, batch: dict[str, torch.Tensor], *args, **kwargs):
-        output = self.forward(batch)
-        pred = F.softmax(output['cls_logit'], dim=1)
+        encoder_out: UEncoderOutput = self.encoder(batch[self.args.img_key])
+        cls_logit = self.cls_head(torch.cat((encoder_out.cls_feature, batch[self.args.clinical_key]), dim=1))
+        pred = F.softmax(cls_logit, dim=1)
         return {
             'severity_pred': pred[:, 2] / pred[:, 1:].sum(dim=1),
             'positivity_pred': pred[:, 1:].sum(dim=1),
-            self.args.cls_key: batch[self.args.cls_key],
         }

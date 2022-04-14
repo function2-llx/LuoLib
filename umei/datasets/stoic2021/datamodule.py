@@ -172,6 +172,9 @@ class Stoic2021DataModule(CVDataModule):
 
     @property
     def input_transform(self) -> Callable:
+        item_keys = [self.args.img_key, self.args.clinical_key]
+        if not self.args.on_submit:
+            item_keys.append(self.args.cls_key)
         return monai.transforms.Compose([
             monai.transforms.ResizeD(
                 [self.args.img_key, self.args.mask_key],
@@ -180,7 +183,7 @@ class Stoic2021DataModule(CVDataModule):
             ),
             monai.transforms.ConcatItemsD([self.args.img_key, self.args.mask_key], name=self.args.img_key),
             monai.transforms.CastToTypeD([self.args.img_key, self.args.clinical_key], dtype=np.float32),
-            monai.transforms.SelectItemsD([self.args.img_key, self.args.clinical_key, self.args.cls_key]),
+            monai.transforms.SelectItemsD(item_keys),
         ])
 
     @property
