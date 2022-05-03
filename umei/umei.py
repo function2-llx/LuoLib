@@ -26,10 +26,20 @@ class UMeI(LightningModule):
         self.args = args
         self.encoder = encoder
         self.decoder = decoder
-        self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
+        if args.model_name=='resnet':
+            self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
+        elif args.model_name=='vit':
+            self.cls_head = nn.Sequential(nn.Linear(args.hidden_size + args.clinical_feature_size, args.num_cls_classes), nn.Tanh())
+        else:
+            raise NotImplementedError
         self.cls_loss_fn = nn.CrossEntropyLoss()
 
-        nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
+        if args.model_name=='resnet':
+            nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
+        elif args.model_name=='vit':
+            nn.init.constant_(torch.as_tensor(list(self.cls_head._modules.items())[0][1].bias), 0)
+        else:
+            raise NotImplementedError
 
         if decoder is not None:
             assert 1 <= num_seg_heads <= len(decoder.feature_sizes)
@@ -43,7 +53,9 @@ class UMeI(LightningModule):
         encoder_out: UEncoderOutput = self.encoder(batch[self.args.img_key])
         ret = {'loss': torch.tensor(0., device=self.device)}
         if self.args.cls_key in batch:
-            cls_out = self.cls_head(torch.cat((encoder_out.cls_feature, batch[self.args.clinical_key]), dim=1))
+            #for vit
+            cls_out = self.cls_head(torch.cat((encoder_out[0][:,0], batch[self.args.clinical_key]), dim=1))
+            # cls_out = self.cls_head(torch.cat((encoder_out.cls_feature, batch[self.args.clinical_key]), dim=1))
             cls_loss = self.cls_loss_fn(cls_out, batch[self.args.cls_key])
             # self.log('cls_loss', cls_loss, prog_bar=True)
             ret['loss'] += cls_loss * self.args.cls_loss_factor
