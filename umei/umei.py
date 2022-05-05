@@ -26,21 +26,10 @@ class UMeI(LightningModule):
         self.args = args
         self.encoder = encoder
         self.decoder = decoder
-        self.model_name = args.model_name
-        if self.model_name=='resnet':
-            self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
-        elif self.model_name=='vit':
-            self.cls_head = nn.Sequential(nn.Linear(args.hidden_size + args.clinical_feature_size, args.num_cls_classes), nn.Tanh())
-        else:
-            raise NotImplementedError
+        self.encoder_model = args.model_name
+        self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
         self.cls_loss_fn = nn.CrossEntropyLoss()
-
-        if self.model_name=='resnet':
-            nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
-        elif self.model_name=='vit':
-            nn.init.constant_(torch.as_tensor(list(self.cls_head._modules.items())[0][1].bias), 0)
-        else:
-            raise NotImplementedError
+        nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
 
         if decoder is not None:
             assert 1 <= num_seg_heads <= len(decoder.feature_sizes)
@@ -54,12 +43,7 @@ class UMeI(LightningModule):
         encoder_out: UEncoderOutput = self.encoder(batch[self.args.img_key])
         ret = {'loss': torch.tensor(0., device=self.device)}
         if self.args.cls_key in batch:
-            if self.model_name=='resnet':
-                cls_out = self.cls_head(torch.cat((encoder_out.cls_feature, batch[self.args.clinical_key]), dim=1))
-            elif self.model_name=='vit':
-                cls_out = self.cls_head(torch.cat((encoder_out[0][:,0], batch[self.args.clinical_key]), dim=1))
-            else:
-                raise NotImplementedError
+            cls_out = self.cls_head(torch.cat((encoder_out.cls_feature, batch[self.args.clinical_key]), dim=1))
             cls_loss = self.cls_loss_fn(cls_out, batch[self.args.cls_key])
             # self.log('cls_loss', cls_loss, prog_bar=True)
             ret['loss'] += cls_loss * self.args.cls_loss_factor
