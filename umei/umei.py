@@ -26,9 +26,9 @@ class UMeI(LightningModule):
         self.args = args
         self.encoder = encoder
         self.decoder = decoder
+        self.encoder_model = args.model_name
         self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
         self.cls_loss_fn = nn.CrossEntropyLoss()
-
         nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
 
         if decoder is not None:

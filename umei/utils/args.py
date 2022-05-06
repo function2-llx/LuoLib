@@ -13,6 +13,8 @@ class UMeIArgs(TrainingArguments):
     patience: int = field(default=5)
     sample_size: int = field(default=144)
     sample_slices: int = field(default=160)
+    patch_size: int = field(default=8)
+    hidden_size: int = field(default=768)
     cls_loss_factor: float = field(default=1)
     seg_loss_factor: float = field(default=1)
     img_key: str = field(default='img')

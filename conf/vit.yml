@@ -1,0 +1,9 @@
+per_device_train_batch_size: 8
+learning_rate: 1e-5
+num_train_epochs: 35
+model_name: vit
+sample_size: 256
+hidden_size: 768
+sample_slices: 106
+patch_size: 16
+# num_folds: 10

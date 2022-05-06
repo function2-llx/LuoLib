@@ -62,5 +62,14 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
                 if param is not None and pretrain_param_data is not None:
                     param.data = pretrain_param_data.repeat(1, args.num_input_channels)
         return model
+    elif args.model_name == 'vit':
+        model = nets.ViT(
+            in_channels=args.num_input_channels,
+            img_size=(args.sample_size, args.sample_size, args.sample_slices),
+            patch_size=(args.patch_size, args.patch_size, args.patch_size),
+            hidden_size=args.hidden_size,
+            classification=False,
+        )
+        return model
     else:
         raise NotImplementedError
