@@ -1,7 +1,7 @@
 from copy import deepcopy
+from dataclasses import dataclass, field
 
 import pytorch_lightning as pl
-import torch
 from torchmetrics import AUROC
 from tqdm import tqdm
 
@@ -11,13 +11,22 @@ from umei.utils import UMeIParser
 
 # torch.multiprocessing.set_sharing_strategy('file_system')
 
+@dataclass
+class Stoic2021InferArgs(Stoic2021Args):
+    use_origin_size: bool = field(default=False)
+
 def main():
-    parser = UMeIParser((Stoic2021Args,), use_conf=True)
-    args: Stoic2021Args = parser.parse_args_into_dataclasses()[0]
+    parser = UMeIParser((Stoic2021InferArgs,), use_conf=True)
+    args: Stoic2021InferArgs = parser.parse_args_into_dataclasses()[0]
+    print(args)
     args.dataloader_num_workers = 10
     args.per_device_eval_batch_size = 1
-    args2 = deepcopy(args)
-    args.sample_size = args.sample_slices = -1
+    all_infer_args = [args]
+    if args.use_origin_size:
+        args_origin_size = deepcopy(args)
+        args_origin_size.sample_size = args_origin_size.sample_slices = -1
+        all_infer_args.append(args_origin_size)
+
     ensemble_output_dir = args.output_dir / 'ensemble'
     ensemble_output_dir.mkdir(parents=True, exist_ok=True)
     encoder = build_encoder(args)
@@ -68,15 +77,15 @@ def main():
             output_dir = args.output_dir / f'fold{val_fold_id}' / f'run{run}'
             ckpt_path = list(output_dir.glob('auc-severity=*.ckpt'))[-1]
             cur_test_results = []
-            for a in [args, args2]:
-                test_outputs = trainer.predict(model, Stoic2021DataModule(a).test_dataloader(), ckpt_path=str(ckpt_path))
+            for infer_args in all_infer_args:
+                test_outputs = trainer.predict(model, Stoic2021DataModule(infer_args).test_dataloader(), ckpt_path=str(ckpt_path))
                 for i, result in enumerate(test_outputs):
                     update(cur_test_results, i, result)
                     update(test_results, i, result)
 
                 num_models += 1
 
-            reduce(cur_test_results, 2)
+            reduce(cur_test_results, len(all_infer_args))
             print(cal_auc(cur_test_results))
 
     reduce(test_results, num_models)
