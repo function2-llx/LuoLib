@@ -4,3 +4,12 @@
 [submodule "third-party/transformers"]
 	path = third-party/transformers
 	url = git@github.com:function2-llx/transformers.git
+[submodule "umei/datasets/picai/eval"]
+	path = umei/datasets/picai/eval
+	url = git@github.com:DIAGNijmegen/picai_eval.git
+[submodule "umei/datasets/picai/labels"]
+	path = umei/datasets/picai/labels
+	url = git@github.com:DIAGNijmegen/picai_labels.git
+[submodule "umei/datasets/picai/prep"]
+	path = umei/datasets/picai/prep
+	url = git@github.com:DIAGNijmegen/picai_prep.git
