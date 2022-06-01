@@ -1,9 +1,6 @@
 [submodule "third-party/MONAI"]
 	path = third-party/MONAI
 	url = git@github.com:function2-llx/MONAI.git
-[submodule "third-party/transformers"]
-	path = third-party/transformers
-	url = git@github.com:function2-llx/transformers.git
 [submodule "umei/datasets/picai/eval"]
 	path = umei/datasets/picai/eval
 	url = git@github.com:DIAGNijmegen/picai_eval.git
