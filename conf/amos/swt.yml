@@ -1,0 +1,7 @@
+num_folds: 5
+sample_size: 96
+sample_slices: 96
+encoder: swt
+base_feature_size: 24
+vit_patch_size: 2
+decoder: unetr

@@ -14,30 +14,37 @@ from .model import UDecoderBase, UDecoderOutput, UEncoderBase, UEncoderOutput
 from .utils import UMeIArgs
 
 class UMeI(LightningModule):
+    cls_loss_fn: nn.Module
+    seg_loss_fn: nn.Module
+
     def __init__(
         self,
         args: UMeIArgs,
         encoder: UEncoderBase,
         decoder: Optional[UDecoderBase] = None,
-        num_seg_classes: Optional[int] = None,
         num_seg_heads: int = 1,
     ):
         super().__init__()
         self.args = args
         self.encoder = encoder
         self.decoder = decoder
-        self.encoder_model = args.model_name
-        self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
-        self.cls_loss_fn = nn.CrossEntropyLoss()
-        nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
+        if self.args.num_cls_classes is not None:
+            self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
+            # self.cls_loss_fn = nn.CrossEntropyLoss()
+            nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
 
         if decoder is not None:
-            assert 1 <= num_seg_heads <= len(decoder.feature_sizes)
+            from monai.networks.blocks import UnetOutBlock
+            # i-th seg head for the last i-th output from decoder
             self.seg_heads = nn.ModuleList([
-                nn.Conv3d(feature_size, num_seg_classes, kernel_size=1, stride=1)
-                for feature_size in decoder.feature_sizes[::-1][:num_seg_heads]
+                UnetOutBlock(
+                    spatial_dims=3,
+                    in_channels=args.base_feature_size ** 2 ** i,
+                    out_channels=args.num_seg_classes,
+                )
+                for i in range(num_seg_heads)
             ])
-            self.seg_loss_fn = DiceFocalLoss(to_onehot_y=False, sigmoid=True, squared_pred=True)
+            # self.seg_loss_fn = DiceFocalLoss(to_onehot_y=False, sigmoid=True, squared_pred=True)
 
     def forward(self, batch: dict[str, torch.Tensor]) -> dict:
         encoder_out: UEncoderOutput = self.encoder(batch[self.args.img_key])
@@ -51,7 +58,7 @@ class UMeI(LightningModule):
             ret['cls_logit'] = cls_out
         if self.decoder is not None and self.args.seg_key in batch:
             seg_label: torch.IntTensor = batch[self.args.seg_key]
-            decoder_out: UDecoderOutput = self.decoder(encoder_out.feature_maps)
+            decoder_out: UDecoderOutput = self.decoder(encoder_out.hidden_states)
             seg_loss = torch.sum(torch.stack([
                 self.seg_loss_fn(interpolate(seg_head(feature_map), seg_label.shape[2:]), seg_label) / 2 ** i
                 for i, (feature_map, seg_head) in enumerate(zip(decoder_out.feature_maps[::-1], self.seg_heads))

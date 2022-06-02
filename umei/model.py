@@ -6,10 +6,13 @@ from torch import nn
 
 from umei.utils import UMeIArgs
 
+# since monai models are adapted to umei API (relying on umei),
+# don't import monai globally or will lead to circular import
+
 @dataclass
 class UEncoderOutput:
     cls_feature: torch.FloatTensor = None
-    feature_maps: list[torch.FloatTensor] = field(default_factory=list)
+    hidden_states: list[torch.FloatTensor] = field(default_factory=list)
 
 class UEncoderBase(nn.Module):
     def forward(self, img: torch.FloatTensor) -> UEncoderOutput:
@@ -24,16 +27,12 @@ class UDecoderOutput:
     feature_maps: list[torch.FloatTensor]
 
 class UDecoderBase(nn.Module):
-    def forward(self, encoder_feature_maps: list[torch.FloatTensor]) -> list[torch.FloatTensor]:
+    def forward(self, img: torch.FloatTensor, encoder_hidden_states: list[torch.FloatTensor]) -> list[torch.FloatTensor]:
         raise not NotImplementedError
 
-    @property
-    def feature_sizes(self) -> list[int]:
-        raise NotImplementedError
-
 def build_encoder(args: UMeIArgs) -> UEncoderBase:
-    from monai.networks import nets
-    if args.model_name == 'resnet':
+    if args.encoder == 'resnet':
+        from monai.networks import nets
         resnet_builder = getattr(nets, f'resnet{args.model_depth}')
         model: nn.Module = resnet_builder(
             n_input_channels=args.num_input_channels,
@@ -62,14 +61,34 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
                 if param is not None and pretrain_param_data is not None:
                     param.data = pretrain_param_data.repeat(1, args.num_input_channels)
         return model
-    elif args.model_name == 'vit':
+    elif args.encoder == 'vit':
         from monai.networks.nets import ViT
         return ViT(
             in_channels=args.num_input_channels,
             img_size=(args.sample_size, args.sample_size, args.sample_slices),
-            patch_size=(args.patch_size, args.patch_size, args.patch_size),
-            hidden_size=args.hidden_size,
+            patch_size=(args.vit_patch_size, args.vit_patch_size, args.vit_patch_size),
+            hidden_size=args.vit_hidden_size,
             classification=False,
         )
+    elif args.encoder == 'swt':
+        from monai.networks.nets.swin_unetr import SwinTransformer
+        return SwinTransformer(
+            in_chans=args.num_input_channels,
+            embed_dim=args.vit_hidden_size,
+            window_size=(7, 7, 7),
+            patch_size=(args.vit_patch_size, args.vit_patch_size, args.vit_patch_size),
+            depths=(2, 2, 2, 2),
+            num_heads=(3, 6, 12, 24),
+            # mlp_ratio=4.0,
+            # qkv_bias=True,
+        )
     else:
-        raise NotImplementedError
+        raise ValueError(f'not supported encoder: {args.encoder}')
+
+def build_decoder(args: UMeIArgs):
+    from monai.networks.nets.swin_unetr import UnetrUp
+
+    if args.decoder == 'unetr':
+        return UnetrUp(args.num_input_channels, feature_size=args.base_feature_size)
+    else:
+        raise ValueError(f'not supported encoder: {args.encoder}')

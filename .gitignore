@@ -133,3 +133,5 @@ output/
 pretrained/
 submit/
 test/
+
+nnUNet_data

@@ -1,11 +1,10 @@
-from argparse import Namespace
 from collections.abc import Iterable
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Optional
 
-from transformers import HfArgumentParser
 from ruamel.yaml import YAML
+from transformers import HfArgumentParser
 
 yaml = YAML()
 
@@ -75,7 +74,7 @@ class UMeIParser(HfArgumentParser):
             else:
                 args.output_dir = Path(args.output_root) / args.exp_name
 
-        output_dir = Path(args.output_dir)
-        self.save_args_as_conf(args, output_dir / 'conf.yml')
+        # output_dir = Path(args.output_dir)
+        # self.save_args_as_conf(args, output_dir / 'conf.yml')
         # compatible interface
         return self.parse_dict(vars(args))
