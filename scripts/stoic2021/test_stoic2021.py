@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 from torchmetrics import AUROC
 from tqdm import tqdm
 
-from umei.datasets import Stoic2021Args, Stoic2021DataModule, Stoic2021Model
+from umei.datasets.stoic2021 import Stoic2021Args, Stoic2021DataModule, Stoic2021Model
 from umei.model import build_encoder
 from umei.utils import UMeIParser
 

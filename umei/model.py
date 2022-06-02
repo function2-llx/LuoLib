@@ -4,7 +4,7 @@ from typing import Optional
 import torch
 from torch import nn
 
-from umei.utils import UMeIArgs
+from .args import UMeIArgs
 
 # since monai models are adapted to umei API (relying on umei),
 # don't import monai globally or will lead to circular import
@@ -27,7 +27,7 @@ class UDecoderOutput:
     feature_maps: list[torch.FloatTensor]
 
 class UDecoderBase(nn.Module):
-    def forward(self, img: torch.FloatTensor, encoder_hidden_states: list[torch.FloatTensor]) -> list[torch.FloatTensor]:
+    def forward(self, img: torch.FloatTensor, encoder_hidden_states: list[torch.FloatTensor]) -> UDecoderOutput:
         raise not NotImplementedError
 
 def build_encoder(args: UMeIArgs) -> UEncoderBase:
@@ -65,7 +65,7 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
         from monai.networks.nets import ViT
         return ViT(
             in_channels=args.num_input_channels,
-            img_size=(args.sample_size, args.sample_size, args.sample_slices),
+            img_size=args.sample_shape,
             patch_size=(args.vit_patch_size, args.vit_patch_size, args.vit_patch_size),
             hidden_size=args.vit_hidden_size,
             classification=False,
@@ -74,7 +74,7 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
         from monai.networks.nets.swin_unetr import SwinTransformer
         return SwinTransformer(
             in_chans=args.num_input_channels,
-            embed_dim=args.vit_hidden_size,
+            embed_dim=args.base_feature_size,
             window_size=(7, 7, 7),
             patch_size=(args.vit_patch_size, args.vit_patch_size, args.vit_patch_size),
             depths=(2, 2, 2, 2),

@@ -28,8 +28,8 @@ class UMeIArgs(TrainingArguments):
     output_root: Path = field(default=Path('output'))
     amp: bool = field(default=True)
     dataloader_num_workers: int = field(default=multiprocessing.cpu_count() // 2)
-    monitor: str = field(default='cls_loss')
-    monitor_mode: str = field(default='min')
+    monitor: str = field(default=None)
+    monitor_mode: str = field(default=None)
     lr_reduce_factor: float = field(default=0.2)
     num_folds: int = field(default=5)
     use_test_fold: bool = field(default=True)
@@ -43,6 +43,10 @@ class UMeIArgs(TrainingArguments):
     resnet_conv1_stride: int = field(default=2)
     ddp_find_unused_parameters: bool = field(default=False)
     on_submit: bool = field(default=False)
+
+    @property
+    def sample_shape(self) -> tuple[int, int, int]:
+        return self.sample_size, self.sample_size, self.sample_slices
 
     @property
     def precision(self):
@@ -66,5 +70,7 @@ class UMeIArgs(TrainingArguments):
 
     def __post_init__(self):
         # disable super().__post__init__ or `output_dir` will restore str type specified in the base class
-        super().__post_init__()
-        self.output_dir = Path(self.output_dir)
+        # as well as a lot strange things happens
+        # super().__post_init__()
+        # self.output_dir = Path(self.output_dir)
+        pass

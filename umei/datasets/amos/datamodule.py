@@ -2,14 +2,12 @@ import json
 from pathlib import Path
 from typing import Callable
 
-import numpy as np
 import pandas as pd
-from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
 import monai
-from monai.data import DataLoader, Dataset, partition_dataset_classes, select_cross_validation_folds
+from monai.data import partition_dataset_classes
 from monai.utils import GridSampleMode, NumpyPadMode
-from umei.utils import CVDataModule
+from umei.datamodule import CVDataModule
 
 from .args import AmosArgs
 
@@ -61,22 +59,6 @@ class AmosDataModule(CVDataModule):
             seed=args.seed,
         )
 
-    def train_dataloader(self) -> TRAIN_DATALOADERS:
-        return DataLoader(
-            dataset=Dataset(
-                select_cross_validation_folds(
-                    self.partitions,
-                    folds=np.delete(range(self.num_cv_folds), self.val_id)
-                ),
-                transform=self.train_transform,
-            ),
-            batch_size=self.args.per_device_train_batch_size,
-            shuffle=True,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=True,
-            # persistent_workers=True,
-        )
-
     @property
     def loader_transform(self) -> Callable:
         load_keys = [self.args.img_key, self.args.seg_key]
@@ -101,7 +83,7 @@ class AmosDataModule(CVDataModule):
             monai.transforms.ScaleIntensityD(self.args.img_key, minv=0, maxv=1),
             monai.transforms.SpatialPadD(
                 [self.args.img_key, self.args.seg_key],
-                spatial_size=(self.args.sample_size, self.args.sample_size, self.args.sample_slices),
+                spatial_size=self.args.sample_shape,
                 mode=NumpyPadMode.CONSTANT,
             ),
         ])
@@ -112,10 +94,10 @@ class AmosDataModule(CVDataModule):
             monai.transforms.RandCropByPosNegLabeld(
                 [self.args.img_key, self.args.seg_key],
                 label_key=self.args.seg_key,
-                spatial_size=(self.args.sample_size, self.args.sample_size, self.args.sample_slices),
-                pos=1,
+                spatial_size=self.args.sample_shape,
+                pos=20,
                 neg=1,
-                num_samples=self.args.crop_num_samples,
+                num_samples=self.args.num_crop_samples,
             ),
             monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.5, spatial_axis=0),
             monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.5, spatial_axis=1),

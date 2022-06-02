@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from umei.utils import UMeIArgs
+from umei.args import UMeIArgs
 
 @dataclass
 class Stoic2021Args(UMeIArgs):

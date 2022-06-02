@@ -1,6 +1,8 @@
-import wandb
+from pytorch_lightning.strategies import DDPStrategy
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+import torch.cuda
+import wandb
 
 from umei.datasets.amos import AmosDataModule, AmosArgs
 from umei.datasets.amos.model import AmosModel
@@ -59,12 +61,13 @@ def main():
                 ),
             ],
             # num_nodes=args.num_nodes,
-            gpus=args.n_gpu,
+            gpus=torch.cuda.device_count(),
             precision=args.precision,
             benchmark=True,
             max_epochs=int(args.num_train_epochs),
-            num_sanity_val_steps=0,
-            # strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),
+            num_sanity_val_steps=5,
+            log_every_n_steps=5,
+            strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),
             # limit_train_batches=0.1,
             # limit_val_batches=0.2,
         )

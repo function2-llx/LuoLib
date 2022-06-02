@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch.optim import RAdam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torchmetrics
 
 from umei import UEncoderBase, UMeI
@@ -8,6 +10,8 @@ from .args import Stoic2021Args
 from ...model import UEncoderOutput
 
 class Stoic2021Model(UMeI):
+    args: Stoic2021Args
+
     def __init__(self, args: Stoic2021Args, encoder: UEncoderBase):
         super().__init__(args, encoder)
         self.cls_loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([1, args.cls_weight, args.cls_weight]).float())
@@ -21,7 +25,18 @@ class Stoic2021Model(UMeI):
         })
 
     def validation_step(self, splits_batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
-        splits_output = super().validation_step(splits_batch)
+        # splits_output = super().validation_step(splits_batch)
+        splits_output = {}
+        for split, batch in splits_batch.items():
+            batch_size = batch[self.args.img_key].shape[0]
+            output = self.forward(batch)
+            for k in ['cls_loss', 'seg_loss']:
+                if k in output:
+                    self.log(f'{split}/{k}', output[k], batch_size=batch_size)
+                    if self.args.use_test_fold:
+                        self.log(f'combined/{k}', output[k], batch_size=batch_size)
+            splits_output[split] = output
+
         for split, batch in splits_batch.items():
             batch_size = batch[self.args.img_key].shape[0]
             output = splits_output[split]
@@ -57,4 +72,20 @@ class Stoic2021Model(UMeI):
         return {
             'severity_pred': pred[:, 2] / pred[:, 1:].sum(dim=1),
             'positivity_pred': pred[:, 1:].sum(dim=1),
+        }
+
+    def configure_optimizers(self):
+        optimizer = RAdam(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': {
+                'scheduler': ReduceLROnPlateau(
+                    optimizer,
+                    mode=self.args.monitor_mode,
+                    factor=self.args.lr_reduce_factor,
+                    patience=self.args.patience,
+                    verbose=True,
+                ),
+                'monitor': f'combined/{self.args.monitor}',
+            }
         }
