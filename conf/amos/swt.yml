@@ -5,3 +5,4 @@ encoder: swt
 base_feature_size: 24
 vit_patch_size: 2
 decoder: unetr
+per_device_train_batch_size: 4

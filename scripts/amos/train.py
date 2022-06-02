@@ -59,7 +59,7 @@ def main():
                 ),
             ],
             # num_nodes=args.num_nodes,
-            # gpus=args.n_gpu,
+            gpus=args.n_gpu,
             precision=args.precision,
             benchmark=True,
             max_epochs=int(args.num_train_epochs),
