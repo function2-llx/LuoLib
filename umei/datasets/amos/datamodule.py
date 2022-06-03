@@ -91,12 +91,11 @@ class AmosDataModule(CVDataModule):
     @property
     def aug_transform(self) -> Callable:
         return monai.transforms.Compose([
-            monai.transforms.RandCropByPosNegLabeld(
+            monai.transforms.RandCropByPosNegLabelD(
                 [self.args.img_key, self.args.seg_key],
+                neg=0,
                 label_key=self.args.seg_key,
                 spatial_size=self.args.sample_shape,
-                pos=20,
-                neg=1,
                 num_samples=self.args.num_crop_samples,
             ),
             monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.5, spatial_axis=0),

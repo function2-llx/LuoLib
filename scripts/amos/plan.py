@@ -3,14 +3,13 @@ from pathlib import Path
 from typing import Callable
 
 import numpy as np
-from numpy.typing import ArrayLike
 import pandas as pd
 from tqdm.contrib.concurrent import process_map
 
 import monai.transforms
 from nnunet.paths import nnUNet_raw_data as nnunet_rd_dir, preprocessing_output_dir as nnunet_pp_output_dir
 from umei.datasets.amos import AmosArgs
-from umei.datasets.amos.datamodule import load_cohort, DATASET_ROOT
+from umei.datasets.amos.datamodule import DATASET_ROOT, load_cohort
 from umei.utils import UMeIParser
 
 task_name = 'Task666_AMOS'

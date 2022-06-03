@@ -17,6 +17,7 @@ class UMeIArgs(TrainingArguments):
     vit_hidden_size: int = field(default=768)
     base_feature_size: int = field(default=24, metadata={'help': 'feature size for the first feature map'
                                                                  'assume feature size *2 each layer'})
+    num_seg_heads: int = field(default=1)
     cls_loss_factor: float = field(default=1)
     seg_loss_factor: float = field(default=1)
     img_key: str = field(default='img')

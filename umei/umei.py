@@ -18,7 +18,6 @@ class UMeI(LightningModule):
         args: UMeIArgs,
         encoder: UEncoderBase,
         decoder: Optional[UDecoderBase] = None,
-        num_seg_heads: int = 1,
     ):
         super().__init__()
         self.args = args
@@ -38,7 +37,7 @@ class UMeI(LightningModule):
                     in_channels=args.base_feature_size ** 2 ** i,
                     out_channels=args.num_seg_classes,
                 )
-                for i in range(num_seg_heads)
+                for i in range(args.num_seg_heads)
             ])
 
     def forward(self, batch: dict[str, torch.Tensor]) -> dict:
