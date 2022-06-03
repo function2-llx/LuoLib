@@ -33,9 +33,11 @@ def main():
     cohort = load_cohort(args)['training']
     properties = pd.read_pickle(nnunet_pp_output_dir / 'dataset_properties.pkl')
     all_spacings = properties['all_spacings']
-    spacing = np.median(all_spacings, axis=0)
-    spacing = np.array([spacing[1], spacing[2], spacing[0]])
-    print('median spacing =', spacing)
+    median_spacing = np.median(all_spacings, axis=0)
+    median_spacing = np.array([median_spacing[1], median_spacing[2], median_spacing[0]])
+    print('median spacing =', median_spacing)
+    spacing = median_spacing if args.spacing is None else args.spacing
+    print('use spacing', spacing)
     loader = monai.transforms.Compose([
         monai.transforms.LoadImageD(args.img_key),
         monai.transforms.AddChannelD(args.img_key),
@@ -44,7 +46,7 @@ def main():
     ])
     pd.DataFrame.from_records(
         process_map(process, cohort, repeat(args), repeat(loader), ncols=80, max_workers=16)
-    ).set_index('subject').to_excel(DATASET_ROOT / 'stat.xlsx')
+    ).set_index('subject').to_excel(DATASET_ROOT / 'stat-sp.xlsx')
 
 if __name__ == '__main__':
     main()

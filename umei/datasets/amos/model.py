@@ -1,11 +1,9 @@
-from collections.abc import Callable
-
 import torch
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import ReduceLROnPlateau
+from transformers.optimization import get_linear_schedule_with_warmup
 
 from monai.inferers import sliding_window_inference
-from monai.losses import DiceFocalLoss
+from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 import monai.transforms
@@ -18,7 +16,7 @@ class AmosModel(UMeI):
 
     def __init__(self, args: AmosArgs, encoder: UEncoderBase, decoder: UDecoderBase):
         super().__init__(args, encoder, decoder)
-        self.seg_loss_fn = DiceFocalLoss(to_onehot_y=True, softmax=True, squared_pred=True, include_background=False)
+        self.seg_loss_fn = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, include_background=False)
         self.post_transform = monai.transforms.Compose([
             # monai.transforms.Activations(softmax=True),
             # monai.transforms.AsDiscrete(argmax=True),
@@ -49,7 +47,7 @@ class AmosModel(UMeI):
         )
 
     def validation_epoch_end(self, *args) -> None:
-        dice = self.dice_metric.aggregate()
+        dice = self.dice_metric.aggregate() * 100
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i].item())
         self.log('val/dice/avg', dice[1:].mean().item())
@@ -62,12 +60,10 @@ class AmosModel(UMeI):
         return {
             'optimizer': optimizer,
             'lr_scheduler': {
-                'scheduler': ReduceLROnPlateau(
+                'scheduler': get_linear_schedule_with_warmup(
                     optimizer,
-                    mode=self.args.monitor_mode,
-                    factor=self.args.lr_reduce_factor,
-                    patience=self.args.patience,
-                    verbose=True,
+                    num_warmup_steps=0,
+                    num_training_steps=int(self.args.num_train_epochs),
                 ),
                 'monitor': self.args.monitor,
             }

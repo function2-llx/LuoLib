@@ -36,7 +36,7 @@ class UMeIArgs(TrainingArguments):
     use_test_fold: bool = field(default=True)
     num_runs: int = field(default=3)
     encoder: str = field(default=None, metadata={'choices': ['resnet', 'vit', 'swt']})
-    decoder: str = field(default=None, metadata={'choices': ['unetr']})
+    decoder: str = field(default=None, metadata={'choices': ['cnn']})
     model_depth: int = field(default=50)
     pretrain_path: Optional[Path] = field(default=None)
     resnet_shortcut: str = field(default=None, metadata={'choices': ['A', 'B']})

@@ -25,7 +25,6 @@ class UMeI(LightningModule):
         self.decoder = decoder
         if self.args.num_cls_classes is not None:
             self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
-            # self.cls_loss_fn = nn.CrossEntropyLoss()
             nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
 
         if decoder is not None:
@@ -34,7 +33,7 @@ class UMeI(LightningModule):
             self.seg_heads = nn.ModuleList([
                 UnetOutBlock(
                     spatial_dims=3,
-                    in_channels=args.base_feature_size ** 2 ** i,
+                    in_channels=(args.base_feature_size // 2) * 2 ** i,
                     out_channels=args.num_seg_classes,
                 )
                 for i in range(args.num_seg_heads)
@@ -60,8 +59,7 @@ class UMeI(LightningModule):
                     seg_label
                 ) / 2 ** i
                 for i, (feature_map, seg_head) in enumerate(zip(decoder_out.feature_maps[::-1], self.seg_heads))
-            ])) / (2 * (1 - 1 / 2 ** len(self.seg_heads)))
-            # self.log('seg_loss', seg_loss, prog_bar=True)
+            ]))
             ret['loss'] += seg_loss * self.args.seg_loss_factor
             ret['seg_loss'] = seg_loss
         return ret

@@ -1,10 +1,10 @@
-from pytorch_lightning.strategies import DDPStrategy
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.strategies import DDPStrategy
 import torch.cuda
 import wandb
 
-from umei.datasets.amos import AmosDataModule, AmosArgs
+from umei.datasets.amos import AmosArgs, AmosDataModule
 from umei.datasets.amos.model import AmosModel
 from umei.model import build_decoder, build_encoder
 from umei.utils import MyWandbLogger, UMeIParser
@@ -44,7 +44,7 @@ def main():
             callbacks=[
                 ModelCheckpoint(
                     dirpath=output_dir,
-                    filename=f'{args.monitor}={{{args.monitor}:.3f}}',
+                    filename=f'{args.monitor.replace("/", " ")}={{{args.monitor}:.3f}}',
                     auto_insert_metric_name=False,
                     monitor=args.monitor,
                     mode=args.monitor_mode,
@@ -52,13 +52,7 @@ def main():
                     save_last=True,
                     save_on_train_epoch_end=False,
                 ),
-                EarlyStopping(
-                    monitor=args.monitor,
-                    patience=3 * args.patience,
-                    mode=args.monitor_mode,
-                    verbose=True,
-                    check_on_train_epoch_end=False,
-                ),
+                LearningRateMonitor(logging_interval='epoch')
             ],
             # num_nodes=args.num_nodes,
             gpus=torch.cuda.device_count(),

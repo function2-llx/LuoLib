@@ -86,9 +86,8 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
         raise ValueError(f'not supported encoder: {args.encoder}')
 
 def build_decoder(args: UMeIArgs):
-    from monai.networks.nets.swin_unetr import UnetrUp
-
-    if args.decoder == 'unetr':
-        return UnetrUp(args.num_input_channels, feature_size=args.base_feature_size)
+    from umei.models.cnn_decoder import CnnDecoder
+    if args.decoder == 'cnn':
+        return CnnDecoder(base_feature_size=args.base_feature_size)
     else:
-        raise ValueError(f'not supported encoder: {args.encoder}')
+        raise ValueError(f'not supported decoder: {args.decoder}')
