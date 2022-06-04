@@ -29,8 +29,7 @@ def main():
 
     ensemble_output_dir = args.output_dir / 'ensemble'
     ensemble_output_dir.mkdir(parents=True, exist_ok=True)
-    encoder = build_encoder(args)
-    model = Stoic2021Model(args, encoder)
+    model = Stoic2021Model(args)
     trainer = pl.Trainer(
         logger=False,
         # logger=MyWandbLogger(

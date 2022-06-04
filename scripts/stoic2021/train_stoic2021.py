@@ -1,14 +1,13 @@
-from ruamel.yaml import YAML
 from numpy.random import SeedSequence
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.strategies import DDPStrategy
+from ruamel.yaml import YAML
 import torch
 import wandb
 
-from umei.umei import build_encoder
+from umei.datasets.stoic2021 import Stoic2021Args, Stoic2021DataModule, Stoic2021Model
 from umei.utils import MyWandbLogger, UMeIParser
-from umei.datasets.stoic2021 import Stoic2021DataModule, Stoic2021Args, Stoic2021Model
 
 yaml = YAML()
 torch.multiprocessing.set_sharing_strategy('file_system')
@@ -36,10 +35,9 @@ def main():
 
             datamodule.val_id = val_fold_id
 
-            encoder = build_encoder(args)
-            model = Stoic2021Model(args, encoder=encoder)
+            model = Stoic2021Model(args)
             if (last_ckpt_path := output_dir / 'last.ckpt').exists():
-                model.load_from_checkpoint(str(last_ckpt_path), args=args, encoder=encoder)
+                model.load_from_checkpoint(str(last_ckpt_path), args=args, encoder=model.encoder)
                 latest_run_id = (output_dir / 'wandb/latest-run').resolve().name.split('-')[-1]
                 print('latest wandb id:', latest_run_id)
             else:

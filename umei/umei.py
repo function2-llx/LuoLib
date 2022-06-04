@@ -12,12 +12,8 @@ from .model import UDecoderOutput, UEncoderBase, UEncoderOutput
 class UMeI(LightningModule):
     cls_loss_fn: nn.Module
     seg_loss_fn: nn.Module
-    has_decoder: bool
 
-    def __init__(
-        self,
-        args: UMeIArgs,
-    ):
+    def __init__(self, args: UMeIArgs, *, has_decoder: bool):
         super().__init__()
         self.args = args
         self.encoder = build_encoder(args)
@@ -32,7 +28,7 @@ class UMeI(LightningModule):
             nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
 
         self.decoder = None
-        if self.has_decoder:
+        if has_decoder:
             self.decoder = build_decoder(args, encoder_feature_sizes)
             with torch.no_grad():
                 dummy_output = self.decoder.forward(dummy_input, dummy_output.hidden_states)

@@ -8,7 +8,7 @@ from monai.metrics import DiceMetric
 from monai.networks import one_hot
 import monai.transforms
 from monai.utils import MetricReduction
-from umei import UDecoderBase, UEncoderBase, UMeI
+from umei import UMeI
 from umei.datasets.amos import AmosArgs
 
 class AmosModel(UMeI):
@@ -16,7 +16,7 @@ class AmosModel(UMeI):
     has_decoder = True
 
     def __init__(self, args: AmosArgs):
-        super().__init__(args)
+        super().__init__(args, has_decoder=True)
         self.seg_loss_fn = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, include_background=False)
         self.post_transform = monai.transforms.Compose([
             # monai.transforms.Activations(softmax=True),

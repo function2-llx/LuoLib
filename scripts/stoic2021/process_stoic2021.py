@@ -12,8 +12,7 @@ import pandas as pd
 import pytorch_lightning as pl
 from ruamel.yaml import YAML
 
-from umei.datasets import Stoic2021Args, Stoic2021Model
-from umei.datasets.stoic2021.datamodule import Stoic2021DataModule
+from umei.datasets.stoic2021 import Stoic2021Args, Stoic2021Model, Stoic2021DataModule
 from umei.umei import build_encoder
 from umei.utils import UMeIParser
 

@@ -11,9 +11,10 @@ from ...model import UEncoderOutput
 
 class Stoic2021Model(UMeI):
     args: Stoic2021Args
+    has_decoder = False
 
-    def __init__(self, args: Stoic2021Args, encoder: UEncoderBase):
-        super().__init__(args, encoder)
+    def __init__(self, args: Stoic2021Args):
+        super().__init__(args, has_decoder=False)
         self.cls_loss_fn = nn.CrossEntropyLoss(weight=torch.tensor([1, args.cls_weight, args.cls_weight]).float())
         self.severity_auc = nn.ModuleDict({
             k: torchmetrics.AUROC(pos_label=1)
