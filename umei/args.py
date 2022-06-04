@@ -18,7 +18,7 @@ class UMeIArgs(TrainingArguments):
     spacing: list[float] = field(default=None)
     vit_patch_size: int = field(default=8)
     vit_hidden_size: int = field(default=768)
-    base_feature_size: int = field(default=24, metadata={'help': 'feature size for the first feature map'
+    base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                  'assume feature size *2 each layer'})
     num_seg_heads: int = field(default=1)
     cls_loss_factor: float = field(default=1)
@@ -45,6 +45,7 @@ class UMeIArgs(TrainingArguments):
     resnet_shortcut: str = field(default=None, metadata={'choices': ['A', 'B']})
     resnet_conv1_size: int = field(default=7)
     resnet_conv1_stride: int = field(default=2)
+    resnet_layer1_stride: int = field(default=1)
     ddp_find_unused_parameters: bool = field(default=False)
     on_submit: bool = field(default=False)
 

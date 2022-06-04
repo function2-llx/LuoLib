@@ -10,3 +10,9 @@ num_train_epochs: 500
 num_seg_heads: 3
 num_crop_samples: 2
 spacing: [1.2, 1.2, 5]
+model_depth: 34
+resnet_shortcut: B
+resnet_conv1_size: 7
+resnet_conv1_stride: 1
+base_feature_size: 32
+resnet_layer1_stride: 2

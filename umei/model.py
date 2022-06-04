@@ -35,6 +35,8 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
             feed_forward=False,
             conv1_t_size=args.resnet_conv1_size,
             conv1_t_stride=args.resnet_conv1_stride,
+            layer1_stride=args.resnet_layer1_stride,
+            in_planes=args.base_feature_size,
             shortcut_type=args.resnet_shortcut,
         )
 
