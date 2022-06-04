@@ -14,5 +14,5 @@ model_depth: 34
 resnet_shortcut: B
 resnet_conv1_size: 7
 resnet_conv1_stride: 1
-base_feature_size: 32
+base_feature_size: 64
 resnet_layer1_stride: 2
