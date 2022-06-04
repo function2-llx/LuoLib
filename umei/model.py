@@ -18,10 +18,6 @@ class UEncoderBase(nn.Module):
     def forward(self, img: torch.FloatTensor) -> UEncoderOutput:
         raise NotImplementedError
 
-    @property
-    def cls_feature_size(self) -> int:
-        raise NotImplementedError
-
 @dataclass
 class UDecoderOutput:
     feature_maps: list[torch.FloatTensor]
@@ -72,7 +68,7 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
         )
     elif args.encoder == 'swt':
         from monai.networks.nets.swin_unetr import SwinTransformer
-        return SwinTransformer(
+        model = SwinTransformer(
             in_chans=args.num_input_channels,
             embed_dim=args.base_feature_size,
             window_size=(7, 7, 7),
@@ -81,13 +77,39 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
             num_heads=(3, 6, 12, 24),
             # mlp_ratio=4.0,
             # qkv_bias=True,
+            use_checkpoint=True,
         )
+        if args.pretrain_path is not None:
+            # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
+            state_dict = {
+                k[8:]: v
+                for k, v in torch.load(args.pretrain_path)["state_dict"].items()
+                if k.startswith('swinViT.')
+            }
+            miss, unexpected = model.load_state_dict(state_dict)
+            assert len(miss) == 0 and len(unexpected) == 0
+            print(f'load pre-trained swin-unetr encoder from {args.pretrain_path}')
+        return model
     else:
         raise ValueError(f'not supported encoder: {args.encoder}')
 
 def build_decoder(args: UMeIArgs):
-    from umei.models.cnn_decoder import CnnDecoder
     if args.decoder == 'cnn':
+        from umei.models.cnn_decoder import CnnDecoder
         return CnnDecoder(base_feature_size=args.base_feature_size)
+    elif args.decoder == 'sunetr':
+        from monai.networks.nets import SwinUnetrDecoder
+        model = SwinUnetrDecoder(args.num_input_channels, feature_size=args.base_feature_size)
+        if args.pretrain_path is not None:
+            # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
+            state_dict = {
+                k: v
+                for k, v in torch.load(args.pretrain_path)["state_dict"].items()
+                if not k.startswith('swinViT.') and not k.startswith('out.')
+            }
+            miss, unexpected = model.load_state_dict(state_dict)
+            assert len(miss) == 0 and len(unexpected) == 0
+            print(f'load pre-trained swin-unetr decoder from {args.pretrain_path}')
+        return model
     else:
         raise ValueError(f'not supported decoder: {args.decoder}')

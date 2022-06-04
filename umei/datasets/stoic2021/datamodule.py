@@ -1,19 +1,16 @@
 from collections.abc import Callable
-from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
-from pytorch_lightning.trainer.supporters import CombinedLoader
-from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 from ruamel.yaml import YAML
 
 import monai
-from monai.data import DataLoader, Dataset, DatasetSummary, partition_dataset_classes, select_cross_validation_folds
+from monai.data import DataLoader, Dataset, DatasetSummary, partition_dataset_classes
 from monai.utils import InterpolateMode, NumpyPadMode
 import umei
-from umei.utils import CVDataModule
+from umei.datamodule import CVDataModule
 from .args import Stoic2021Args
 
 yaml = YAML()

@@ -23,17 +23,27 @@ class UMeI(LightningModule):
         self.args = args
         self.encoder = encoder
         self.decoder = decoder
+
+        with torch.no_grad():
+            encoder.eval()
+            dummy_input = torch.zeros(1, args.num_input_channels, *args.sample_shape)
+            dummy_output = encoder.forward(dummy_input)
+
         if self.args.num_cls_classes is not None:
-            self.cls_head = nn.Linear(encoder.cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
+            encoder_cls_feature_size = dummy_output.cls_feature.shape[1]
+            self.cls_head = nn.Linear(encoder_cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
             nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
 
         if decoder is not None:
+            with torch.no_grad():
+                dummy_output = decoder.forward(dummy_input, dummy_output.hidden_states)
+                decoder_feature_sizes = [feature.shape[1] for feature in dummy_output.feature_maps]
             from monai.networks.blocks import UnetOutBlock
             # i-th seg head for the last i-th output from decoder
             self.seg_heads = nn.ModuleList([
                 UnetOutBlock(
                     spatial_dims=3,
-                    in_channels=(args.base_feature_size // 2) * 2 ** i,
+                    in_channels=decoder_feature_sizes[-i - 1],
                     out_channels=args.num_seg_classes,
                 )
                 for i in range(args.num_seg_heads)

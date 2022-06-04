@@ -1,10 +1,12 @@
 from collections.abc import Iterable
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Type
 
 from ruamel.yaml import YAML
 from transformers import HfArgumentParser
+
+from umei.args import UMeIArgs
 
 yaml = YAML()
 
@@ -78,3 +80,9 @@ class UMeIParser(HfArgumentParser):
         # self.save_args_as_conf(args, output_dir / 'conf.yml')
         # compatible interface
         return self.parse_dict(vars(args))
+
+    @staticmethod
+    def parse_umei(arg_cls: Type[UMeIArgs]):
+        parser = UMeIParser((arg_cls,), use_conf=True)
+        args = parser.parse_args_into_dataclasses()[0]
+        return args

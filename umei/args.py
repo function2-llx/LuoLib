@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 import multiprocessing
 from pathlib import Path
@@ -13,6 +15,7 @@ class UMeIArgs(TrainingArguments):
     patience: int = field(default=5)
     sample_size: int = field(default=144)
     sample_slices: int = field(default=160)
+    spacing: list[float] = field(default=None)
     vit_patch_size: int = field(default=8)
     vit_hidden_size: int = field(default=768)
     base_feature_size: int = field(default=24, metadata={'help': 'feature size for the first feature map'
@@ -36,7 +39,7 @@ class UMeIArgs(TrainingArguments):
     use_test_fold: bool = field(default=True)
     num_runs: int = field(default=3)
     encoder: str = field(default=None, metadata={'choices': ['resnet', 'vit', 'swt']})
-    decoder: str = field(default=None, metadata={'choices': ['cnn']})
+    decoder: str = field(default=None, metadata={'choices': ['cnn', 'sunetr']})
     model_depth: int = field(default=50)
     pretrain_path: Optional[Path] = field(default=None)
     resnet_shortcut: str = field(default=None, metadata={'choices': ['A', 'B']})
@@ -65,6 +68,7 @@ class UMeIArgs(TrainingArguments):
     def clinical_feature_size(self) -> int:
         return 0
 
+    # include background
     @property
     def num_seg_classes(self) -> Optional[int]:
         return None

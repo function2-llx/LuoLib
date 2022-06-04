@@ -1,0 +1,12 @@
+num_folds: 5
+sample_size: 224
+sample_slices: 32
+encoder: resnet
+decoder: cnn
+per_device_train_batch_size: 2
+per_device_eval_batch_size: 1
+learning_rate: 1e-3
+num_train_epochs: 500
+num_seg_heads: 3
+num_crop_samples: 2
+spacing: [1.2, 1.2, 5]

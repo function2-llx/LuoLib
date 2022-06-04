@@ -62,8 +62,13 @@ class AmosDataModule(CVDataModule):
     @property
     def loader_transform(self) -> Callable:
         load_keys = [self.args.img_key, self.args.seg_key]
+        def fix_seg_affine(data: dict):
+            data[f'{self.args.seg_key}_meta_dict']['affine'] = data[f'{self.args.img_key}_meta_dict']['affine']
+            return data
+
         return monai.transforms.Compose([
             monai.transforms.LoadImageD(load_keys),
+            monai.transforms.Lambda(fix_seg_affine),
             monai.transforms.AddChannelD(load_keys),
             monai.transforms.OrientationD(load_keys, axcodes='RAS'),
         ])
@@ -73,8 +78,7 @@ class AmosDataModule(CVDataModule):
         return monai.transforms.Compose([
             monai.transforms.SpacingD(
                 [self.args.img_key, self.args.seg_key],
-                # pixdim=(0.78, 0.78, -1),
-                pixdim=(0.78, 0.78, 5),
+                pixdim=self.args.spacing,
                 mode=[GridSampleMode.BILINEAR, GridSampleMode.NEAREST],
             ),
             monai.transforms.NormalizeIntensityD(self.args.img_key),
@@ -91,21 +95,19 @@ class AmosDataModule(CVDataModule):
     @property
     def aug_transform(self) -> Callable:
         return monai.transforms.Compose([
-            monai.transforms.RandCropByPosNegLabelD(
+            monai.transforms.RandCropByLabelClassesD(
                 [self.args.img_key, self.args.seg_key],
-                neg=0,
                 label_key=self.args.seg_key,
                 spatial_size=self.args.sample_shape,
+                num_classes=self.args.num_seg_classes,
                 num_samples=self.args.num_crop_samples,
             ),
-            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.5, spatial_axis=0),
-            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.5, spatial_axis=1),
-            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.5, spatial_axis=2),
-            monai.transforms.RandRotate90D(
-                [self.args.img_key, self.args.seg_key],
-                prob=0.5,
-                max_k=1,
-            ),
+            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.2, spatial_axis=0),
+            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.2, spatial_axis=1),
+            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.2, spatial_axis=2),
+            monai.transforms.RandRotate90D([self.args.img_key, self.args.seg_key], prob=0.2, max_k=3),
+            monai.transforms.RandScaleIntensityD(self.args.img_key, factors=0.1, prob=0.1),
+            monai.transforms.RandShiftIntensityD(self.args.img_key, offsets=0.1, prob=0.1),
         ])
 
     @property

@@ -16,7 +16,7 @@ wandb login
 
 ## Run Experiments
 ```zsh
-export CUDA_VISIBLE_DEVICES=...
+export CUDA_VISIBLE_DEVICES=<cuda deivices ids>
 python scripts/<task>/train.py <conf yaml file> [extra arguments...]
 ```
 
@@ -27,7 +27,6 @@ cd umei/datasets/stoic2021
 # place input data under this path; 
 # also place the original reference file at `origin/metadata/reference.csv`
 python collect_clinical.py  # generate clinical information, this should be run once 
-cd ../../..
 ```
 
 Download pre-trained model (you may use [gdown](https://github.com/wkentaro/gdown)): [Med3D](https://github.com/Tencent/MedicalNet)

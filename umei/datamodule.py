@@ -45,7 +45,6 @@ class CVDataModule(LightningDataModule):
         raise NotImplementedError
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
-
         return DataLoader(
             dataset=Dataset(
                 select_cross_validation_folds(
@@ -58,12 +57,10 @@ class CVDataModule(LightningDataModule):
             shuffle=True,
             num_workers=self.args.dataloader_num_workers,
             pin_memory=True,
-            persistent_workers=True,
+            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
         )
 
     def val_dataloader(self):
-        from monai.data import DataLoader, Dataset
-
         val_ids = list(self.val_parts.values())
         if not all(
             len(self.partitions[val_ids[0]]) == len(self.partitions[val_ids[i]])
@@ -79,7 +76,7 @@ class CVDataModule(LightningDataModule):
                     num_workers=self.args.dataloader_num_workers,
                     batch_size=self.args.per_device_eval_batch_size,
                     pin_memory=True,
-                    persistent_workers=True,
+                    persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
                 )
                 for split, part_id in self.val_parts.items()
             },

@@ -11,7 +11,7 @@ class AmosArgs(UMeIArgs):
     conf_root: Path = field(default=Path('conf/amos'))
     num_crop_samples: int = field(default=4)
     use_test_fold: bool = field(default=False)
-    per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image when
+    per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
     sw_batch_size: int = field(default=16)
 
     @property
