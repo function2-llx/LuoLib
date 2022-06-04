@@ -20,10 +20,10 @@ class UMeI(LightningModule):
         with torch.no_grad():
             self.encoder.eval()
             dummy_input = torch.zeros(1, args.num_input_channels, *args.sample_shape)
-            dummy_output = self.encoder.forward(dummy_input)
-            encoder_feature_sizes = [feature.shape[1] for feature in dummy_output.hidden_states]
+            dummy_encoder_output = self.encoder.forward(dummy_input)
+            encoder_feature_sizes = [feature.shape[1] for feature in dummy_encoder_output.hidden_states]
         if self.args.num_cls_classes is not None:
-            encoder_cls_feature_size = dummy_output.cls_feature.shape[1]
+            encoder_cls_feature_size = dummy_encoder_output.cls_feature.shape[1]
             self.cls_head = nn.Linear(encoder_cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
             nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
 
@@ -31,8 +31,8 @@ class UMeI(LightningModule):
         if has_decoder:
             self.decoder = build_decoder(args, encoder_feature_sizes)
             with torch.no_grad():
-                dummy_output = self.decoder.forward(dummy_input, dummy_output.hidden_states)
-                decoder_feature_sizes = [feature.shape[1] for feature in dummy_output.feature_maps]
+                dummy_decoder_output = self.decoder.forward(dummy_input, dummy_encoder_output.hidden_states)
+                decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
             from monai.networks.blocks import UnetOutBlock
             # i-th seg head for the last i-th output from decoder
             self.seg_heads = nn.ModuleList([

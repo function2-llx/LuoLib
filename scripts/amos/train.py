@@ -6,7 +6,6 @@ import wandb
 
 from umei.datasets.amos import AmosArgs, AmosDataModule
 from umei.datasets.amos.model import AmosModel
-from umei.umei import build_decoder, build_encoder
 from umei.utils import MyWandbLogger, UMeIParser
 
 def main():
@@ -15,6 +14,7 @@ def main():
     datamodule = AmosDataModule(args)
     for val_fold_id in range(datamodule.num_cv_folds):
         pl.seed_everything(args.seed)
+        datamodule.val_id = val_fold_id
         output_dir = args.output_dir / f'fold{val_fold_id}'
         output_dir.mkdir(exist_ok=True, parents=True)
         conf_save_path = output_dir / 'conf.yml'
@@ -23,12 +23,10 @@ def main():
         if conf_save_path.exists() and not args.overwrite_output_dir:
             print(f'{conf_save_path} exists (fit complete), skip')
             continue
-        datamodule.val_id = val_fold_id
-        encoder = build_encoder(args)
-        decoder = build_decoder(args)
-        model = AmosModel(args, encoder, decoder)
+
+        model = AmosModel(args)
         if (last_ckpt_path := output_dir / 'last.ckpt').exists():
-            model.load_from_checkpoint(str(last_ckpt_path), args=args, encoder=encoder, decoder=decoder)
+            model.load_from_checkpoint(str(last_ckpt_path), args=args, encoder=model.encoder, decoder=model.decoder)
             # latest_run_id = (output_dir / 'wandb/latest-run').resolve().name.split('-')[-1]
             # print('latest wandb id:', latest_run_id)
         else:
