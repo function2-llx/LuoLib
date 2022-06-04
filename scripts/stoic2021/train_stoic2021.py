@@ -6,7 +6,7 @@ from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
 
-from umei.model import build_encoder
+from umei.umei import build_encoder
 from umei.utils import MyWandbLogger, UMeIParser
 from umei.datasets.stoic2021 import Stoic2021DataModule, Stoic2021Args, Stoic2021Model
 

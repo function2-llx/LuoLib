@@ -13,9 +13,10 @@ from umei.datasets.amos import AmosArgs
 
 class AmosModel(UMeI):
     args: AmosArgs
+    has_decoder = True
 
-    def __init__(self, args: AmosArgs, encoder: UEncoderBase, decoder: UDecoderBase):
-        super().__init__(args, encoder, decoder)
+    def __init__(self, args: AmosArgs):
+        super().__init__(args)
         self.seg_loss_fn = DiceCELoss(to_onehot_y=True, softmax=True, squared_pred=True, include_background=False)
         self.post_transform = monai.transforms.Compose([
             # monai.transforms.Activations(softmax=True),

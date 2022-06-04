@@ -14,7 +14,7 @@ from ruamel.yaml import YAML
 
 from umei.datasets import Stoic2021Args, Stoic2021Model
 from umei.datasets.stoic2021.datamodule import Stoic2021DataModule
-from umei.model import build_encoder
+from umei.umei import build_encoder
 from umei.utils import UMeIParser
 
 yaml = YAML()

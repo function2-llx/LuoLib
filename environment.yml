@@ -10,7 +10,7 @@ dependencies:
 #  - pytorch-lightning=1.6.3
   - torchmetrics=0.9.0
   - transformers=4.19.2
-  - wandb==0.12.17
+  - wandb=0.12.17
   - scikit-learn=1.1.1
   - pandas=1.4.2
   - openpyxl=3.0.9
@@ -20,7 +20,7 @@ dependencies:
   # work around for: https://github.com/SimpleITK/SimpleITK/issues/1433, waiting for ITK 5.3
   - SimpleITK::SimpleITK=2.0.2
 
-  - pip=22.1.1
+  - pip=22.1.2
   - pip:
     - pytorch-lightning==1.6.4
     - itk==5.2.1.post1

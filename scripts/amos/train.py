@@ -6,7 +6,7 @@ import wandb
 
 from umei.datasets.amos import AmosArgs, AmosDataModule
 from umei.datasets.amos.model import AmosModel
-from umei.model import build_decoder, build_encoder
+from umei.umei import build_decoder, build_encoder
 from umei.utils import MyWandbLogger, UMeIParser
 
 def main():

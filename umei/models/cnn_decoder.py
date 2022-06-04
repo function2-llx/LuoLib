@@ -64,17 +64,17 @@ class UpBlock(nn.Module):
 class CnnDecoder(UDecoderBase):
     def __init__(
         self,
-        base_feature_size: int,
+        encoder_feature_sizes: list[int],
+        out_channels: int,
         norm_name: tuple | str = "instance",
         spatial_dims: int = 3,
     ) -> None:
         super().__init__()
-        self.base_feature_size = base_feature_size
 
         self.bottleneck = UnetResBlock(
             spatial_dims=spatial_dims,
-            in_channels=16 * base_feature_size,
-            out_channels=16 * base_feature_size,
+            in_channels=encoder_feature_sizes[4],
+            out_channels=encoder_feature_sizes[4],
             kernel_size=3,
             stride=1,
             norm_name=norm_name,
@@ -82,8 +82,8 @@ class CnnDecoder(UDecoderBase):
 
         self.decoder4 = UpBlock(
             spatial_dims=spatial_dims,
-            in_channels=16 * base_feature_size,
-            out_channels=8 * base_feature_size,
+            in_channels=encoder_feature_sizes[4],
+            out_channels=encoder_feature_sizes[3],
             kernel_size=3,
             upsample_kernel_size=2,
             norm_name=norm_name,
@@ -91,8 +91,8 @@ class CnnDecoder(UDecoderBase):
 
         self.decoder3 = UpBlock(
             spatial_dims=spatial_dims,
-            in_channels=base_feature_size * 8,
-            out_channels=base_feature_size * 4,
+            in_channels=encoder_feature_sizes[3],
+            out_channels=encoder_feature_sizes[2],
             kernel_size=3,
             upsample_kernel_size=2,
             norm_name=norm_name,
@@ -100,8 +100,8 @@ class CnnDecoder(UDecoderBase):
 
         self.decoder2 = UpBlock(
             spatial_dims=spatial_dims,
-            in_channels=base_feature_size * 4,
-            out_channels=base_feature_size * 2,
+            in_channels=encoder_feature_sizes[2],
+            out_channels=encoder_feature_sizes[1],
             kernel_size=3,
             upsample_kernel_size=2,
             norm_name=norm_name,
@@ -109,8 +109,8 @@ class CnnDecoder(UDecoderBase):
 
         self.decoder1 = UpBlock(
             spatial_dims=spatial_dims,
-            in_channels=base_feature_size * 2,
-            out_channels=base_feature_size,
+            in_channels=encoder_feature_sizes[1],
+            out_channels=encoder_feature_sizes[0],
             kernel_size=3,
             upsample_kernel_size=2,
             norm_name=norm_name,
@@ -118,8 +118,8 @@ class CnnDecoder(UDecoderBase):
 
         self.decoder0 = UpBlock(
             spatial_dims=spatial_dims,
-            in_channels=base_feature_size,
-            out_channels=base_feature_size // 2,
+            in_channels=encoder_feature_sizes[0],
+            out_channels=out_channels,
             kernel_size=3,
             upsample_kernel_size=2,
             norm_name=norm_name,
