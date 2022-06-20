@@ -19,7 +19,7 @@ class UMeIArgs(TrainingArguments):
     vit_patch_size: int = field(default=8)
     vit_hidden_size: int = field(default=768)
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
-                                                                 'assume feature size *2 each layer'})
+                                                                   'assume feature size * 2 each layer'})
     num_seg_heads: int = field(default=1)
     cls_loss_factor: float = field(default=1)
     seg_loss_factor: float = field(default=1)
@@ -46,6 +46,7 @@ class UMeIArgs(TrainingArguments):
     resnet_conv1_size: int = field(default=7)
     resnet_conv1_stride: int = field(default=2)
     resnet_layer1_stride: int = field(default=1)
+    fold_ids: list[int] = field(default=None)
     ddp_find_unused_parameters: bool = field(default=False)
     on_submit: bool = field(default=False)
 
@@ -76,7 +77,11 @@ class UMeIArgs(TrainingArguments):
 
     def __post_init__(self):
         # disable super().__post__init__ or `output_dir` will restore str type specified in the base class
-        # as well as a lot strange things happens
+        # as well as a lot of strange things happens
         # super().__post_init__()
         # self.output_dir = Path(self.output_dir)
-        pass
+        if self.fold_ids is None:
+            self.fold_ids = list(range(self.num_folds))
+        else:
+            for i in self.fold_ids:
+                assert 0 <= i < self.num_folds

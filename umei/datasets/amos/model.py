@@ -13,7 +13,6 @@ from umei.datasets.amos import AmosArgs
 
 class AmosModel(UMeI):
     args: AmosArgs
-    has_decoder = True
 
     def __init__(self, args: AmosArgs):
         super().__init__(args, has_decoder=True)
@@ -22,7 +21,7 @@ class AmosModel(UMeI):
             # monai.transforms.Activations(softmax=True),
             # monai.transforms.AsDiscrete(argmax=True),
             monai.transforms.KeepLargestConnectedComponent(is_onehot=False),
-            monai.transforms.FillHoles(),
+            # monai.transforms.FillHoles(),
         ])
         self.dice_metric = DiceMetric(reduction=MetricReduction.MEAN_BATCH)
 

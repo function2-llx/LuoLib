@@ -94,10 +94,9 @@ class StoicAlgorithm(Algorithm):
             'severity_pred': 0,
             'positivity_pred': 0,
         }
-        encoder = build_encoder(self.args)
         num_models = 0
         for model_ckpt in Path(self.args.output_dir).glob('fold*/run0/*.ckpt'):
-            model = Stoic2021Model.load_from_checkpoint(str(model_ckpt), args=self.args, encoder=encoder)
+            model = Stoic2021Model.load_from_checkpoint(str(model_ckpt), args=self.args)
             num_models += len(dataloaders)
             for result in trainer.predict(model, dataloaders):
                 for k, v in result[0].items():

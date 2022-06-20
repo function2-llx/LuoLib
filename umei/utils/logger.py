@@ -38,7 +38,7 @@ class MyWandbLogger(WandbLogger):
     def name(self) -> Optional[str]:
         return self._experiment.name if self._experiment else self._name
 
-    # FIX: just set `RANK` instead of `NODE_RANK` (probably a typo in PL doc)
+    # FIX: just set both `RANK` instead of `NODE_RANK` (strange discrepancy between pytorch and pl)
     # # https://github.com/PyTorchLightning/pytorch-lightning/issues/11380
     # @WandbLogger.experiment.getter
     # @node_zero_experiment

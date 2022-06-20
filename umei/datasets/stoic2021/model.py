@@ -11,7 +11,6 @@ from ...model import UEncoderOutput
 
 class Stoic2021Model(UMeI):
     args: Stoic2021Args
-    has_decoder = False
 
     def __init__(self, args: Stoic2021Args):
         super().__init__(args, has_decoder=False)

@@ -37,7 +37,7 @@ def main():
 
             model = Stoic2021Model(args)
             if (last_ckpt_path := output_dir / 'last.ckpt').exists():
-                model.load_from_checkpoint(str(last_ckpt_path), args=args, encoder=model.encoder)
+                model = Stoic2021Model.load_from_checkpoint(str(last_ckpt_path), args=args)
                 latest_run_id = (output_dir / 'wandb/latest-run').resolve().name.split('-')[-1]
                 print('latest wandb id:', latest_run_id)
             else:
