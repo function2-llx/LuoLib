@@ -19,6 +19,7 @@ class PredictionArgs:
     model_output_dirs: list[Path]
     output_dir: Path
     sw_overlap: float = field(default=0.25)
+    sw_batch_size: int = field(default=16)
     overwrite: bool = field(default=False)
 
 class AmosEnsemblePredictor(pl.LightningModule):
@@ -68,10 +69,11 @@ class AmosEnsemblePredictor(pl.LightningModule):
             pred_logit = sliding_window_inference(
                 batch['img'],
                 roi_size=model.args.sample_shape,
-                sw_batch_size=model.args.sw_batch_size,
+                sw_batch_size=self.args.sw_batch_size,
                 predictor=model.forward,
                 overlap=self.args.sw_overlap,
                 mode=BlendMode.GAUSSIAN,
+                device='cpu',
                 progress=True,
             )[0]
             resampled_pred_logit, _ = self.resampler.__call__(

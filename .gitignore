@@ -136,3 +136,4 @@ test/
 
 nnUNet_data
 *.xlsx
+*.nii.gz
