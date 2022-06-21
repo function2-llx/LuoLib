@@ -7,7 +7,7 @@ from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 import monai.transforms
-from monai.utils import MetricReduction
+from monai.utils import BlendMode, MetricReduction
 from umei import UMeI
 from umei.datasets.amos import AmosArgs
 
@@ -25,22 +25,19 @@ class AmosModel(UMeI):
         ])
         self.dice_metric = DiceMetric(reduction=MetricReduction.MEAN_BATCH)
 
-    def sw_infer(self, batch_img: torch.Tensor, overlap: float, post: bool) -> torch.Tensor:
-        logit = sliding_window_inference(
-            batch_img,
-            roi_size=self.args.sample_shape,
-            sw_batch_size=self.args.sw_batch_size,
-            predictor=self.output_seg,
-            overlap=overlap,
-        )
-        pred = logit.argmax(dim=1, keepdim=True)
-        if post:
-            pred = torch.stack([self.post_transform(p) for p in pred])
-        return pred
-
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         batch = batch['val']
-        pred = self.sw_infer(batch[self.args.img_key], overlap=0.1, post=False)
+        pred_logit = sliding_window_inference(
+            batch[self.args.img_key],
+            roi_size=self.args.sample_shape,
+            sw_batch_size=self.args.sw_batch_size,
+            predictor=self.forward,
+            overlap=self.args.val_sw_overlap,
+            mode=BlendMode.GAUSSIAN,
+        )
+        pred = pred_logit.argmax(dim=1, keepdim=True)
+        if self.args.val_post:
+            pred = torch.stack([self.post_transform(p) for p in pred])
         self.dice_metric(
             one_hot(pred, self.args.num_seg_classes),
             one_hot(batch[self.args.seg_key], self.args.num_seg_classes),
@@ -51,9 +48,6 @@ class AmosModel(UMeI):
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i].item())
         self.log('val/dice/avg', dice[1:].mean().item())
-
-    def predict_step(self, batch: dict[str, torch.Tensor], *args, **kwargs):
-        return self.sw_infer(batch[self.args.img_key], overlap=0.8, post=True)
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)

@@ -10,6 +10,7 @@ from umei.utils import MyWandbLogger, UMeIParser
 def main():
     parser = UMeIParser((AmosArgs, ), use_conf=True)
     args: AmosArgs = parser.parse_args_into_dataclasses()[0]
+    print(args)
     datamodule = AmosDataModule(args)
     for val_fold_id in range(datamodule.num_cv_folds):
         if val_fold_id not in args.fold_ids:
@@ -24,6 +25,7 @@ def main():
                 name=f'{args.exp_name}/fold{val_fold_id}',
                 save_dir=str(output_dir),
                 group=args.exp_name,
+                offline=args.log_offline,
             ),
             callbacks=[
                 ModelCheckpoint(
@@ -71,15 +73,6 @@ def main():
             trainer.validate(model, ckpt_path=last_ckpt_path, datamodule=datamodule)
 
         wandb.finish()
-
-    # if args.do_eval:
-    #     for val_fold_id in range(datamodule.num_cv_folds):
-    #         if val_fold_id not in args.fold_ids:
-    #             continue
-    #         pl.seed_everything(args.seed)
-    #         datamodule.val_id = val_fold_id
-    #         trainer.validate(model, datamodule)
-
 
 if __name__ == '__main__':
     main()

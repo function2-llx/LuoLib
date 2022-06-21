@@ -12,5 +12,5 @@ learning_rate: 2e-4
 weight_decay: 1e-5
 num_train_epochs: 5000
 num_seg_heads: 3
-spacing: [1.5, 1.5, 2]
+spacing: [1.5, 1.5, 3]
 pretrain_path: pretrained/Swin-UNETR/btcv/swin_unetr.base_5000ep_f48_lr2e-4_pretrained.pt

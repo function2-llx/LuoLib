@@ -1,18 +1,24 @@
+from __future__ import annotations
+
 from collections.abc import Iterable
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Optional, Type
+from typing import Any, Optional
 
 from ruamel.yaml import YAML
 from transformers import HfArgumentParser
 
-from umei.args import UMeIArgs
+from monai.config import PathLike
 
 yaml = YAML()
 
 class UMeIParser(HfArgumentParser):
     def __init__(self, *args, use_conf: bool, **kwargs):
         super().__init__(*args, **kwargs)
+        for action in self._actions:
+            if hasattr(action.type, '__origin__') and issubclass(getattr(action.type, '__origin__'), Iterable):
+                action.type = action.type.__args__[0]
+                action.nargs = '+'
         self.use_conf = use_conf
 
     @staticmethod
@@ -24,6 +30,20 @@ class UMeIParser(HfArgumentParser):
             if type(v) not in [int, float, str, list, bool, type(None)]:
                 args_dict[k] = str(v)
         yaml.dump(args_dict, save_path)
+
+    @staticmethod
+    def to_cli_options(conf: dict[str, Any]) -> list[str]:
+        ret = []
+        for k, v in conf.items():
+            if v is None:
+                continue
+            ret.append(f'--{k}')
+            if isinstance(v, list):
+                for x in v:
+                    ret.append(str(x))
+            else:
+                ret.append(str(v))
+        return ret
 
     def parse_args_into_dataclasses(self, **kwargs):
         if not self.use_conf:
@@ -37,19 +57,7 @@ class UMeIParser(HfArgumentParser):
         if conf is None:
             conf = {}
 
-        def to_cli_options(conf: dict[str, Any]) -> list[str]:
-            ret = []
-            for k, v in conf.items():
-                ret.append(f'--{k}')
-                if isinstance(v, list):
-                    for x in v:
-                        ret.append(str(x))
-                else:
-                    ret.append(str(v))
-            return ret
-
-        argv = to_cli_options(conf) + argv[2:]
-        # argv = argv[2:]
+        argv = UMeIParser.to_cli_options(conf) + argv[2:]
 
         for action in self._actions:
             if hasattr(action.type, '__origin__') and issubclass(getattr(action.type, '__origin__'), Iterable):
@@ -80,9 +88,3 @@ class UMeIParser(HfArgumentParser):
         # self.save_args_as_conf(args, output_dir / 'conf.yml')
         # compatible interface
         return self.parse_dict(vars(args))
-
-    @staticmethod
-    def parse_umei(arg_cls: Type[UMeIArgs]):
-        parser = UMeIParser((arg_cls,), use_conf=True)
-        args = parser.parse_args_into_dataclasses()[0]
-        return args

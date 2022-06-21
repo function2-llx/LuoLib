@@ -13,7 +13,8 @@ class AmosArgs(UMeIArgs):
     use_test_fold: bool = field(default=False)
     per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
     sw_batch_size: int = field(default=16)
-
+    val_sw_overlap: float = field(default=0.1)
+    val_post: bool = field(default=False, metadata={'help': 'whether to perform post-processing during validation'})
     @property
     def num_seg_classes(self) -> int:
         return 16

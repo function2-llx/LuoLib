@@ -44,7 +44,7 @@ class UMeI(LightningModule):
                 for i in range(args.num_seg_heads)
             ])
 
-    def forward(self, batch: dict[str, torch.Tensor]) -> dict:
+    def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
         img = batch[self.args.img_key]
         encoder_out: UEncoderOutput = self.encoder(img)
         ret = {'loss': torch.tensor(0., device=self.device)}
@@ -67,17 +67,16 @@ class UMeI(LightningModule):
             ]))
             ret['loss'] += seg_loss * self.args.seg_loss_factor
             ret['seg_loss'] = seg_loss
+        for k in ['cls_loss', 'seg_loss']:
+            if k in ret:
+                self.log(f'train/{k}', ret[k])
         return ret
 
-    def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
-        output = self.forward(batch)
-        for k in ['cls_loss', 'seg_loss']:
-            if k in output:
-                self.log(f'train/{k}', output[k])
-        return output
-
-    def output_seg(self, x: torch.Tensor) -> torch.Tensor:
-        fm = self.decoder.forward(x, self.encoder.forward(x).hidden_states).feature_maps[-1]
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        output = self.encoder.forward(x)
+        if self.decoder is None:
+            return output.cls_feature
+        fm = self.decoder.forward(x, output.hidden_states).feature_maps[-1]
         return self.seg_heads[0](fm)
 
 def build_encoder(args: UMeIArgs) -> UEncoderBase:

@@ -30,7 +30,7 @@ def process(case: dict, args: AmosArgs, loader: Callable[[dict], dict]) -> dict:
 def main():
     parser = UMeIParser((AmosArgs, ), use_conf=True)
     args: AmosArgs = parser.parse_args_into_dataclasses()[0]
-    cohort = load_cohort(args)['training']
+    cohort = load_cohort()['training']
     properties = pd.read_pickle(nnunet_pp_output_dir / 'dataset_properties.pkl')
     all_spacings = properties['all_spacings']
     median_spacing = np.median(all_spacings, axis=0)

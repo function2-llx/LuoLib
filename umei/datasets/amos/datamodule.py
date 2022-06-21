@@ -3,9 +3,11 @@ from pathlib import Path
 from typing import Callable
 
 import pandas as pd
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS
+from torch.utils.data import default_collate
 
 import monai
-from monai.data import partition_dataset_classes
+from monai.data import DataLoader, Dataset, partition_dataset_classes
 from monai.utils import GridSampleMode, NumpyPadMode
 from umei.datamodule import CVDataModule
 
@@ -14,43 +16,44 @@ from .args import AmosArgs
 DATASET_ROOT = Path(__file__).parent
 DATA_DIR = DATASET_ROOT / 'origin'
 
-def load_cohort(args: AmosArgs):
-    cohort = {
-        'training': {},
-        'test': {}
-    }
-    # 1: MRI, 0: CT
-    for modality, task in [(1, 2), (0, 1)]:
-        with open(DATA_DIR / f'task{task}_dataset.json') as f:
-            task = json.load(f)
-        for split in ['training', 'test']:
-            for case in task[split]:
-                if split == 'training':
-                    img_path = Path(case['image'])
-                    seg_path = Path(case['label'])
-                else:
-                    img_path = Path(case)
-                    seg_path = None
-                subject = img_path.name[:-7]
-                cohort[split].update({
-                    subject: {
-                        'subject': subject,
-                        'modality': modality,
-                        args.img_key: DATA_DIR / img_path,
-                        args.seg_key: DATA_DIR / seg_path if seg_path else None,
-                    }
-                })
-    for split in ['training', 'test']:
-        cohort[split] = list(cohort[split].values())
-    return cohort
-
 class AmosDataModule(CVDataModule):
     args: AmosArgs
+
+    @staticmethod
+    def load_cohort():
+        cohort = {
+            'training': {},
+            'test': {}
+        }
+        # 1: MRI, 0: CT
+        for modality, task in [(1, 2), (0, 1)]:
+            with open(DATA_DIR / f'task{task}_dataset.json') as f:
+                task = json.load(f)
+            for split in ['training', 'test']:
+                for case in task[split]:
+                    if split == 'training':
+                        img_path = Path(case['image'])
+                        seg_path = Path(case['label'])
+                    else:
+                        img_path = Path(case)
+                        seg_path = None
+                    subject = img_path.name[:-7]
+                    cohort[split].update({
+                        subject: {
+                            'subject': subject,
+                            'modality': modality,
+                            'img': DATA_DIR / img_path,
+                            **({} if seg_path is None else {'seg': DATA_DIR / seg_path if seg_path else None})
+                        }
+                    })
+        for split in ['training', 'test']:
+            cohort[split] = list(cohort[split].values())
+        return cohort
 
     def __init__(self, args: AmosArgs):
         super().__init__(args)
 
-        self.cohort = load_cohort(args)
+        self.cohort = AmosDataModule.load_cohort()
         self.partitions = partition_dataset_classes(
             self.cohort['training'],
             classes=pd.DataFrame.from_records(self.cohort['training'])['modality'],
@@ -59,11 +62,34 @@ class AmosDataModule(CVDataModule):
             seed=args.seed,
         )
 
-    @property
-    def loader_transform(self) -> Callable:
-        load_keys = [self.args.img_key, self.args.seg_key]
+    def exclude_test(self, subjects: list[str]):
+        subjects = set(subjects)
+        self.cohort['test'] = list(filter(
+            lambda case: case['subject'] not in subjects,
+            self.cohort['test'],
+        ))
+
+    def predict_dataloader(self) -> EVAL_DATALOADERS:
+        return DataLoader(
+            dataset=Dataset(self.cohort['test'], transform=self.predict_transform),
+            num_workers=self.args.dataloader_num_workers,
+            batch_size=1,
+            pin_memory=True,
+            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+            collate_fn=lambda batch: {
+                **batch[0],
+                'img': default_collate([batch[0]['img']]),
+            }
+        )
+
+    def loader_transform(self, *, on_predict: bool) -> Callable:
+        load_keys = [self.args.img_key]
+        if not on_predict:
+            load_keys.append(self.args.seg_key)
+
         def fix_seg_affine(data: dict):
-            data[f'{self.args.seg_key}_meta_dict']['affine'] = data[f'{self.args.img_key}_meta_dict']['affine']
+            if not on_predict:
+                data[f'{self.args.seg_key}_meta_dict']['affine'] = data[f'{self.args.img_key}_meta_dict']['affine']
             return data
 
         return monai.transforms.Compose([
@@ -73,23 +99,19 @@ class AmosDataModule(CVDataModule):
             monai.transforms.OrientationD(load_keys, axcodes='RAS'),
         ])
 
-    @property
-    def normalize_transform(self) -> Callable:
+    def normalize_transform(self, *, on_predict: bool) -> Callable:
+        all_keys = [self.args.img_key]
+        spacing_modes = [GridSampleMode.BILINEAR]
+        if not on_predict:
+            all_keys.append(self.args.seg_key)
+            spacing_modes.append(GridSampleMode.NEAREST)
         return monai.transforms.Compose([
-            monai.transforms.SpacingD(
-                [self.args.img_key, self.args.seg_key],
-                pixdim=self.args.spacing,
-                mode=[GridSampleMode.BILINEAR, GridSampleMode.NEAREST],
-            ),
+            monai.transforms.SpacingD(all_keys, pixdim=self.args.spacing, mode=spacing_modes),
             monai.transforms.NormalizeIntensityD(self.args.img_key),
             monai.transforms.ThresholdIntensityD(self.args.img_key, threshold=-5, above=True, cval=-5),
             monai.transforms.ThresholdIntensityD(self.args.img_key, threshold=5, above=False, cval=5),
             monai.transforms.ScaleIntensityD(self.args.img_key, minv=0, maxv=1),
-            monai.transforms.SpatialPadD(
-                [self.args.img_key, self.args.seg_key],
-                spatial_size=self.args.sample_shape,
-                mode=NumpyPadMode.CONSTANT,
-            ),
+            monai.transforms.SpatialPadD(all_keys, spatial_size=self.args.sample_shape, mode=NumpyPadMode.CONSTANT),
         ])
 
     @property
@@ -111,27 +133,24 @@ class AmosDataModule(CVDataModule):
         ])
 
     @property
-    def input_transform(self) -> Callable:
-        item_keys = [self.args.img_key]
-        if not self.args.on_submit:
-            item_keys.append(self.args.seg_key)
-        return monai.transforms.Compose([
-            monai.transforms.SelectItemsD(item_keys),
-        ])
-
-    @property
     def train_transform(self) -> Callable:
         return monai.transforms.Compose([
-            self.loader_transform,
-            self.normalize_transform,
+            self.loader_transform(on_predict=False),
+            self.normalize_transform(on_predict=False),
             self.aug_transform,
-            self.input_transform,
+            monai.transforms.SelectItemsD([self.args.img_key, self.args.seg_key]),
         ])
 
     @property
     def eval_transform(self) -> Callable:
         return monai.transforms.Compose([
-            self.loader_transform,
-            self.normalize_transform,
-            self.input_transform,
+            self.loader_transform(on_predict=False),
+            self.normalize_transform(on_predict=False),
+        ])
+
+    @property
+    def predict_transform(self):
+        return monai.transforms.Compose([
+            self.loader_transform(on_predict=True),
+            self.normalize_transform(on_predict=True),
         ])

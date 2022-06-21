@@ -5,7 +5,12 @@ import multiprocessing
 from pathlib import Path
 from typing import Optional
 
+from ruamel.yaml import YAML
 from transformers import TrainingArguments
+
+from umei.utils import PathLike, UMeIParser
+
+yaml = YAML()
 
 @dataclass
 class UMeIArgs(TrainingArguments):
@@ -49,6 +54,7 @@ class UMeIArgs(TrainingArguments):
     fold_ids: list[int] = field(default=None)
     ddp_find_unused_parameters: bool = field(default=False)
     on_submit: bool = field(default=False)
+    log_offline: bool = field(default=False)
 
     @property
     def sample_shape(self) -> tuple[int, int, int]:
@@ -85,3 +91,11 @@ class UMeIArgs(TrainingArguments):
         else:
             for i in self.fold_ids:
                 assert 0 <= i < self.num_folds
+
+    @classmethod
+    def from_yaml_file(cls, yaml_path: PathLike):
+        parser = UMeIParser(cls, use_conf=False)
+        conf = yaml.load(Path(yaml_path))
+        argv = UMeIParser.to_cli_options(conf)
+        args, _ = parser.parse_known_args(argv)
+        return parser.parse_dict(vars(args))[0]
