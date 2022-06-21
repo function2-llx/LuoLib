@@ -96,6 +96,7 @@ class AmosEnsemblePredictor(pl.LightningModule):
 def main():
     parser = HfArgumentParser(PredictionArgs)
     args: PredictionArgs = parser.parse_args_into_dataclasses()[0]
+    print(args)
 
     predictor = AmosEnsemblePredictor(args)
     trainer = pl.Trainer(
