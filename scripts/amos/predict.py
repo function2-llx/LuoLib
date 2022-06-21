@@ -97,6 +97,7 @@ def main():
     parser = HfArgumentParser(PredictionArgs)
     args: PredictionArgs = parser.parse_args_into_dataclasses()[0]
     print(args)
+    args.output_dir.mkdir(exist_ok=True, parents=True)
 
     predictor = AmosEnsemblePredictor(args)
     trainer = pl.Trainer(
