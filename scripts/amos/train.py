@@ -26,6 +26,7 @@ def main():
                 save_dir=str(output_dir),
                 group=args.exp_name,
                 offline=args.log_offline,
+                resume=True,
             ),
             callbacks=[
                 ModelCheckpoint(
@@ -47,6 +48,7 @@ def main():
             max_epochs=int(args.num_train_epochs),
             num_sanity_val_steps=5,
             log_every_n_steps=5,
+            val_check_interval=args.eval_steps,
             strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),
             # limit_train_batches=0.1,
             # limit_val_batches=0.2,
@@ -55,21 +57,21 @@ def main():
         last_ckpt_path = output_dir / 'last.ckpt'
         if not last_ckpt_path.exists():
             last_ckpt_path = None
-        # if not args.overwrite_output_dir and (last_ckpt_path := output_dir / 'last.ckpt').exists():
-        #     model = AmosModel.load_from_checkpoint(str(last_ckpt_path), args=args)
-        #     # latest_run_id = (output_dir / 'wandb/latest-run').resolve().name.split('-')[-1]
-        #     # print('latest wandb id:', latest_run_id)
-        # else:
-        #     last_ckpt_path = None
-        #     # latest_run_id = None
         if args.do_train:
-            conf_save_path = output_dir / 'conf.yml'
-            if not conf_save_path.exists() and not args.overwrite_output_dir:
-                print(f'{conf_save_path} exists and overwrite not allowed, skip')
-                continue
-            UMeIParser.save_args_as_conf(args, conf_save_path)
+            if trainer.is_global_zero:
+                conf_save_path = output_dir / 'conf.yml'
+                if conf_save_path.exists():
+                    conf_save_path.rename(output_dir / 'conf-save.yml')
+                UMeIParser.save_args_as_conf(args, conf_save_path)
             trainer.fit(model, datamodule=datamodule, ckpt_path=last_ckpt_path)
         if args.do_eval:
+            if args.use_monai:
+                model.seg_heads[0].load_state_dict({
+                    k[4:]: v
+                    for k, v in torch.load(args.decoder_pretrain_path)['state_dict'].items()
+                    if k.startswith('out.')
+                })
+                print('DEBUG: load pre-trained seg head')
             trainer.validate(model, ckpt_path=last_ckpt_path, datamodule=datamodule)
 
         wandb.finish()

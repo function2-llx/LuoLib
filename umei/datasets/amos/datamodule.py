@@ -111,12 +111,16 @@ class AmosDataModule(CVDataModule):
             monai.transforms.ThresholdIntensityD(self.args.img_key, threshold=-5, above=True, cval=-5),
             monai.transforms.ThresholdIntensityD(self.args.img_key, threshold=5, above=False, cval=5),
             monai.transforms.ScaleIntensityD(self.args.img_key, minv=0, maxv=1),
-            monai.transforms.SpatialPadD(all_keys, spatial_size=self.args.sample_shape, mode=NumpyPadMode.CONSTANT),
         ])
 
     @property
     def aug_transform(self) -> Callable:
         return monai.transforms.Compose([
+            monai.transforms.SpatialPadD(
+                [self.args.img_key, self.args.seg_key],
+                spatial_size=self.args.sample_shape,
+                mode=NumpyPadMode.CONSTANT
+            ),
             monai.transforms.RandCropByLabelClassesD(
                 [self.args.img_key, self.args.seg_key],
                 label_key=self.args.seg_key,
@@ -143,6 +147,30 @@ class AmosDataModule(CVDataModule):
 
     @property
     def eval_transform(self) -> Callable:
+        if self.args.use_monai:
+            val_transform = monai.transforms.Compose(
+                [
+                    monai.transforms.LoadImageD([self.args.img_key, self.args.seg_key]),
+                    monai.transforms.AddChannelD([self.args.img_key, self.args.seg_key]),
+                    monai.transforms.OrientationD([self.args.img_key, self.args.seg_key], axcodes="RAS"),
+                    monai.transforms.SpacingD(
+                        [self.args.img_key, self.args.seg_key],
+                        pixdim=self.args.spacing,
+                        mode=("bilinear", "nearest"),
+                    ),
+                    monai.transforms.ScaleIntensityRanged(
+                        keys=self.args.img_key,
+                        a_min=-175,
+                        a_max=250,
+                        b_min=0,
+                        b_max=1,
+                        clip=True,
+                    ),
+                    monai.transforms.CropForegroundd([self.args.img_key, self.args.seg_key], source_key=self.args.img_key),
+                    monai.transforms.ToTensord([self.args.img_key, self.args.seg_key]),
+                ]
+            )
+            return val_transform
         return monai.transforms.Compose([
             self.loader_transform(on_predict=False),
             self.normalize_transform(on_predict=False),

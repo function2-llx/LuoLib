@@ -47,6 +47,7 @@ class UMeIArgs(TrainingArguments):
     decoder: str = field(default=None, metadata={'choices': ['cnn', 'sunetr']})
     model_depth: int = field(default=50)
     pretrain_path: Optional[Path] = field(default=None)
+    decoder_pretrain_path: Optional[Path] = field(default=None)
     resnet_shortcut: str = field(default=None, metadata={'choices': ['A', 'B']})
     resnet_conv1_size: int = field(default=7)
     resnet_conv1_stride: int = field(default=2)
@@ -55,6 +56,7 @@ class UMeIArgs(TrainingArguments):
     ddp_find_unused_parameters: bool = field(default=False)
     on_submit: bool = field(default=False)
     log_offline: bool = field(default=False)
+    use_monai: bool = field(default=None)
 
     @property
     def sample_shape(self) -> tuple[int, int, int]:
@@ -98,4 +100,5 @@ class UMeIArgs(TrainingArguments):
         conf = yaml.load(Path(yaml_path))
         argv = UMeIParser.to_cli_options(conf)
         args, _ = parser.parse_known_args(argv)
-        return parser.parse_dict(vars(args))[0]
+        # want to return `Self` type
+        return cls(parser.parse_dict(vars(args))[0])

@@ -137,13 +137,14 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
         if args.pretrain_path is not None:
             # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
             state_dict = {
-                k[8:]: v
+                k.split('.', 1)[1].replace('fc', 'linear'): v
                 for k, v in torch.load(args.pretrain_path)["state_dict"].items()
-                if k.startswith('swinViT.')
+                if k.startswith('swinViT.') or k.startswith('module.')
             }
-            miss, unexpected = model.load_state_dict(state_dict)
-            assert len(miss) == 0 and len(unexpected) == 0
+            miss, unexpected = model.load_state_dict(state_dict, strict=False)
+            assert len(miss) == 0
             print(f'load pre-trained swin-unetr encoder from {args.pretrain_path}')
+            print('unexpected: ', len(unexpected))
         return model
     else:
         raise ValueError(f'not supported encoder: {args.encoder}')
@@ -155,7 +156,7 @@ def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
     elif args.decoder == 'sunetr':
         from monai.networks.nets import SwinUnetrDecoder
         model = SwinUnetrDecoder(args.num_input_channels, feature_size=args.base_feature_size)
-        if args.pretrain_path is not None:
+        if args.decoder_pretrain_path is not None:
             # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
             state_dict = {
                 k: v
