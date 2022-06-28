@@ -138,3 +138,4 @@ nnUNet_data
 *.xlsx
 *.nii.gz
 *.zip
+runs/
