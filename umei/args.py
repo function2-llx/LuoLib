@@ -57,6 +57,8 @@ class UMeIArgs(TrainingArguments):
     on_submit: bool = field(default=False)
     log_offline: bool = field(default=False)
     use_monai: bool = field(default=None)
+    train_cache_num: int = field(default=0)
+    val_cache_num: int = field(default=0)
 
     @property
     def sample_shape(self) -> tuple[int, int, int]:

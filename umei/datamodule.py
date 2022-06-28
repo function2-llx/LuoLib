@@ -5,7 +5,7 @@ from pytorch_lightning import LightningDataModule
 from pytorch_lightning.trainer.supporters import CombinedLoader
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
-from monai.data import DataLoader, Dataset, select_cross_validation_folds
+from monai.data import CacheDataset, DataLoader, select_cross_validation_folds
 from .args import UMeIArgs
 
 class CVDataModule(LightningDataModule):
@@ -46,12 +46,14 @@ class CVDataModule(LightningDataModule):
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         return DataLoader(
-            dataset=Dataset(
+            dataset=CacheDataset(
                 select_cross_validation_folds(
                     self.partitions,
-                    folds=np.delete(range(self.num_cv_folds), self.val_id)
+                    folds=np.delete(range(self.num_cv_folds), self.val_id),
                 ),
                 transform=self.train_transform,
+                cache_num=self.args.train_cache_num,
+                num_workers=self.args.dataloader_num_workers,
             ),
             batch_size=self.args.per_device_train_batch_size,
             shuffle=True,
@@ -72,7 +74,12 @@ class CVDataModule(LightningDataModule):
         return CombinedLoader(
             loaders={
                 split: DataLoader(
-                    dataset=Dataset(self.partitions[part_id], transform=self.eval_transform),
+                    dataset=CacheDataset(
+                        self.partitions[part_id],
+                        transform=self.eval_transform,
+                        cache_num=self.args.val_cache_num,
+                        num_workers=self.args.dataloader_num_workers,
+                    ),
                     num_workers=self.args.dataloader_num_workers,
                     batch_size=self.args.per_device_eval_batch_size,
                     pin_memory=True,

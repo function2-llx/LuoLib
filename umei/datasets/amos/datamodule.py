@@ -20,13 +20,15 @@ class AmosDataModule(CVDataModule):
     args: AmosArgs
 
     @staticmethod
-    def load_cohort():
+    def load_cohort(task_id: int):
         cohort = {
             'training': {},
             'test': {}
         }
         # 1: MRI, 0: CT
         for modality, task in [(1, 2), (0, 1)]:
+            if modality == 1 and task_id == 1:
+                continue
             with open(DATA_DIR / f'task{task}_dataset.json') as f:
                 task = json.load(f)
             for split in ['training', 'test']:
@@ -53,7 +55,7 @@ class AmosDataModule(CVDataModule):
     def __init__(self, args: AmosArgs):
         super().__init__(args)
 
-        self.cohort = AmosDataModule.load_cohort()
+        self.cohort = AmosDataModule.load_cohort(args.task_id)
         self.partitions = partition_dataset_classes(
             self.cohort['training'],
             classes=pd.DataFrame.from_records(self.cohort['training'])['modality'],
@@ -82,7 +84,7 @@ class AmosDataModule(CVDataModule):
             }
         )
 
-    def loader_transform(self, *, on_predict: bool) -> Callable:
+    def loader_transform(self, *, on_predict: bool) -> monai.transforms.Compose:
         load_keys = [self.args.img_key]
         if not on_predict:
             load_keys.append(self.args.seg_key)
@@ -99,7 +101,7 @@ class AmosDataModule(CVDataModule):
             monai.transforms.OrientationD(load_keys, axcodes='RAS'),
         ])
 
-    def normalize_transform(self, *, on_predict: bool) -> Callable:
+    def normalize_transform(self, *, on_predict: bool) -> monai.transforms.Compose:
         all_keys = [self.args.img_key]
         spacing_modes = [GridSampleMode.BILINEAR]
         if not on_predict:
@@ -114,7 +116,7 @@ class AmosDataModule(CVDataModule):
         ])
 
     @property
-    def aug_transform(self) -> Callable:
+    def aug_transform(self) -> monai.transforms.Compose:
         return monai.transforms.Compose([
             monai.transforms.SpatialPadD(
                 [self.args.img_key, self.args.seg_key],
@@ -138,10 +140,11 @@ class AmosDataModule(CVDataModule):
 
     @property
     def train_transform(self) -> Callable:
+        # MONAI thinks Compose is randomized and skip cache, so we have to expand it lol
         return monai.transforms.Compose([
-            self.loader_transform(on_predict=False),
-            self.normalize_transform(on_predict=False),
-            self.aug_transform,
+            *self.loader_transform(on_predict=False).transforms,
+            *self.normalize_transform(on_predict=False).transforms,
+            *self.aug_transform.transforms,
             monai.transforms.SelectItemsD([self.args.img_key, self.args.seg_key]),
         ])
 
@@ -172,8 +175,8 @@ class AmosDataModule(CVDataModule):
             )
             return val_transform
         return monai.transforms.Compose([
-            self.loader_transform(on_predict=False),
-            self.normalize_transform(on_predict=False),
+            *self.loader_transform(on_predict=False).transforms,
+            *self.normalize_transform(on_predict=False).transforms,
         ])
 
     @property
