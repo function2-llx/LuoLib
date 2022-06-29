@@ -84,12 +84,12 @@ def get_loader(args):
             transforms.CropForegroundd(keys=["image", "label"], source_key="image"),
             transforms.SpatialPadD(
                 keys=['image', 'label'],
-                spatial_size=(args.roi_x, args.roi_y, args.roi_x),
+                spatial_size=(args.roi_x, args.roi_y, args.roi_z),
             ),
             transforms.RandCropByPosNegLabeld(
                 keys=["image", "label"],
                 label_key="label",
-                spatial_size=(args.roi_x, args.roi_y, args.roi_x),
+                spatial_size=(args.roi_x, args.roi_y, args.roi_z),
                 pos=1,
                 neg=1,
                 num_samples=4,

@@ -56,7 +56,6 @@ class UMeIArgs(TrainingArguments):
     ddp_find_unused_parameters: bool = field(default=False)
     on_submit: bool = field(default=False)
     log_offline: bool = field(default=False)
-    use_monai: bool = field(default=None)
     train_cache_num: int = field(default=0)
     val_cache_num: int = field(default=0)
 

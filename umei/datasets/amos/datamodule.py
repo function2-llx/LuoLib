@@ -107,13 +107,24 @@ class AmosDataModule(CVDataModule):
         if not on_predict:
             all_keys.append(self.args.seg_key)
             spacing_modes.append(GridSampleMode.NEAREST)
-        return monai.transforms.Compose([
-            monai.transforms.SpacingD(all_keys, pixdim=self.args.spacing, mode=spacing_modes),
-            monai.transforms.NormalizeIntensityD(self.args.img_key),
-            monai.transforms.ThresholdIntensityD(self.args.img_key, threshold=-5, above=True, cval=-5),
-            monai.transforms.ThresholdIntensityD(self.args.img_key, threshold=5, above=False, cval=5),
-            monai.transforms.ScaleIntensityD(self.args.img_key, minv=0, maxv=1),
-        ])
+        transforms = [monai.transforms.SpacingD(all_keys, pixdim=self.args.spacing, mode=spacing_modes)]
+        if self.args.norm_intensity:
+            transforms.extend([
+                monai.transforms.NormalizeIntensityD(self.args.img_key),
+                monai.transforms.ThresholdIntensityD(self.args.img_key, threshold=-5, above=True, cval=-5),
+                monai.transforms.ThresholdIntensityD(self.args.img_key, threshold=5, above=False, cval=5),
+                monai.transforms.ScaleIntensityD(self.args.img_key, minv=0, maxv=1),
+            ])
+        else:
+            transforms.append(monai.transforms.ScaleIntensityRanged(
+                self.args.img_key,
+                a_min=self.args.a_min,
+                a_max=self.args.a_max,
+                b_min=0,
+                b_max=1,
+                clip=True,
+            ))
+        return monai.transforms.Compose(transforms)
 
     @property
     def aug_transform(self) -> monai.transforms.Compose:

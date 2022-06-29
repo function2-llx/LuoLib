@@ -16,3 +16,4 @@ resnet_conv1_size: 7
 resnet_conv1_stride: 1
 base_feature_size: 64
 resnet_layer1_stride: 2
+norm_intensity: true

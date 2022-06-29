@@ -12,3 +12,4 @@ num_train_epochs: 500
 num_seg_heads: 3
 num_crop_samples: 2
 spacing: [1.2, 1.2, 5]
+norm_intensity: true
