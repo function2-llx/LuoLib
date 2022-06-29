@@ -1,6 +1,7 @@
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.strategies import DDPStrategy
+from transformers import IntervalStrategy
 import wandb
 import torch
 
@@ -48,7 +49,7 @@ def main():
             max_epochs=int(args.num_train_epochs),
             num_sanity_val_steps=5,
             log_every_n_steps=5,
-            val_check_interval=args.eval_steps,
+            check_val_every_n_epoch=args.eval_steps,
             strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),
             # limit_train_batches=0.1,
             # limit_val_batches=0.2,
