@@ -1,6 +1,5 @@
 import torch
 from torch.optim import AdamW
-from transformers.optimization import get_linear_schedule_with_warmup
 
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss
@@ -8,6 +7,8 @@ from monai.metrics import DiceMetric
 from monai.networks import one_hot
 import monai.transforms
 from monai.utils import BlendMode, MetricReduction
+
+from swin_unetr.BTCV.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from umei import UMeI
 from umei.datasets.amos import AmosArgs
 
@@ -54,10 +55,10 @@ class AmosModel(UMeI):
         return {
             'optimizer': optimizer,
             'lr_scheduler': {
-                'scheduler': get_linear_schedule_with_warmup(
+                'scheduler': LinearWarmupCosineAnnealingLR(
                     optimizer,
-                    num_warmup_steps=0,
-                    num_training_steps=int(self.args.num_train_epochs),
+                    warmup_epochs=self.args.warmup_epochs,
+                    max_epochs=int(self.args.num_train_epochs),
                 ),
                 'monitor': self.args.monitor,
             }

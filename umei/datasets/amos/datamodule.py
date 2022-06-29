@@ -128,25 +128,39 @@ class AmosDataModule(CVDataModule):
 
     @property
     def aug_transform(self) -> monai.transforms.Compose:
-        return monai.transforms.Compose([
-            monai.transforms.SpatialPadD(
-                [self.args.img_key, self.args.seg_key],
-                spatial_size=self.args.sample_shape,
-                mode=NumpyPadMode.CONSTANT
-            ),
-            monai.transforms.RandCropByLabelClassesD(
+        crop_transform = {
+            'cls': monai.transforms.RandCropByLabelClassesD(
                 [self.args.img_key, self.args.seg_key],
                 label_key=self.args.seg_key,
                 spatial_size=self.args.sample_shape,
                 num_classes=self.args.num_seg_classes,
                 num_samples=self.args.num_crop_samples,
             ),
-            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.2, spatial_axis=0),
-            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.2, spatial_axis=1),
-            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=0.2, spatial_axis=2),
-            monai.transforms.RandRotate90D([self.args.img_key, self.args.seg_key], prob=0.2, max_k=3),
-            monai.transforms.RandScaleIntensityD(self.args.img_key, factors=0.1, prob=0.1),
-            monai.transforms.RandShiftIntensityD(self.args.img_key, offsets=0.1, prob=0.1),
+            'pn': monai.transforms.RandCropByPosNegLabeld(
+                keys=[self.args.img_key, self.args.seg_key],
+                label_key=self.args.seg_key,
+                spatial_size=self.args.sample_shape,
+                pos=1,
+                neg=1,
+                num_samples=self.args.num_crop_samples,
+                image_key=self.args.img_key,
+                image_threshold=0,
+            )
+        }[self.args.crop]
+
+        return monai.transforms.Compose([
+            monai.transforms.SpatialPadD(
+                [self.args.img_key, self.args.seg_key],
+                spatial_size=self.args.sample_shape,
+                mode=NumpyPadMode.CONSTANT
+            ),
+            crop_transform,
+            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=self.args.flip_p, spatial_axis=0),
+            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=self.args.flip_p, spatial_axis=1),
+            monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=self.args.flip_p, spatial_axis=2),
+            monai.transforms.RandRotate90D([self.args.img_key, self.args.seg_key], prob=self.args.rotate_p, max_k=3),
+            monai.transforms.RandScaleIntensityD(self.args.img_key, factors=0.1, prob=self.args.scale_p),
+            monai.transforms.RandShiftIntensityD(self.args.img_key, offsets=0.1, prob=self.args.shift_p),
         ])
 
     @property

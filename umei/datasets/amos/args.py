@@ -19,8 +19,14 @@ class AmosArgs(UMeIArgs):
     a_min: float = field(default=None)
     a_max: float = field(default=None)
     norm_intensity: bool = field(default=False)
+    warmup_epochs: int = field(default=50)
     use_monai: bool = field(default=False, metadata={'help': 'run validation for models produced by '
                                                             'official monai implementation'})
+    crop: str = field(default='cls', metadata={'choices': ['cls', 'pn']})
+    flip_p: float = field(default=0.2)
+    rotate_p: float = field(default=0.2)
+    scale_p: float = field(default=0.1)
+    shift_p: float = field(default=0.1)
 
     @property
     def num_seg_classes(self) -> int:

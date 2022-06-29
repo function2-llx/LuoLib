@@ -5,6 +5,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 from torch import nn
 from torch.nn.functional import interpolate
+from torch.optim import Optimizer
 
 from .args import UMeIArgs
 from .model import UDecoderOutput, UEncoderBase, UEncoderOutput
@@ -78,6 +79,9 @@ class UMeI(LightningModule):
             return output.cls_feature
         fm = self.decoder.forward(x, output.hidden_states).feature_maps[-1]
         return self.seg_heads[0](fm)
+
+    def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
+        optimizer.zero_grad(set_to_none=self.args.optimizer_set_to_none)
 
 def build_encoder(args: UMeIArgs) -> UEncoderBase:
     if args.encoder == 'resnet':
