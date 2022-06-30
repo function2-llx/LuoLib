@@ -19,4 +19,4 @@ a_min: -175
 a_max: 250
 optimizer_set_to_none: true
 crop: pn
-squared_dice: true
+squared_dice: false

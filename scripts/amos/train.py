@@ -1,9 +1,8 @@
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.strategies import DDPStrategy
-from transformers import IntervalStrategy
-import wandb
 import torch
+import wandb
 
 from umei.datasets.amos import AmosArgs, AmosDataModule, AmosModel
 from umei.utils import MyWandbLogger, UMeIParser

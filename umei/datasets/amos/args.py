@@ -27,6 +27,10 @@ class AmosArgs(UMeIArgs):
     rotate_p: float = field(default=0.2)
     scale_p: float = field(default=0.1)
     shift_p: float = field(default=0.1)
+    dice_dr: float = field(default=1e-6)
+    dice_nr: float = field(default=0)
+    dice_include_background: bool = field(default=False)
+    squared_dice: bool = field(default=False)
 
     @property
     def num_seg_classes(self) -> int:

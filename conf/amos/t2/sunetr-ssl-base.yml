@@ -17,3 +17,4 @@ pretrain_path: pretrained/Swin-UNETR/model_swinvit.pt
 norm_intensity: true
 a_min: -5
 a_max: 5
+squared_dice: true
