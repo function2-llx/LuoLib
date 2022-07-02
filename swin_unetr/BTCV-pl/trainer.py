@@ -1,42 +1,77 @@
 from argparse import Namespace
-from collections.abc import Callable
-from typing import Optional
+from functools import partial
 
 from pytorch_lightning import LightningModule
-from torch import nn
-from torch.optim import Optimizer
+import torch
+from torch.optim import AdamW, Optimizer
 
 from monai.data import DataLoader, decollate_batch
-from monai.metrics import CumulativeIterationMetric
+from monai.inferers import sliding_window_inference
+from monai.losses import DiceCELoss
+from monai.metrics import DiceMetric
+from monai.networks.nets import SwinUNETR
+from monai.transforms import AsDiscrete
+from monai.utils import MetricReduction
+
+from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from utils.utils import AverageMeter
+from utils.data_utils import get_loader
 
 class AmosModel(LightningModule):
-    def __init__(
-        self,
-        model: nn.Module,
-        train_loader: DataLoader,
-        val_loader: DataLoader,
-        optimizer: Optimizer,
-        loss_func: nn.Module,
-        acc_func: CumulativeIterationMetric,
-        args: Namespace,
-        model_inferer: Optional[Callable] = None,
-        scheduler=None,
-        post_label=None,
-        post_pred=None,
-    ):
+    def __init__(self, args: Namespace):
         super().__init__()
-        self.model = model
-        self.train_loader = train_loader
-        self.val_loader = val_loader
-        self.optimizer = optimizer
-        self.loss_func = loss_func
-        self.acc_func = acc_func
         self.args = args
-        self.model_inferer = model_inferer
-        self.scheduler = scheduler
-        self.post_label = post_label
-        self.post_pred = post_pred
+
+        inf_size = [args.roi_x, args.roi_y, args.roi_z]
+        self.model = SwinUNETR(
+            img_size=inf_size,
+            in_channels=args.in_channels,
+            out_channels=args.out_channels,
+            feature_size=args.feature_size,
+            drop_rate=0.0,
+            attn_drop_rate=0.0,
+            dropout_path_rate=args.dropout_path_rate,
+            use_checkpoint=args.use_checkpoint,
+        )
+
+        if args.squared_dice:
+            self.loss_func = DiceCELoss(
+                to_onehot_y=True,
+                softmax=True,
+                squared_pred=True,
+                smooth_nr=args.smooth_nr,
+                smooth_dr=args.smooth_dr,
+            )
+        else:
+            self.loss_func = DiceCELoss(to_onehot_y=True, softmax=True)
+
+        self.model_inferer = partial(
+            sliding_window_inference,
+            roi_size=inf_size,
+            sw_batch_size=args.sw_batch_size,
+            predictor=self.model,
+            overlap=args.infer_overlap,
+        )
+
+        self.post_label = AsDiscrete(to_onehot=args.out_channels)
+        self.post_pred = AsDiscrete(argmax=True, to_onehot=args.out_channels)
+        self.dice_acc = DiceMetric(
+            include_background=False,
+            reduction=MetricReduction.MEAN,
+            get_not_nans=True,
+        )
+
+        if args.use_ssl_pretrained:
+            try:
+                weight = torch.load('./pretrained_models/model_swinvit.pt')
+                self.model.load_from(weights=weight)
+                print('Using pretrained self-supervied Swin UNETR backbone weights !')
+            except ValueError:
+                raise ValueError('Self-supervised pre-trained weights not available for' + str(args.model_name))
+
+        loader = get_loader(args)
+        self.train_loader = loader[0]
+        self.val_loader = loader[1]
 
         self.run_loss = AverageMeter()
         self.run_acc = AverageMeter()
@@ -48,9 +83,20 @@ class AmosModel(LightningModule):
         return self.val_loader
 
     def configure_optimizers(self):
+        assert self.args.optim_name == 'adamw'
+        optimizer = AdamW(
+            self.parameters(),
+            lr=self.args.optim_lr,
+            weight_decay=self.args.reg_weight
+        )
+        assert self.args.lrschedule == 'warmup_cosine'
         return {
-            'optimizer': self.optimizer,
-            'lr_scheduler': self.scheduler
+            'optimizer': optimizer,
+            'lr_scheduler': LinearWarmupCosineAnnealingLR(
+                optimizer,
+                warmup_epochs=self.args.warmup_epochs,
+                max_epochs=self.args.max_epochs
+            )
         }
 
     def on_train_epoch_start(self):

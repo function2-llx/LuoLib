@@ -16,7 +16,7 @@ import warnings
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR, _LRScheduler
 
-__all__ = ["LinearLR", "ExponentialLR"]
+__all__ = ["LinearLR", "ExponentialLR", 'LinearWarmupCosineAnnealingLR']
 
 
 class _LRSchedulerMONAI(_LRScheduler):

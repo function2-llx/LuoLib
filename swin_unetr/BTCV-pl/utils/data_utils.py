@@ -11,12 +11,15 @@
 
 import os
 import math
+
 import numpy as np
 import torch
+from torch.utils.data import Sampler as _TorchSampler
+
 from monai import transforms, data
 from monai.data import load_decathlon_datalist
 
-class Sampler(torch.utils.data.Sampler):
+class Sampler(_TorchSampler):
     def __init__(self, dataset, num_replicas=None, rank=None,
                  shuffle=True, make_even=True):
         if num_replicas is None:
@@ -163,14 +166,14 @@ def get_loader(args):
                                             "validation",
                                             base_dir=data_dir)
         test_ds = data.Dataset(data=test_files, transform=test_transform)
-        test_sampler = Sampler(test_ds, shuffle=False) if args.distributed else None
-        test_loader = data.DataLoader(test_ds,
-                                     batch_size=1,
-                                     shuffle=False,
-                                     num_workers=args.workers,
-                                     sampler=test_sampler,
-                                     pin_memory=True,
-                                     persistent_workers=True)
+        test_loader = data.DataLoader(
+            test_ds,
+            batch_size=1,
+            shuffle=False,
+            num_workers=args.workers,
+            pin_memory=True,
+            persistent_workers=True,
+        )
         loader = test_loader
     else:
         datalist = load_decathlon_datalist(datalist_json,
@@ -187,27 +190,25 @@ def get_loader(args):
                 cache_rate=1.0,
                 num_workers=args.workers,
             )
-        train_sampler = Sampler(train_ds) if args.distributed else None
-        train_loader = data.DataLoader(train_ds,
-                                       batch_size=args.batch_size,
-                                       shuffle=(train_sampler is None),
-                                       num_workers=args.workers,
-                                       sampler=train_sampler,
-                                       pin_memory=True,
-                                       )
+        train_loader = data.DataLoader(
+            train_ds,
+            batch_size=args.batch_size,
+            shuffle=True,
+            num_workers=args.workers,
+            pin_memory=True,
+        )
         val_files = load_decathlon_datalist(datalist_json,
                                             True,
                                             "validation",
                                             base_dir=data_dir)
         val_ds = data.Dataset(data=val_files, transform=val_transform)
-        val_sampler = Sampler(val_ds, shuffle=False) if args.distributed else None
-        val_loader = data.DataLoader(val_ds,
-                                     batch_size=1,
-                                     shuffle=False,
-                                     num_workers=args.workers,
-                                     sampler=val_sampler,
-                                     pin_memory=True,
-                                     )
+        val_loader = data.DataLoader(
+            val_ds,
+            batch_size=1,
+            shuffle=False,
+            num_workers=args.workers,
+            pin_memory=True,
+        )
         loader = [train_loader, val_loader]
 
     return loader
