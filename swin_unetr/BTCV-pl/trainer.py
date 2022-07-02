@@ -9,7 +9,8 @@ from monai.data import DataLoader, decollate_batch
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
-from monai.networks.nets import SwinUNETR
+from monai.networks.blocks import UnetOutBlock
+from monai.networks.nets import SwinUNETR, SwinTransformer, SwinUnetrDecoder
 from monai.transforms import AsDiscrete
 from monai.utils import MetricReduction
 
@@ -23,16 +24,35 @@ class AmosModel(LightningModule):
         self.args = args
 
         inf_size = [args.roi_x, args.roi_y, args.roi_z]
-        self.model = SwinUNETR(
-            img_size=inf_size,
-            in_channels=args.in_channels,
-            out_channels=args.out_channels,
-            feature_size=args.feature_size,
-            drop_rate=0.0,
-            attn_drop_rate=0.0,
-            dropout_path_rate=args.dropout_path_rate,
-            use_checkpoint=args.use_checkpoint,
-        )
+        if args.split_model:
+            self.encoder = SwinTransformer(
+                in_chans=args.num_input_channels,
+                embed_dim=args.base_feature_size,
+                window_size=(7, 7, 7),
+                patch_size=(args.vit_patch_size, args.vit_patch_size, args.vit_patch_size),
+                depths=(2, 2, 2, 2),
+                num_heads=(3, 6, 12, 24),
+                # mlp_ratio=4.0,
+                # qkv_bias=True,
+                use_checkpoint=True,
+            )
+            self.decoder = SwinUnetrDecoder(args.num_input_channels, feature_size=args.feature_size)
+            self.seg_head = UnetOutBlock(
+                spatial_dims=3,
+                in_channels=args.feature_size,
+                out_channels=args.num_seg_classes,
+            )
+        else:
+            self.model = SwinUNETR(
+                img_size=inf_size,
+                in_channels=args.in_channels,
+                out_channels=args.out_channels,
+                feature_size=args.feature_size,
+                drop_rate=0.0,
+                attn_drop_rate=0.0,
+                dropout_path_rate=args.dropout_path_rate,
+                use_checkpoint=args.use_checkpoint,
+            )
 
         if args.squared_dice:
             self.loss_func = DiceCELoss(
@@ -49,13 +69,13 @@ class AmosModel(LightningModule):
             sliding_window_inference,
             roi_size=inf_size,
             sw_batch_size=args.sw_batch_size,
-            predictor=self.model,
+            predictor=self.forward,
             overlap=args.infer_overlap,
         )
 
         self.post_label = AsDiscrete(to_onehot=args.out_channels)
         self.post_pred = AsDiscrete(argmax=True, to_onehot=args.out_channels)
-        self.dice_acc = DiceMetric(
+        self.acc_func = DiceMetric(
             include_background=False,
             reduction=MetricReduction.MEAN,
             get_not_nans=True,
@@ -75,6 +95,14 @@ class AmosModel(LightningModule):
 
         self.run_loss = AverageMeter()
         self.run_acc = AverageMeter()
+
+    def forward(self, x: torch.Tensor):
+        if self.args.split_model:
+            e_out = self.encoder.forward(x)
+            fm = self.decoder.forward(x, e_out.hidden_states).feature_maps[-1]
+            return self.seg_head(fm)
+        else:
+            return self.model(x)
 
     def train_dataloader(self):
         return self.train_loader
@@ -131,11 +159,7 @@ class AmosModel(LightningModule):
             data, target = batch_data
         else:
             data, target = batch_data['image'], batch_data['label']
-
-        if self.model_inferer is not None:
-            logits = self.model_inferer(data)
-        else:
-            logits = self.model(data)
+        logits = self.model_inferer(data)
         val_labels_list = decollate_batch(target)
         val_labels_convert = [self.post_label(val_label_tensor) for val_label_tensor in val_labels_list]
         val_outputs_list = decollate_batch(logits)

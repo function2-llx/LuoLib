@@ -89,6 +89,7 @@ parser.add_argument('--squared_dice', action='store_true', help='use squared Dic
 
 parser.add_argument('--exp_name', type=str, default=None)
 parser.add_argument('--log_offline', action='store_true')
+parser.add_argument('--split_model', action='store_true')
 
 def main():
     args = parser.parse_args()
