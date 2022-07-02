@@ -5,18 +5,18 @@ from pytorch_lightning import LightningModule
 import torch
 from torch.optim import AdamW, Optimizer
 
-from monai.data import DataLoader, decollate_batch
+from monai.data import decollate_batch
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks.blocks import UnetOutBlock
-from monai.networks.nets import SwinUNETR, SwinTransformer, SwinUnetrDecoder
+from monai.networks.nets import SwinTransformer, SwinUNETR, SwinUnetrDecoder
 from monai.transforms import AsDiscrete
 from monai.utils import MetricReduction
 
 from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
-from utils.utils import AverageMeter
 from utils.data_utils import get_loader
+from utils.utils import AverageMeter
 
 class AmosModel(LightningModule):
     def __init__(self, args: Namespace):
@@ -135,9 +135,9 @@ class AmosModel(LightningModule):
             data, target = batch_data
         else:
             data, target = batch_data['image'], batch_data['label']
-        for param in self.model.parameters():
+        for param in self.parameters():
             param.grad = None
-        logits = self.model(data)
+        logits = self.forward(data)
         loss = self.loss_func(logits, target)
         self.log('train/loss', loss.item())
         self.run_loss.update(loss.item(), n=data.shape[0])
@@ -145,7 +145,7 @@ class AmosModel(LightningModule):
 
     def on_train_epoch_end(self):
         # self.log('train/loss', self.run_loss.avg)
-        for param in self.model.parameters():
+        for param in self.parameters():
             param.grad = None
 
     def optimizer_zero_grad(self, epoch: int, batch_idx: int, optimizer: Optimizer, optimizer_idx: int):
