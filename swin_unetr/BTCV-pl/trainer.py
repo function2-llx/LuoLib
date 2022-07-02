@@ -162,4 +162,4 @@ class AmosModel(LightningModule):
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i])
         self.log('val/dice/avg', dice[1:].mean())
-        self.log('val/acc', self.run_acc.avg)
+        self.log('val/acc', self.run_acc.avg * 100)
