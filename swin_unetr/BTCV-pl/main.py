@@ -4,10 +4,13 @@ from pathlib import Path
 import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from ruamel.yaml import YAML
 
 from umei.utils import MyWandbLogger
 
 from trainer import AmosModel
+
+yaml = YAML()
 
 parser = argparse.ArgumentParser(description='Swin UNETR segmentation pipeline')
 parser.add_argument('--checkpoint', default=None, help='start training from saved checkpoint')
@@ -75,6 +78,7 @@ def main():
     args.amp = not args.noamp
     args.logdir = './runs/' + args.logdir
     Path(args.logdir).mkdir(parents=True, exist_ok=True)
+    yaml.dump(args.__dict__, Path(args.logdir) / 'conf.yml')
     main_worker(args=args)
 
 def main_worker(args):
