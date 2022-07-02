@@ -10,29 +10,18 @@
 # limitations under the License.
 
 import argparse
-from functools import partial
-import os
 from pathlib import Path
 
 import numpy as np
+import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 import torch
-import torch.distributed as dist
-import torch.multiprocessing as mp
 import torch.nn.parallel
 import torch.utils.data.distributed
-import pytorch_lightning as pl
 
-from monai.inferers import sliding_window_inference
-from monai.losses import DiceCELoss
-from monai.metrics import DiceMetric
-from monai.networks.nets import SwinUNETR
-from monai.transforms import AsDiscrete
-from monai.utils.enums import MetricReduction
+from umei.utils import MyWandbLogger
 
 from trainer import AmosModel
-from umei.utils import MyWandbLogger
-from utils.data_utils import get_loader
 
 parser = argparse.ArgumentParser(description='Swin UNETR segmentation pipeline')
 parser.add_argument('--checkpoint', default=None, help='start training from saved checkpoint')
@@ -121,9 +110,9 @@ def main_worker(args):
         callbacks=[
             ModelCheckpoint(
                 dirpath=args.logdir,
-                filename='val-acc={val/acc:.3f}',
+                filename='best={val/dice/avg:.3f}',
                 auto_insert_metric_name=False,
-                monitor='val/acc',
+                monitor='val/dice/avg',
                 mode='max',
                 verbose=True,
                 save_last=True,

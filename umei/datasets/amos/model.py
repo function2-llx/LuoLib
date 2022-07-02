@@ -54,8 +54,8 @@ class AmosModel(UMeI):
     def validation_epoch_end(self, *args) -> None:
         dice = self.dice_metric.aggregate() * 100
         for i in range(dice.shape[0]):
-            self.log(f'val/dice/{i}', dice[i].item())
-        self.log('val/dice/avg', dice[1:].mean().item())
+            self.log(f'val/dice/{i}', dice[i])
+        self.log('val/dice/avg', dice[1:].mean())
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)

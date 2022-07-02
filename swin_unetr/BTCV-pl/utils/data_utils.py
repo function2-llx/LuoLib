@@ -10,68 +10,22 @@
 # limitations under the License.
 
 import os
-import math
 
-import numpy as np
-import torch
-from torch.utils.data import Sampler as _TorchSampler
-
-from monai import transforms, data
+from monai import data, transforms
 from monai.data import load_decathlon_datalist
-
-class Sampler(_TorchSampler):
-    def __init__(self, dataset, num_replicas=None, rank=None,
-                 shuffle=True, make_even=True):
-        if num_replicas is None:
-            if not torch.distributed.is_available():
-                raise RuntimeError("Requires distributed package to be available")
-            num_replicas = torch.distributed.get_world_size()
-        if rank is None:
-            if not torch.distributed.is_available():
-                raise RuntimeError("Requires distributed package to be available")
-            rank = torch.distributed.get_rank()
-        self.shuffle = shuffle
-        self.make_even = make_even
-        self.dataset = dataset
-        self.num_replicas = num_replicas
-        self.rank = rank
-        self.epoch = 0
-        self.num_samples = int(math.ceil(len(self.dataset) * 1.0 / self.num_replicas))
-        self.total_size = self.num_samples * self.num_replicas
-        indices = list(range(len(self.dataset)))
-        self.valid_length = len(indices[self.rank:self.total_size:self.num_replicas])
-
-    def __iter__(self):
-        if self.shuffle:
-            g = torch.Generator()
-            g.manual_seed(self.epoch)
-            indices = torch.randperm(len(self.dataset), generator=g).tolist()
-        else:
-            indices = list(range(len(self.dataset)))
-        if self.make_even:
-            if len(indices) < self.total_size:
-                if self.total_size - len(indices) < len(indices):
-                    indices += indices[:(self.total_size - len(indices))]
-                else:
-                    extra_ids = np.random.randint(low=0,high=len(indices), size=self.total_size - len(indices))
-                    indices += [indices[ids] for ids in extra_ids]
-            assert len(indices) == self.total_size
-        indices = indices[self.rank:self.total_size:self.num_replicas]
-        self.num_samples = len(indices)
-        return iter(indices)
-
-    def __len__(self):
-        return self.num_samples
-
-    def set_epoch(self, epoch):
-        self.epoch = epoch
 
 def get_loader(args):
     data_dir = args.data_dir
     datalist_json = os.path.join(data_dir, args.json_list)
+
+    def fix_seg_affine(data: dict):
+        data['label_meta_dict']['affine'] = data[f'image_meta_dict']['affine']
+        return data
+
     train_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
+            transforms.Lambda(fix_seg_affine),
             transforms.AddChanneld(keys=["image", "label"]),
             transforms.Orientationd(keys=["image", "label"],
                                     axcodes="RAS"),
@@ -84,7 +38,7 @@ def get_loader(args):
                                             b_min=args.b_min,
                                             b_max=args.b_max,
                                             clip=True),
-            transforms.CropForegroundd(keys=["image", "label"], source_key="image"),
+            # transforms.CropForegroundd(keys=["image", "label"], source_key="image"),
             transforms.SpatialPadD(
                 keys=['image', 'label'],
                 spatial_size=(args.roi_x, args.roi_y, args.roi_z),
@@ -125,6 +79,7 @@ def get_loader(args):
     val_transform = transforms.Compose(
         [
             transforms.LoadImaged(keys=["image", "label"]),
+            transforms.Lambda(fix_seg_affine),
             transforms.AddChanneld(keys=["image", "label"]),
             transforms.Orientationd(keys=["image", "label"],
                                     axcodes="RAS"),
@@ -137,7 +92,7 @@ def get_loader(args):
                                             b_min=args.b_min,
                                             b_max=args.b_max,
                                             clip=True),
-            transforms.CropForegroundd(keys=["image", "label"], source_key="image"),
+            # transforms.CropForegroundd(keys=["image", "label"], source_key="image"),
             transforms.ToTensord(keys=["image", "label"]),
         ]
     )
