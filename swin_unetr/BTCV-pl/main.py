@@ -1,23 +1,9 @@
-# Copyright 2020 - 2022 MONAI Consortium
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#     http://www.apache.org/licenses/LICENSE-2.0
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import argparse
 from pathlib import Path
 
 import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-import torch
-import torch.nn.parallel
-import torch.utils.data.distributed
 
 from umei.utils import MyWandbLogger
 
@@ -79,6 +65,8 @@ parser.add_argument('--squared_dice', action='store_true', help='use squared Dic
 parser.add_argument('--exp_name', type=str, default=None)
 parser.add_argument('--log_offline', action='store_true')
 parser.add_argument('--split_model', action='store_true')
+parser.add_argument('--blend_mode', type=str, choices=['constant', 'gaussian'])
+parser.add_argument('--interpolate', action='store_true')
 
 def main():
     args = parser.parse_args()

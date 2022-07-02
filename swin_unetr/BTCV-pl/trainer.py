@@ -72,7 +72,7 @@ class AmosModel(LightningModule):
             sw_batch_size=args.sw_batch_size,
             predictor=self.forward,
             overlap=args.infer_overlap,
-            mode=BlendMode.GAUSSIAN,
+            mode=args.blend_mode,
         )
 
         self.post_label = AsDiscrete(to_onehot=args.out_channels)
@@ -127,12 +127,9 @@ class AmosModel(LightningModule):
 
     def training_step(self, batch_data, idx, *args, **kwargs):
         data, target = batch_data['image'], batch_data['label']
-        if self.args.split_model:
-            e_out = self.encoder.forward(data)
-            fm = self.decoder.forward(data, e_out.hidden_states).feature_maps[-1]
-            logits = interpolate(self.seg_head(fm), target.shape[2:], mode='trilinear')
-        else:
-            logits = self.model(data)
+        logits = self.forward(data)
+        if self.args.interpolate:
+            logits = interpolate(logits, target.shape[2:], mode='trilinear')
         loss = self.loss_func(logits, target)
         self.log('train/loss', loss)
         return loss
