@@ -90,9 +90,8 @@ def main():
     main_worker(args=args)
 
 def main_worker(args):
+    pl.seed_everything(42)
     np.set_printoptions(formatter={'float': '{: 0.3f}'.format}, suppress=True)
-
-    torch.backends.cudnn.benchmark = True
     args.test_mode = False
 
     print('Batch size is:', args.batch_size, 'epochs', args.max_epochs)

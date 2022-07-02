@@ -77,7 +77,7 @@ class AmosModel(LightningModule):
 
         self.post_label = AsDiscrete(to_onehot=args.out_channels)
         self.post_pred = AsDiscrete(argmax=True, to_onehot=args.out_channels)
-        self.acc_func = DiceMetric(reduction=MetricReduction.MEAN)
+        self.acc_func = DiceMetric()
 
         if args.use_ssl_pretrained:
             try:
@@ -150,7 +150,7 @@ class AmosModel(LightningModule):
         self.acc_func(y_pred=val_output_convert, y=val_labels_convert)
 
     def validation_epoch_end(self, _outputs):
-        dice = self.acc_func.aggregate() * 100
+        dice = self.acc_func.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i])
         self.log('val/dice/avg', dice[1:].mean())

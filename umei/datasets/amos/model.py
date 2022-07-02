@@ -31,7 +31,7 @@ class AmosModel(UMeI):
             monai.transforms.KeepLargestConnectedComponent(is_onehot=False),
             # monai.transforms.FillHoles(),
         ])
-        self.dice_metric = DiceMetric(reduction=MetricReduction.MEAN_BATCH)
+        self.dice_metric = DiceMetric()
 
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         batch = batch['val']
@@ -52,7 +52,7 @@ class AmosModel(UMeI):
         )
 
     def validation_epoch_end(self, *args) -> None:
-        dice = self.dice_metric.aggregate() * 100
+        dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i])
         self.log('val/dice/avg', dice[1:].mean())
