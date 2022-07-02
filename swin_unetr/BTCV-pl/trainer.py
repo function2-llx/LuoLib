@@ -26,21 +26,21 @@ class AmosModel(LightningModule):
         inf_size = [args.roi_x, args.roi_y, args.roi_z]
         if args.split_model:
             self.encoder = SwinTransformer(
-                in_chans=args.num_input_channels,
-                embed_dim=args.base_feature_size,
+                in_chans=args.in_channels,
+                embed_dim=args.feature_size,
                 window_size=(7, 7, 7),
-                patch_size=(args.vit_patch_size, args.vit_patch_size, args.vit_patch_size),
+                patch_size=(2, 2, 2),
                 depths=(2, 2, 2, 2),
                 num_heads=(3, 6, 12, 24),
                 # mlp_ratio=4.0,
                 # qkv_bias=True,
                 use_checkpoint=True,
             )
-            self.decoder = SwinUnetrDecoder(args.num_input_channels, feature_size=args.feature_size)
+            self.decoder = SwinUnetrDecoder(args.in_channels, feature_size=args.feature_size)
             self.seg_head = UnetOutBlock(
                 spatial_dims=3,
                 in_channels=args.feature_size,
-                out_channels=args.num_seg_classes,
+                out_channels=args.out_channels,
             )
         else:
             self.model = SwinUNETR(
