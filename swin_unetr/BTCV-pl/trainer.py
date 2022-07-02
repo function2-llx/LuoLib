@@ -130,8 +130,7 @@ class AmosModel(LightningModule):
         if self.args.split_model:
             e_out = self.encoder.forward(data)
             fm = self.decoder.forward(data, e_out.hidden_states).feature_maps[-1]
-            r_fm = interpolate(self.seg_head(fm), target.shape[2:], mode='trilinear')
-            logits = self.seg_head(r_fm)
+            logits = interpolate(self.seg_head(fm), target.shape[2:], mode='trilinear')
         else:
             logits = self.model(data)
         loss = self.loss_func(logits, target)
@@ -151,7 +150,7 @@ class AmosModel(LightningModule):
         self.acc_func(y_pred=val_output_convert, y=val_labels_convert)
 
     def validation_epoch_end(self, _outputs):
-        dice = self.dice_metric.aggregate() * 100
+        dice = self.acc_func.aggregate() * 100
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i])
         self.log('val/dice/avg', dice[1:].mean())
