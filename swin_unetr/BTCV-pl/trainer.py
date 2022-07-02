@@ -13,15 +13,17 @@ from monai.metrics import DiceMetric
 from monai.networks.blocks import UnetOutBlock
 from monai.networks.nets import SwinTransformer, SwinUNETR, SwinUnetrDecoder
 from monai.transforms import AsDiscrete
-from monai.utils import BlendMode, MetricReduction
+from monai.utils import MetricReduction
 
 from optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from utils.data_utils import get_loader
+from utils.utils import AverageMeter
 
 class AmosModel(LightningModule):
     def __init__(self, args: Namespace):
         super().__init__()
         self.args = args
+        self.run_acc = AverageMeter()
 
         inf_size = [args.roi_x, args.roi_y, args.roi_z]
         if args.split_model:
@@ -78,6 +80,7 @@ class AmosModel(LightningModule):
         self.post_label = AsDiscrete(to_onehot=args.out_channels)
         self.post_pred = AsDiscrete(argmax=True, to_onehot=args.out_channels)
         self.acc_func = DiceMetric()
+        self.run_acc_func = DiceMetric(include_background=False, get_not_nans=True)
 
         if args.use_ssl_pretrained:
             try:
@@ -137,6 +140,10 @@ class AmosModel(LightningModule):
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
         optimizer.zero_grad(set_to_none=True)
 
+    def on_validation_epoch_start(self):
+        self.acc_func.reset()
+        self.run_acc.reset()
+
     def validation_step(self, batch_data, idx, *args, **kwargs):
         data, target = batch_data['image'], batch_data['label']
         logits = self.model_inferer(data)
@@ -145,9 +152,14 @@ class AmosModel(LightningModule):
         val_outputs_list = decollate_batch(logits)
         val_output_convert = [self.post_pred(val_pred_tensor) for val_pred_tensor in val_outputs_list]
         self.acc_func(y_pred=val_output_convert, y=val_labels_convert)
+        self.run_acc_func.reset()
+        self.run_acc_func(y_pred=val_output_convert, y=val_labels_convert)
+        acc, not_nans = self.run_acc_func.aggregate()
+        self.run_acc.update(acc.item(), n=not_nans.item())
 
     def validation_epoch_end(self, _outputs):
         dice = self.acc_func.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i])
         self.log('val/dice/avg', dice[1:].mean())
+        self.log('val/acc', self.run_acc.avg)

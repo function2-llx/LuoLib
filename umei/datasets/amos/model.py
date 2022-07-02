@@ -33,6 +33,9 @@ class AmosModel(UMeI):
         ])
         self.dice_metric = DiceMetric()
 
+    def on_validation_epoch_start(self):
+        self.dice_metric.reset()
+
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         batch = batch['val']
         pred_logit = sliding_window_inference(

@@ -65,6 +65,7 @@ parser.add_argument('--use_ssl_pretrained', action='store_true', help='use self-
 parser.add_argument('--spatial_dims', default=3, type=int, help='spatial dimension of input data')
 parser.add_argument('--squared_dice', action='store_true', help='use squared Dice')
 
+parser.add_argument('--seed', type=int, default=None)
 parser.add_argument('--exp_name', type=str, default=None)
 parser.add_argument('--log_offline', action='store_true')
 parser.add_argument('--split_model', action='store_true')
@@ -82,7 +83,8 @@ def main():
     main_worker(args=args)
 
 def main_worker(args):
-    pl.seed_everything(42)
+    if args.seed is not None:
+        pl.seed_everything(args.seed)
     np.set_printoptions(formatter={'float': '{: 0.3f}'.format}, suppress=True)
     args.test_mode = False
 
