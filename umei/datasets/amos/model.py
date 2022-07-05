@@ -45,8 +45,9 @@ class AmosModel(UMeI):
             predictor=self.forward,
             overlap=self.args.val_sw_overlap,
             mode=BlendMode.GAUSSIAN,
+            device='cpu',   # save gpu memory
         )
-        pred = torch.stack(pred_logits).softmax(dim=2).mean(dim=0).argmax(dim=1, keepdim=True)
+        pred = torch.stack(pred_logits).softmax(dim=2).mean(dim=0).to(self.device).argmax(dim=1, keepdim=True)
         if self.args.val_post:
             pred = torch.stack([self.post_transform(p) for p in pred])
         self.dice_metric(
