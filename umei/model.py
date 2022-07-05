@@ -8,17 +8,17 @@ from torch import nn
 
 @dataclass
 class UEncoderOutput:
-    cls_feature: torch.FloatTensor = None
-    hidden_states: list[torch.FloatTensor] = field(default_factory=list)
+    cls_feature: torch.Tensor = None
+    hidden_states: list[torch.Tensor] = field(default_factory=list)
 
 class UEncoderBase(nn.Module):
-    def forward(self, img: torch.FloatTensor) -> UEncoderOutput:
+    def forward(self, img: torch.Tensor) -> UEncoderOutput:
         raise NotImplementedError
 
 @dataclass
 class UDecoderOutput:
-    feature_maps: list[torch.FloatTensor]
+    feature_maps: list[torch.Tensor]
 
 class UDecoderBase(nn.Module):
-    def forward(self, img: torch.FloatTensor, encoder_hidden_states: list[torch.FloatTensor]) -> UDecoderOutput:
+    def forward(self, img: torch.Tensor, encoder_hidden_states: list[torch.Tensor]) -> UDecoderOutput:
         raise not NotImplementedError

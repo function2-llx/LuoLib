@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+from collections.abc import Sequence
 from typing import Optional
 
 from pytorch_lightning import LightningModule
@@ -58,13 +61,13 @@ class UMeI(LightningModule):
             ret['cls_logit'] = cls_out
         if self.decoder is not None and self.args.seg_key in batch:
             seg_label: torch.IntTensor = batch[self.args.seg_key]
-            decoder_out: UDecoderOutput = self.decoder.forward(img, encoder_out.hidden_states)
+            feature_maps = self.decoder.forward(img, encoder_out.hidden_states).feature_maps
             seg_loss = torch.sum(torch.stack([
                 self.seg_loss_fn(
-                    interpolate(seg_head(feature_map), seg_label.shape[2:], mode='trilinear'),
+                    interpolate(seg_head(fm), seg_label.shape[2:], mode='trilinear'),
                     seg_label
                 ) / 2 ** i
-                for i, (feature_map, seg_head) in enumerate(zip(decoder_out.feature_maps[::-1], self.seg_heads))
+                for i, (fm, seg_head) in enumerate(zip(reversed(feature_maps), self.seg_heads))
             ]))
             ret['loss'] += seg_loss * self.args.seg_loss_factor
             ret['seg_loss'] = seg_loss
@@ -73,12 +76,15 @@ class UMeI(LightningModule):
                 self.log(f'train/{k}', ret[k])
         return ret
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> torch.Tensor | list[torch.Tensor]:
         output = self.encoder.forward(x)
         if self.decoder is None:
             return output.cls_feature
-        fm = self.decoder.forward(x, output.hidden_states).feature_maps[-1]
-        return self.seg_heads[0](fm)
+        feature_maps = self.decoder.forward(x, output.hidden_states).feature_maps
+        return [
+            interpolate(seg_head(fm), x.shape[2:], mode='trilinear')
+            for fm, seg_head in zip(reversed(feature_maps), self.seg_heads)
+        ]
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
         optimizer.zero_grad(set_to_none=self.args.optimizer_set_to_none)

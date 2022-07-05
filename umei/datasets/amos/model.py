@@ -1,5 +1,6 @@
 import torch
 from torch.optim import AdamW
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss
@@ -8,7 +9,6 @@ from monai.networks import one_hot
 import monai.transforms
 from monai.utils import BlendMode, MetricReduction
 
-from swin_unetr.BTCV.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from umei import UMeI
 from umei.datasets.amos import AmosArgs
 
@@ -38,7 +38,7 @@ class AmosModel(UMeI):
 
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         batch = batch['val']
-        pred_logit = sliding_window_inference(
+        pred_logits: list[torch.Tensor] = sliding_window_inference(
             batch[self.args.img_key],
             roi_size=self.args.sample_shape,
             sw_batch_size=self.args.sw_batch_size,
@@ -46,7 +46,7 @@ class AmosModel(UMeI):
             overlap=self.args.val_sw_overlap,
             mode=BlendMode.GAUSSIAN,
         )
-        pred = pred_logit.argmax(dim=1, keepdim=True)
+        pred = torch.stack(pred_logits).softmax(dim=2).mean(dim=0).argmax(dim=1, keepdim=True)
         if self.args.val_post:
             pred = torch.stack([self.post_transform(p) for p in pred])
         self.dice_metric(
@@ -64,12 +64,5 @@ class AmosModel(UMeI):
         optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
         return {
             'optimizer': optimizer,
-            'lr_scheduler': {
-                'scheduler': LinearWarmupCosineAnnealingLR(
-                    optimizer,
-                    warmup_epochs=self.args.warmup_epochs,
-                    max_epochs=int(self.args.num_train_epochs),
-                ),
-                'monitor': self.args.monitor,
-            }
+            'lr_scheduler': CosineAnnealingLR(optimizer, T_max=int(self.args.num_train_epochs)),
         }
