@@ -76,15 +76,15 @@ class UMeI(LightningModule):
                 self.log(f'train/{k}', ret[k])
         return ret
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor | list[torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         output = self.encoder.forward(x)
         if self.decoder is None:
             return output.cls_feature
         feature_maps = self.decoder.forward(x, output.hidden_states).feature_maps
-        return [
+        return torch.stack([
             interpolate(seg_head(fm), x.shape[2:], mode='trilinear')
             for fm, seg_head in zip(reversed(feature_maps), self.seg_heads)
-        ]
+        ]).softmax(dim=2).mean(dim=0)
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
         optimizer.zero_grad(set_to_none=self.args.optimizer_set_to_none)

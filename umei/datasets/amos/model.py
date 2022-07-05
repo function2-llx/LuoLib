@@ -38,16 +38,15 @@ class AmosModel(UMeI):
 
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         batch = batch['val']
-        pred_logits: list[torch.Tensor] = sliding_window_inference(
+        pred_dist = sliding_window_inference(
             batch[self.args.img_key],
             roi_size=self.args.sample_shape,
             sw_batch_size=self.args.sw_batch_size,
             predictor=self.forward,
             overlap=self.args.val_sw_overlap,
             mode=BlendMode.GAUSSIAN,
-            device='cpu',   # save gpu memory
         )
-        pred = torch.stack(pred_logits).softmax(dim=2).mean(dim=0).to(self.device).argmax(dim=1, keepdim=True)
+        pred = pred_dist.argmax(dim=1, keepdim=True)
         if self.args.val_post:
             pred = torch.stack([self.post_transform(p) for p in pred])
         self.dice_metric(
