@@ -46,7 +46,7 @@ def main():
             precision=args.precision,
             benchmark=True,
             max_epochs=int(args.num_train_epochs),
-            num_sanity_val_steps=5,
+            num_sanity_val_steps=args.num_sanity_val_steps,
             log_every_n_steps=5,
             check_val_every_n_epoch=args.eval_steps,
             strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),

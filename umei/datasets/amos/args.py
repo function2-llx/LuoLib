@@ -12,7 +12,7 @@ class AmosArgs(UMeIArgs):
     num_crop_samples: int = field(default=4)
     use_test_fold: bool = field(default=False)
     per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
-    sw_batch_size: int = field(default=16)
+    sw_batch_size: int = field(default=8)
     val_sw_overlap: float = field(default=0.25)
     val_post: bool = field(default=False, metadata={'help': 'whether to perform post-processing during validation'})
     task_id: int = field(default=2, metadata={'choices': [1, 2]})
@@ -21,7 +21,7 @@ class AmosArgs(UMeIArgs):
     norm_intensity: bool = field(default=False)
     warmup_epochs: int = field(default=50)
     use_monai: bool = field(default=False, metadata={'help': 'run validation for models produced by '
-                                                            'official monai implementation'})
+                                                             'official monai implementation'})
     crop: str = field(default='cls', metadata={'choices': ['cls', 'pn']})
     flip_p: float = field(default=0.2)
     rotate_p: float = field(default=0.2)

@@ -59,6 +59,7 @@ class UMeIArgs(TrainingArguments):
     train_cache_num: int = field(default=0)
     val_cache_num: int = field(default=0)
     optimizer_set_to_none: bool = field(default=False)
+    num_sanity_val_steps: int = field(default=5)
 
     @property
     def sample_shape(self) -> tuple[int, int, int]:
