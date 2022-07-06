@@ -62,13 +62,13 @@ class UMeI(LightningModule):
         if self.decoder is not None and self.args.seg_key in batch:
             seg_label: torch.IntTensor = batch[self.args.seg_key]
             feature_maps = self.decoder.forward(img, encoder_out.hidden_states).feature_maps
-            seg_loss = torch.sum(torch.stack([
+            seg_loss = torch.stack([
                 self.seg_loss_fn(
                     interpolate(seg_head(fm), seg_label.shape[2:], mode='trilinear'),
                     seg_label
                 ) / 2 ** i
                 for i, (fm, seg_head) in enumerate(zip(reversed(feature_maps), self.seg_heads))
-            ]))
+            ]).sum()
             ret['loss'] += seg_loss * self.args.seg_loss_factor
             ret['seg_loss'] = seg_loss
         for k in ['cls_loss', 'seg_loss']:
@@ -81,10 +81,13 @@ class UMeI(LightningModule):
         if self.decoder is None:
             return output.cls_feature
         feature_maps = self.decoder.forward(x, output.hidden_states).feature_maps
-        return torch.stack([
-            interpolate(seg_head(fm), x.shape[2:], mode='trilinear')
-            for fm, seg_head in zip(reversed(feature_maps), self.seg_heads)
-        ]).softmax(dim=2).mean(dim=0)
+        if self.args.self_ensemble:
+            return torch.stack([
+                interpolate(seg_head(fm), x.shape[2:], mode='trilinear')
+                for fm, seg_head in zip(reversed(feature_maps), self.seg_heads)
+            ]).softmax(dim=2).mean(dim=0)
+        else:
+            return self.seg_heads[0](feature_maps[-1]).softmax(dim=1)
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
         optimizer.zero_grad(set_to_none=self.args.optimizer_set_to_none)
