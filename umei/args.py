@@ -23,6 +23,10 @@ class UMeIArgs(TrainingArguments):
     spacing: list[float] = field(default=None)
     vit_patch_size: int = field(default=8)
     vit_hidden_size: int = field(default=768)
+    swin_window_size: list[int] = field(default_factory=lambda: [7, 7, 7])
+    vit_patch_shape: list[int] = field(default_factory=lambda: [2, 2, 2])
+    vit_num_heads: list[int] = field(default_factory=lambda: [3, 6, 12, 24])
+    vit_depths: list[int] = field(default_factory=lambda: [2, 2, 2, 2])
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
     num_seg_heads: int = field(default=1)

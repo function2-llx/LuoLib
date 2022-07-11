@@ -6,7 +6,6 @@ from torchmetrics import AUROC
 from tqdm import tqdm
 
 from umei.datasets.stoic2021 import Stoic2021Args, Stoic2021DataModule, Stoic2021Model
-from umei.umei import build_encoder
 from umei.utils import UMeIParser
 
 # torch.multiprocessing.set_sharing_strategy('file_system')
