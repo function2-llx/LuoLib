@@ -17,7 +17,7 @@ def main():
             continue
         pl.seed_everything(args.seed)
         datamodule.val_id = val_fold_id
-        output_dir = args.output_dir / f'run-{args}' / f'fold{val_fold_id}'
+        output_dir = args.output_dir / f'run-{args.seed}' / f'fold{val_fold_id}'
         output_dir.mkdir(exist_ok=True, parents=True)
         trainer = pl.Trainer(
             logger=MyWandbLogger(
