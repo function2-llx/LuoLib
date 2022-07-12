@@ -8,8 +8,6 @@ from typing import Any, Optional
 from ruamel.yaml import YAML
 from transformers import HfArgumentParser
 
-from monai.config import PathLike
-
 yaml = YAML()
 
 class UMeIParser(HfArgumentParser):
