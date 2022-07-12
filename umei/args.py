@@ -21,6 +21,7 @@ class UMeIArgs(TrainingArguments):
     sample_size: int = field(default=144)
     sample_slices: int = field(default=160)
     spacing: list[float] = field(default=None)
+    norm_intensity: bool = field(default=False)
     vit_hidden_size: int = field(default=768)
     swin_window_size: list[int] = field(default_factory=lambda: [7, 7, 7])
     vit_patch_shape: list[int] = field(default_factory=lambda: [2, 2, 2])
@@ -96,6 +97,8 @@ class UMeIArgs(TrainingArguments):
         # as well as a lot of strange things happens
         # super().__post_init__()
         # self.output_dir = Path(self.output_dir)
+        for size, patch_size in zip(self.sample_shape, self.vit_patch_shape):
+            assert size % patch_size == 0
         if self.fold_ids is None:
             self.fold_ids = list(range(self.num_folds))
         else:

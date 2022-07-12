@@ -1,3 +1,3 @@
-from .datamodule import AmosDataModule
+from .datamodule import AmosDataModule, AmosSwinMAEDataModule
 from .args import AmosArgs
 from .model import AmosModel

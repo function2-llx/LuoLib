@@ -22,7 +22,7 @@ def main():
         trainer = pl.Trainer(
             logger=MyWandbLogger(
                 project='amos',
-                name=f'{args.exp_name}/fold{val_fold_id}',
+                name=f'{args.exp_name}/runs-{args.seed}/fold{val_fold_id}',
                 save_dir=str(output_dir),
                 group=args.exp_name,
                 offline=args.log_offline,

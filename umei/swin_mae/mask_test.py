@@ -1,9 +1,8 @@
-from einops import rearrange
 import torch
 from tqdm import trange
 
-from umei.swin_mae.model import MaskSwin
 from umei.swin_mae.args import SwinMAEArgs
+from umei.swin_mae.model import MaskSwin
 
 def main():
     args: SwinMAEArgs = SwinMAEArgs.from_yaml_file('../../conf/amos/t1/swin_mae-96x96.yml')
@@ -22,10 +21,13 @@ def main():
     ).cuda().eval()
 
     print('expected mask ratio:', args.mask_ratio)
+    results = []
     with torch.no_grad():
-        for _ in trange(1000):
+        for _ in trange(1000, ncols=80):
             x = torch.randn(4, 1, 96, 96, 96, device='cuda')
-            print(mask_swin(x))
+            results.append(mask_swin.test_mask_ratio(x))
+    results = torch.cat(results)
+    print(f'{results.mean().item()}±{results.std()}')
 
 if __name__ == '__main__':
     main()

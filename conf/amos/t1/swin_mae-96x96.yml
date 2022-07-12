@@ -16,6 +16,9 @@ num_seg_heads: 3
 spacing: [1.5, 1.5, 2]
 task_id: 1
 norm_intensity: false
+norm_pix_loss: true
 a_min: -175
 a_max: 250
+scale_p: 0
+shift_p: 0
 optimizer_set_to_none: true

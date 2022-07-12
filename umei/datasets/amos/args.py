@@ -18,7 +18,6 @@ class AmosArgs(UMeIArgs):
     task_id: int = field(default=2, metadata={'choices': [1, 2]})
     a_min: float = field(default=None)
     a_max: float = field(default=None)
-    norm_intensity: bool = field(default=False)
     warmup_epochs: int = field(default=50)
     use_monai: bool = field(default=False, metadata={'help': 'run validation for models produced by '
                                                              'official monai implementation'})
