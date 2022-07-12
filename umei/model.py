@@ -66,7 +66,7 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
         return ViT(
             in_channels=args.num_input_channels,
             img_size=args.sample_shape,
-            patch_size=(args.vit_patch_size, args.vit_patch_size, args.vit_patch_size),
+            patch_size=args.vit_patch_shape,
             hidden_size=args.vit_hidden_size,
             classification=False,
         )
@@ -76,7 +76,7 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
             in_chans=args.num_input_channels,
             embed_dim=args.base_feature_size,
             window_size=(7, 7, 7),
-            patch_size=(args.vit_patch_size, args.vit_patch_size, args.vit_patch_size),
+            patch_size=args.vit_patch_shape,
             depths=(2, 2, 2, 2),
             num_heads=(3, 6, 12, 24),
             # mlp_ratio=4.0,
@@ -104,7 +104,11 @@ def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
         return CnnDecoder(encoder_feature_sizes, out_channels=args.base_feature_size // 2)
     elif args.decoder == 'sunetr':
         from monai.networks.nets import SwinUnetrDecoder
-        model = SwinUnetrDecoder(args.num_input_channels, feature_size=args.base_feature_size)
+        model = SwinUnetrDecoder(
+            args.num_input_channels,
+            feature_size=args.base_feature_size,
+            use_encoder5=args.use_encoder5,
+        )
         if args.decoder_pretrain_path is not None:
             # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
             state_dict = {

@@ -21,7 +21,6 @@ class UMeIArgs(TrainingArguments):
     sample_size: int = field(default=144)
     sample_slices: int = field(default=160)
     spacing: list[float] = field(default=None)
-    vit_patch_size: int = field(default=8)
     vit_hidden_size: int = field(default=768)
     swin_window_size: list[int] = field(default_factory=lambda: [7, 7, 7])
     vit_patch_shape: list[int] = field(default_factory=lambda: [2, 2, 2])
@@ -29,6 +28,7 @@ class UMeIArgs(TrainingArguments):
     vit_depths: list[int] = field(default_factory=lambda: [2, 2, 2, 2])
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
+    use_encoder5: bool = field(default=False)
     num_seg_heads: int = field(default=1)
     cls_loss_factor: float = field(default=1)
     seg_loss_factor: float = field(default=1)
@@ -109,4 +109,4 @@ class UMeIArgs(TrainingArguments):
         argv = UMeIParser.to_cli_options(conf)
         args, _ = parser.parse_known_args(argv)
         # want to return `Self` type
-        return cls(parser.parse_dict(vars(args))[0])
+        return parser.parse_dict(vars(args))[0]

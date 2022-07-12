@@ -3,7 +3,7 @@ sample_size: 96
 sample_slices: 96
 encoder: swt
 base_feature_size: 48
-vit_patch_size: 2
+vit_patch_shape: [2, 2, 2]
 decoder: sunetr
 per_device_train_batch_size: 2
 per_device_eval_batch_size: 1
