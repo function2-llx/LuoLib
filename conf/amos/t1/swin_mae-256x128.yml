@@ -12,7 +12,7 @@ num_crop_samples: 1
 learning_rate: 1e-4
 weight_decay: 1e-5
 num_train_epochs: 100
-spacing: [1.5, 1.5, 3]
+spacing: [1, 1, 2]
 task_id: 1
 norm_intensity: false
 norm_pix_loss: false

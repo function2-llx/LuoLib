@@ -139,3 +139,5 @@ nnUNet_data
 *.nii.gz
 *.zip
 runs/
+mae-fb/
+test.py

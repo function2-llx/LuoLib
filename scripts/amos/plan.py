@@ -9,7 +9,7 @@ from tqdm.contrib.concurrent import process_map
 import monai.transforms
 from nnunet.paths import nnUNet_raw_data as nnunet_rd_dir, preprocessing_output_dir as nnunet_pp_output_dir
 from umei.datasets.amos import AmosArgs
-from umei.datasets.amos.datamodule import DATASET_ROOT, load_cohort
+from umei.datasets.amos.datamodule import load_cohort
 from umei.utils import UMeIParser
 
 task_name = 'Task666_AMOS'
@@ -30,7 +30,9 @@ def process(case: dict, args: AmosArgs, loader: Callable[[dict], dict]) -> dict:
 def main():
     parser = UMeIParser((AmosArgs, ), use_conf=True)
     args: AmosArgs = parser.parse_args_into_dataclasses()[0]
-    cohort = load_cohort()['training']
+    print(args.output_dir)
+    args.output_dir.mkdir(parents=True, exist_ok=True)
+    cohort = load_cohort(args.task_id)['training']
     properties = pd.read_pickle(nnunet_pp_output_dir / 'dataset_properties.pkl')
     all_spacings = properties['all_spacings']
     median_spacing = np.median(all_spacings, axis=0)
@@ -46,7 +48,7 @@ def main():
     ])
     pd.DataFrame.from_records(
         process_map(process, cohort, repeat(args), repeat(loader), ncols=80, max_workers=16)
-    ).set_index('subject').to_excel(DATASET_ROOT / 'stat-sp.xlsx')
+    ).set_index('subject').to_excel(args.output_dir / 'stat-sp.xlsx')
 
 if __name__ == '__main__':
     main()
