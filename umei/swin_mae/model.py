@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass
-
 from einops import rearrange
 import numpy as np
 import pytorch_lightning as pl
@@ -11,82 +8,51 @@ from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from monai.networks.nets import SwinTransformer, SwinUnetrDecoder
-from umei.model import UEncoderOutput
-from umei.swin_mae.args import SwinMAEArgs
+from monai.networks.blocks import UnetrBasicBlock, UnetrUpBlock
 from umei.utils import MyWandbLogger
+from .args import SwinMAEArgs
+from .mask_swin import MaskSwin
 
-@dataclass
-class MaskSwinOutput(UEncoderOutput):
-    mask: torch.Tensor = None
-    x_mask: torch.Tensor = None
-
-class MaskSwin(SwinTransformer):
+class SwinMAEDecoder:
     def __init__(
         self,
-        mask_ratio: float,
-        block_shape: Sequence[int],
-        *,
-        base_feature_size: int,
-        patch_shape: Sequence[int] | int,
-        **kwargs,
-    ):
-        super().__init__(patch_size=patch_shape, embed_dim=base_feature_size, **kwargs)
-        self.mask_ratio = mask_ratio
-        # self.mask_num = mask_num
-        self.block_patch_shape = tuple(
-            block_size // patch_size
-            for block_size, patch_size in zip(block_shape, patch_shape)
+        feature_size: int = 24,
+        num_layers: int = 4,
+        norm_name: tuple | str = "instance",
+        spatial_dims: int = 3,
+        use_skip: bool = True,
+    ) -> None:
+        super().__init__()
+
+        self.bottleneck = UnetrBasicBlock(
+            spatial_dims=spatial_dims,
+            in_channels=feature_size << num_layers - 1,
+            out_channels=feature_size << num_layers - 1,
+            kernel_size=3,
+            stride=1,
+            norm_name=norm_name,
+            res_block=True,
         )
 
-        self.mask_token = nn.Parameter(torch.zeros(1, 1, base_feature_size))
-        self.corner_counter = nn.Conv3d(in_channels=1, out_channels=1, kernel_size=self.block_patch_shape, bias=False)
-        nn.init.constant_(self.corner_counter.weight, 1)
-        self.corner_counter.weight.requires_grad = False
+        self.ups = nn.ModuleList([
+            UnetrUpBlock(
+                spatial_dims=spatial_dims,
+                in_channels=feature_size << i,
+                out_channels=feature_size << i - 1,
+                kernel_size=3,
+                upsample_kernel_size=2,
+                norm_name=norm_name,
+                res_block=True,
+                use_skip=use_skip,
+            )
+            for i in range(1, num_layers)
+        ])
 
-    def random_masking(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # corner spatial shape
-        corner_ss = [
-            size + block_patch_num - 1
-            for size, block_patch_num in zip(x.shape[2:], self.block_patch_shape)
-        ]
-        mask_num: int = np.round(
-            np.log(1 - self.mask_ratio) /
-            np.log(1 - np.product(self.block_patch_shape) / np.product(corner_ss))
-        ).astype(int)
-        noise: torch.Tensor = torch.rand(x.shape[0], np.product(corner_ss), device=x.device)
-        kth = noise.kthvalue(mask_num, dim=-1, keepdim=True).values
-        corner_mask = rearrange(noise <= kth, 'n (h w d) -> n 1 h w d', h=corner_ss[0], w=corner_ss[1], d=corner_ss[2])
-        mask = self.corner_counter(corner_mask.float()).round() >= 1
-        mask = rearrange(mask, 'n 1 h w d -> n h w d')
-        x_mask = x.clone()
-        rearrange(x_mask, 'n c h w d -> n h w d c')[mask] = self.mask_token.to(x_mask.dtype)
-        return x_mask, mask
-
-    def test_mask_ratio(self, x):
-        x0 = self.patch_embed(x)
-        x0_mask, mask = self.random_masking(x0)
-        mask = mask.view(x0.shape[0], -1)
-        return mask.sum(dim=-1) / mask.shape[1]
-
-    def forward(self, x, normalize=True):
-        x0 = self.patch_embed(x)
-        x0_mask, mask = self.random_masking(x0)
-        x0_mask = self.pos_drop(x0_mask)
-        x0_out = self.proj_out(x0_mask, normalize)
-        x1 = self.layers1[0](x0_mask.contiguous())
-        x1_out = self.proj_out(x1, normalize)
-        x2 = self.layers2[0](x1.contiguous())
-        x2_out = self.proj_out(x2, normalize)
-        x3 = self.layers3[0](x2.contiguous())
-        x3_out = self.proj_out(x3, normalize)
-        x4 = self.layers4[0](x3.contiguous())
-        x4_out = self.proj_out(x4, normalize)
-        return MaskSwinOutput(
-            cls_feature=self.avg_pool(x4_out).view(x4_out.shape[:2]),
-            hidden_states=[x0_out, x1_out, x2_out, x3_out, x4_out],
-            mask=mask,
-        )
+    def forward(self, hidden_states: list[torch.Tensor]):
+        x = self.bottleneck(hidden_states[-1])
+        for z, up in zip(hidden_states[-2:-1], self.ups[::-1]):
+            x = up(x, z)
+        return x
 
 class SwinMAE(pl.LightningModule):
     logger: MyWandbLogger
@@ -101,32 +67,21 @@ class SwinMAE(pl.LightningModule):
             in_chans=args.num_input_channels,
             base_feature_size=args.base_feature_size,
             window_size=args.swin_window_size,
-            patch_shape=args.vit_patch_shape,
+            patch_size=args.vit_patch_shape,
             depths=args.vit_depths,
             num_heads=args.vit_num_heads,
-            # mlp_ratio=4.0,
-            # qkv_bias=True,
             use_checkpoint=True,
         )
+        self.decoder = SwinMAEDecoder(feature_size=args.base_feature_size, use_skip=args.use_skip)
 
-        self.decoder = SwinUnetrDecoder(
-            in_channels=args.num_input_channels,
-            feature_size=args.base_feature_size,
-            use_encoder5=self.args.use_encoder5,
+        self.pred = nn.Conv3d(
+            args.base_feature_size,
+            args.num_input_channels * np.product(args.vit_patch_shape),
+            kernel_size=1,
         )
-
-        with torch.no_grad():
-            dummy_input = torch.zeros(1, args.num_input_channels, *args.sample_shape)
-            dummy_encoder_output = self.encoder.forward(dummy_input)
-            dummy_decoder_output = self.decoder.forward(dummy_input, dummy_encoder_output.hidden_states)
-            decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
-
-        self.pred = nn.Conv3d(decoder_feature_sizes[-1], args.num_input_channels, kernel_size=1)
         self.loss_fn = nn.MSELoss()
 
-        self.initialize_weights()
-
-    def initialize_weights(self):
+        # initialize weights
         # initialize patch_embed like nn.Linear (instead of nn.Convnd)
         w: torch.Tensor = self.encoder.patch_embed.proj.weight.data
         torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
@@ -152,34 +107,40 @@ class SwinMAE(pl.LightningModule):
     def patchify(self, x):
         return rearrange(
             x,
-            'n c (h ph) (w pw) (d pd) -> n h w d (ph pw pd) c',
+            'n c (h ph) (w pw) (d pd) -> n h w d (ph pw pd c)',
             ph=self.args.vit_patch_shape[0],
             pw=self.args.vit_patch_shape[1],
             pd=self.args.vit_patch_shape[2],
         )
 
-    def training_step(self, x: torch.Tensor, *args, **kwargs):
-        p_x = self.patchify(x)
+    def forward(self, x: torch.Tensor):
         encoder_out = self.encoder.forward(x)
         mask = encoder_out.mask
-        x_mask = p_x.clone()
-        x_mask[mask] = 0
-        x_mask = rearrange(
-            x_mask,
-            'n h w d (ph pw pd) c -> n c (h ph) (w pw) (d pd)',
-            ph=self.args.vit_patch_shape[0],
-            pw=self.args.vit_patch_shape[1],
-            pd=self.args.vit_patch_shape[2],
-        )
 
-        decoder_out = self.decoder.forward(x_mask, encoder_out.hidden_states)
-        pred = self.pred(decoder_out.feature_maps[-1])
-        p_pred = self.patchify(pred)
+        decoder_out = self.decoder.forward(encoder_out.hidden_states)
+        p_pred = self.pred(decoder_out.feature_maps[-1])
+        p_x = self.patchify(x)
         if self.args.norm_pix_loss:
-            mean = p_x.mean(dim=-2, keepdim=True)
-            var = p_x.var(dim=-2, keepdim=True)
+            # note: the mean and var are calculated across channels
+            mean = p_x.mean(dim=-1, keepdim=True)
+            var = p_x.var(dim=-1, keepdim=True)
             p_x = (p_x - mean) / torch.sqrt(var + 1e-6)
         loss = self.loss_fn(p_pred[mask], p_x[mask])
+        return loss
+
+    def training_step(self, x: torch.Tensor, *args, **kwargs):
+        # p_x = self.patchify(x)
+        # encoder_out = self.encoder.forward(x)
+        # mask = encoder_out.mask
+        #
+        # decoder_out = self.decoder.forward(encoder_out.hidden_states)
+        # p_pred = self.pred(decoder_out.feature_maps[-1])
+        # if self.args.norm_pix_loss:
+        #     mean = p_x.mean(dim=-1, keepdim=True)
+        #     var = p_x.var(dim=-1, keepdim=True)
+        #     p_x = (p_x - mean) / torch.sqrt(var + 1e-6)
+        # loss = self.loss_fn(p_pred[mask], p_x[mask])
+        loss = self.forward(x)
         self.log('train/loss', loss)
         return loss
 
@@ -197,15 +158,16 @@ class SwinMAE(pl.LightningModule):
             pd=self.args.vit_patch_shape[2],
         )
 
-        decoder_out = self.decoder.forward(x_mask, encoder_out.hidden_states)
-        pred = self.pred(decoder_out.feature_maps[-1])
-        p_pred = self.patchify(pred)
+
+        decoder_out = self.decoder.forward(encoder_out.hidden_states)
+        p_pred = self.pred(decoder_out.feature_maps[-1])
         if self.args.norm_pix_loss:
-            mean = p_x.mean(dim=-2, keepdim=True)
-            var = p_x.var(dim=-2, keepdim=True)
+            mean = p_x.mean(dim=-1, keepdim=True)
+            var = p_x.var(dim=-1, keepdim=True)
             p_x = (p_x - mean) / torch.sqrt(var + 1e-6)
         loss = self.loss_fn(p_pred[mask], p_x[mask])
         self.log('val/loss', loss)
+
         slice_idx = x.shape[-1] // 2
         self.logger.log_image(
             f'val/reconstruction-{batch_idx}',

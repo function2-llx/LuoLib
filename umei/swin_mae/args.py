@@ -8,8 +8,12 @@ class SwinMAEArgs(UMeIArgs):
     mask_block_shape: list[int] = field(default=None)
     norm_pix_loss: bool = field(default=False)
     val_size: int = field(default=5)
+    use_skip: bool = field(default=True)
 
     def __post_init__(self):
         super().__post_init__()
         for mask_block_size, vit_patch_size in zip(self.mask_block_shape, self.vit_patch_shape):
             assert mask_block_size % vit_patch_size == 0
+
+        if self.norm_pix_loss:
+            assert self.norm_intensity
