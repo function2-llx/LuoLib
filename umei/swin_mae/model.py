@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from einops import rearrange
 import numpy as np
 import pytorch_lightning as pl
@@ -8,12 +10,15 @@ from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
+from monai.data import MetaTensor
 from monai.networks.blocks import UnetrBasicBlock, UnetrUpBlock
+from monai.utils import ImageMetaKey
 from umei.utils import MyWandbLogger
 from .args import SwinMAEArgs
 from .mask_swin import MaskSwin
+from .utils import channel_last
 
-class SwinMAEDecoder:
+class SwinMAEDecoder(nn.Module):
     def __init__(
         self,
         feature_size: int = 24,
@@ -48,9 +53,9 @@ class SwinMAEDecoder:
             for i in range(1, num_layers)
         ])
 
-    def forward(self, hidden_states: list[torch.Tensor]):
+    def forward(self, hidden_states: list[torch.Tensor]) -> torch.Tensor:
         x = self.bottleneck(hidden_states[-1])
-        for z, up in zip(hidden_states[-2:-1], self.ups[::-1]):
+        for z, up in zip(hidden_states[-2::-1], self.ups[::-1]):
             x = up(x, z)
         return x
 
@@ -126,8 +131,10 @@ class SwinMAE(pl.LightningModule):
         encoder_out = self.encoder.forward(x)
         mask = encoder_out.mask
 
-        decoder_out = self.decoder.forward(encoder_out.hidden_states)
-        p_pred = self.pred(decoder_out.feature_maps[-1])
+        feature_map = self.decoder.forward(encoder_out.hidden_states)
+        # p_pred = self.pred(feature_map)
+        p_pred = self.pred(feature_map)
+        p_pred = channel_last(p_pred)
         pred = self.unpatchify(p_pred)
         p_x = self.patchify(x)
         if self.args.norm_pix_loss:
@@ -143,23 +150,30 @@ class SwinMAE(pl.LightningModule):
         self.log('train/loss', loss)
         return loss
 
-    def validation_step(self, x: torch.Tensor, batch_idx: int, *args, **kwargs):
+    def validation_step(self, x: MetaTensor, *args, **kwargs):
         loss, mask, pred = self.forward(x)
         self.log('val/loss', loss)
 
-        x_mask = x.clone()
-        self.patchify(x_mask)[mask] = 0
-        pred_ol = pred.clone()
-        self.patchify(pred_ol)[~mask] = self.patchify(x)[~mask]
-        slice_idx = x.shape[-1] // 2
+        # for better visualization
+        pred.clamp_(min=0, max=1)
 
+        x_mask = self.patchify(x.clone())
+        x_mask[mask] = 0
+        x_mask = self.unpatchify(x_mask)
+
+        pred_ol = self.patchify(pred.clone())
+        pred_ol[~mask] = self.patchify(x)[~mask].to(pred_ol.dtype)
+        pred_ol = self.unpatchify(pred_ol)
+
+        slice_idx = x.shape[-1] // 2
+        filename = Path(x.meta[ImageMetaKey.FILENAME_OR_OBJ][0]).name
         self.logger.log_image(
-            f'val/reconstruction-{batch_idx}',
+            f'val/{filename}',
             images=[
-                x[0, ..., slice_idx].cpu(),
-                x_mask[0, ..., slice_idx].cpu(),
-                pred[0, ..., slice_idx].cpu(),
-                pred_ol[0, ..., slice_idx].cpu(),
+                x[0, ..., slice_idx].rot90(dims=(1, 2)).cpu(),
+                x_mask[0, ..., slice_idx].rot90(dims=(1, 2)).cpu(),
+                pred[0, ..., slice_idx].rot90(dims=(1, 2)).cpu(),
+                pred_ol[0, ..., slice_idx].rot90(dims=(1, 2)).cpu(),
             ],
             caption=['original', f'mask', 'pred', 'pred-ol'],
         )

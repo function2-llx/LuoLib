@@ -12,6 +12,8 @@ from .swin import SwinTransformer
 
 __all__ = ['MaskSwin']
 
+from .utils import channel_first, channel_last
+
 @dataclass
 class MaskSwinOutput:
     mask: torch.Tensor = None
@@ -56,8 +58,10 @@ class MaskSwin(SwinTransformer):
         corner_mask = rearrange(noise <= kth, 'n (h w d) -> n 1 h w d', h=corner_ss[0], w=corner_ss[1], d=corner_ss[2])
         mask = self.corner_counter(corner_mask.float()).round() >= 1
         mask = rearrange(mask, 'n 1 h w d -> n h w d')
-        x_mask = x.clone()
-        rearrange(x_mask, 'n c h w d -> n h w d c')[mask] = self.mask_token.to(x_mask.dtype)
+
+        x_mask = channel_last(x.clone())
+        x_mask[mask] = self.mask_token.to(x_mask.dtype)
+        x_mask = channel_first(x_mask)
         return x_mask, mask
 
     def test_mask_ratio(self, x):

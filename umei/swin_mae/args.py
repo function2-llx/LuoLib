@@ -7,7 +7,7 @@ class SwinMAEArgs(UMeIArgs):
     mask_ratio: float = field(default=0.75)
     mask_block_shape: list[int] = field(default=None)
     norm_pix_loss: bool = field(default=False)
-    val_size: int = field(default=5)
+    val_size: int = field(default=4)
     use_skip: bool = field(default=True)
 
     def __post_init__(self):
