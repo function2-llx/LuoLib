@@ -71,16 +71,15 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
             classification=False,
         )
     elif args.encoder == 'swt':
-        from monai.networks.nets.swin_unetr import SwinTransformer
+        # from monai.networks.nets.swin_unetr import SwinTransformer
+        from umei.models.swin import SwinTransformer
         model = SwinTransformer(
             in_chans=args.num_input_channels,
             embed_dim=args.base_feature_size,
-            window_size=(7, 7, 7),
+            window_size=args.swin_window_size,
             patch_size=args.vit_patch_shape,
-            depths=(2, 2, 2, 2),
-            num_heads=(3, 6, 12, 24),
-            # mlp_ratio=4.0,
-            # qkv_bias=True,
+            depths=args.vit_depths,
+            num_heads=args.vit_num_heads,
             use_checkpoint=True,
         )
         if args.pretrain_path is not None:

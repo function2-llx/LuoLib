@@ -8,7 +8,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from .swin import SwinTransformer
+from umei.models.swin import SwinTransformer
 
 __all__ = ['MaskSwin']
 

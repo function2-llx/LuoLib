@@ -25,7 +25,7 @@ def main():
     trainer = pl.Trainer(
         logger=MyWandbLogger(
             project='amos-swin_mae',
-            name=f'{args.exp_name}/runs-{args.seed}',
+            name=f'{args.exp_name}/mask-{args.mask_ratio * 100}/run-{args.seed}',
             save_dir=str(output_dir),
             group=args.exp_name,
             offline=args.log_offline,
