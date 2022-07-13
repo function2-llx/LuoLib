@@ -1,7 +1,8 @@
 num_folds: 5
 sample_size: 256
 sample_slices: 128
-base_feature_size: 48
+base_feature_size: 64
+vit_num_heads: [4, 8, 16, 32]
 vit_patch_shape: [4, 4, 2]
 mask_block_shape: [16, 16, 16]
 swin_window_size: [8, 8, 8]
@@ -16,10 +17,8 @@ spacing: [1, 1, 2]
 task_id: 1
 norm_intensity: false
 norm_pix_loss: false
-use_skip: false
 a_min: -175
 a_max: 250
 scale_p: 0
 shift_p: 0
 optimizer_set_to_none: true
-ddp_find_unused_parameters: true
