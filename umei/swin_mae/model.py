@@ -56,7 +56,8 @@ class SwinMAEDecoder(nn.Module):
     def forward(self, hidden_states: list[torch.Tensor]) -> torch.Tensor:
         x = self.bottleneck(hidden_states[-1])
         for z, up in zip(hidden_states[-2::-1], self.ups[::-1]):
-            x = up(x, z)
+            up: UnetrUpBlock
+            x = up(x, z if up.use_skip else None)
         return x
 
 class SwinMAE(pl.LightningModule):
