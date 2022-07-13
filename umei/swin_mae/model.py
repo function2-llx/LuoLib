@@ -113,12 +113,22 @@ class SwinMAE(pl.LightningModule):
             pd=self.args.vit_patch_shape[2],
         )
 
+    def unpatchify(self, x):
+        return rearrange(
+            x,
+            'n h w d (ph pw pd c) -> n c (h ph) (w pw) (d pd)',
+            ph=self.args.vit_patch_shape[0],
+            pw=self.args.vit_patch_shape[1],
+            pd=self.args.vit_patch_shape[2],
+        )
+
     def forward(self, x: torch.Tensor):
         encoder_out = self.encoder.forward(x)
         mask = encoder_out.mask
 
         decoder_out = self.decoder.forward(encoder_out.hidden_states)
         p_pred = self.pred(decoder_out.feature_maps[-1])
+        pred = self.unpatchify(p_pred)
         p_x = self.patchify(x)
         if self.args.norm_pix_loss:
             # note: the mean and var are calculated across channels
@@ -126,53 +136,32 @@ class SwinMAE(pl.LightningModule):
             var = p_x.var(dim=-1, keepdim=True)
             p_x = (p_x - mean) / torch.sqrt(var + 1e-6)
         loss = self.loss_fn(p_pred[mask], p_x[mask])
-        return loss
+        return loss, mask, pred
 
     def training_step(self, x: torch.Tensor, *args, **kwargs):
-        # p_x = self.patchify(x)
-        # encoder_out = self.encoder.forward(x)
-        # mask = encoder_out.mask
-        #
-        # decoder_out = self.decoder.forward(encoder_out.hidden_states)
-        # p_pred = self.pred(decoder_out.feature_maps[-1])
-        # if self.args.norm_pix_loss:
-        #     mean = p_x.mean(dim=-1, keepdim=True)
-        #     var = p_x.var(dim=-1, keepdim=True)
-        #     p_x = (p_x - mean) / torch.sqrt(var + 1e-6)
-        # loss = self.loss_fn(p_pred[mask], p_x[mask])
-        loss = self.forward(x)
+        loss, _mask, _pred = self.forward(x)
         self.log('train/loss', loss)
         return loss
 
     def validation_step(self, x: torch.Tensor, batch_idx: int, *args, **kwargs):
-        p_x = self.patchify(x)
-        encoder_out = self.encoder.forward(x)
-        mask = encoder_out.mask
-        x_mask = p_x.clone()
-        x_mask[mask] = 0
-        x_mask = rearrange(
-            x_mask,
-            'n h w d (ph pw pd) c -> n c (h ph) (w pw) (d pd)',
-            ph=self.args.vit_patch_shape[0],
-            pw=self.args.vit_patch_shape[1],
-            pd=self.args.vit_patch_shape[2],
-        )
-
-
-        decoder_out = self.decoder.forward(encoder_out.hidden_states)
-        p_pred = self.pred(decoder_out.feature_maps[-1])
-        if self.args.norm_pix_loss:
-            mean = p_x.mean(dim=-1, keepdim=True)
-            var = p_x.var(dim=-1, keepdim=True)
-            p_x = (p_x - mean) / torch.sqrt(var + 1e-6)
-        loss = self.loss_fn(p_pred[mask], p_x[mask])
+        loss, mask, pred = self.forward(x)
         self.log('val/loss', loss)
 
+        x_mask = x.clone()
+        self.patchify(x_mask)[mask] = 0
+        pred_ol = pred.clone()
+        self.patchify(pred_ol)[~mask] = self.patchify(x)[~mask]
         slice_idx = x.shape[-1] // 2
+
         self.logger.log_image(
             f'val/reconstruction-{batch_idx}',
-            images=[x[0, ..., slice_idx].cpu(), x_mask[0, ..., slice_idx].cpu(), pred[0, ..., slice_idx].cpu()],
-            caption=['gt', 'mask', 'pred'],
+            images=[
+                x[0, ..., slice_idx].cpu(),
+                x_mask[0, ..., slice_idx].cpu(),
+                pred[0, ..., slice_idx].cpu(),
+                pred_ol[0, ..., slice_idx].cpu(),
+            ],
+            caption=['original', f'mask', 'pred', 'pred-ol'],
         )
 
     def configure_optimizers(self):
