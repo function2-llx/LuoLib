@@ -143,7 +143,8 @@ class SwinMAE(pl.LightningModule):
             mean = p_x.mean(dim=-1, keepdim=True)
             var = p_x.var(dim=-1, keepdim=True)
             p_x = (p_x - mean) / torch.sqrt(var + 1e-6)
-        loss = self.loss_fn(p_pred[mask], p_x[mask])
+        loss = self.loss_fn(p_pred[mask], p_x[mask]) \
+            + self.args.non_mask_factor * self.loss_fn(p_pred[~mask], p_x[~mask])
         return loss, mask, pred
 
     def training_step(self, x: torch.Tensor, *args, **kwargs):
