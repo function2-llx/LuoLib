@@ -138,6 +138,11 @@ def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
                 num_layers=len(args.vit_depths),
                 input_stride=input_stride,
             )
+            if args.decoder_pretrain_path is not None:
+                state_dict = filter_state_dict(torch.load(args.decoder_pretrain_path)["state_dict"], 'decoder')
+                miss, unexpected = model.load_state_dict(state_dict)
+                assert len(miss) == 0 and len(unexpected) == 0
+                print(f'load pre-trained decoder from {args.pretrain_path}')
         else:
             from monai.networks.nets import SwinUnetrDecoder
             model = SwinUnetrDecoder(

@@ -123,7 +123,7 @@ class SwinTransformer(UEncoderBase):
 class SwinUnetrDecoder(UDecoderBase):
     def __init__(
         self,
-        in_channels: int,
+        in_channels: Optional[int] = None,
         feature_size: int = 24,
         num_layers: int = 4,
         norm_name: tuple | str = "instance",
@@ -180,7 +180,7 @@ class SwinUnetrDecoder(UDecoderBase):
         else:
             self.input_encoder = None
 
-    def forward(self, x_in: torch.Tensor, hidden_states: list[torch.Tensor]) -> UDecoderOutput:
+    def forward(self, x_in: torch.Tensor = None, hidden_states: list[torch.Tensor] = None) -> UDecoderOutput:
         if self.input_encoder is not None:
             hidden_states = [self.input_encoder(x_in), *hidden_states]
         x = self.bottleneck(hidden_states[-1])

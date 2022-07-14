@@ -91,9 +91,9 @@ class SwinMAE(pl.LightningModule):
         encoder_out = self.encoder.forward(x)
         mask = encoder_out.mask
 
-        feature_map = self.decoder.forward(encoder_out.hidden_states)
+        decoder_out = self.decoder.forward(hidden_states=encoder_out.hidden_states)
         # p_pred = self.pred(feature_map)
-        p_pred = self.pred(feature_map)
+        p_pred = self.pred(decoder_out.feature_maps[-1])
         p_pred = channel_last(p_pred)
         pred = self.unpatchify(p_pred)
         p_x = self.patchify(x)
