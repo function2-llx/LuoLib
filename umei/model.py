@@ -28,6 +28,13 @@ class UDecoderBase(nn.Module):
     def forward(self, img: torch.Tensor, encoder_hidden_states: list[torch.Tensor]) -> UDecoderOutput:
         raise not NotImplementedError
 
+def filter_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict:
+    return {
+        k.split('.', 1)[1]: v
+        for k, v in state_dict.items()
+        if k.startswith(f'{prefix}.')
+    }
+
 def build_encoder(args: UMeIArgs) -> UEncoderBase:
     if args.encoder == 'resnet':
         from monai.networks import nets
@@ -71,28 +78,46 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
             classification=False,
         )
     elif args.encoder == 'swt':
-        # from monai.networks.nets.swin_unetr import SwinTransformer
-        from umei.models.swin import SwinTransformer
-        model = SwinTransformer(
-            in_chans=args.num_input_channels,
-            embed_dim=args.base_feature_size,
-            window_size=args.swin_window_size,
-            patch_size=args.vit_patch_shape,
-            depths=args.vit_depths,
-            num_heads=args.vit_num_heads,
-            use_checkpoint=True,
-        )
-        if args.pretrain_path is not None:
-            # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
-            state_dict = {
-                k.split('.', 1)[1].replace('fc', 'linear'): v
-                for k, v in torch.load(args.pretrain_path)["state_dict"].items()
-                if k.startswith('swinViT.') or k.startswith('module.')
-            }
-            miss, unexpected = model.load_state_dict(state_dict, strict=False)
-            assert len(miss) == 0
-            print(f'load pre-trained swin-unetr encoder from {args.pretrain_path}')
-            print('unexpected: ', len(unexpected))
+        if args.umei_impl:
+            from umei.models.swin import SwinTransformer
+            model = SwinTransformer(
+                in_chans=args.num_input_channels,
+                embed_dim=args.base_feature_size,
+                window_size=args.swin_window_size,
+                patch_size=args.vit_patch_shape,
+                depths=args.vit_depths,
+                num_heads=args.vit_num_heads,
+                use_checkpoint=True,
+            )
+            if args.pretrain_path is not None:
+                state_dict = filter_state_dict(torch.load(args.pretrain_path)["state_dict"], 'encoder')
+                miss, unexpected = model.load_state_dict(state_dict, strict=False)
+                assert len(miss) == 0
+                print(f'load pre-trained encoder from {args.pretrain_path}')
+                print('unexpected: ', len(unexpected))
+                print(unexpected)
+        else:
+            from monai.networks.nets.swin_unetr import SwinTransformer
+            model = SwinTransformer(
+                in_chans=args.num_input_channels,
+                embed_dim=args.base_feature_size,
+                window_size=args.swin_window_size,
+                patch_size=args.vit_patch_shape,
+                depths=args.vit_depths,
+                num_heads=args.vit_num_heads,
+                use_checkpoint=True,
+            )
+            if args.pretrain_path is not None:
+                # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
+                state_dict = {
+                    k.split('.', 1)[1].replace('fc', 'linear'): v
+                    for k, v in torch.load(args.pretrain_path)["state_dict"].items()
+                    if k.startswith('swinViT.') or k.startswith('module.')
+                }
+                miss, unexpected = model.load_state_dict(state_dict, strict=False)
+                assert len(miss) == 0
+                print(f'load pre-trained swin-unetr encoder from {args.pretrain_path}')
+                print('unexpected: ', len(unexpected))
         return model
     else:
         raise ValueError(f'not supported encoder: {args.encoder}')
@@ -102,22 +127,35 @@ def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
         from umei.models.cnn_decoder import CnnDecoder
         return CnnDecoder(encoder_feature_sizes, out_channels=args.base_feature_size // 2)
     elif args.decoder == 'sunetr':
-        from monai.networks.nets import SwinUnetrDecoder
-        model = SwinUnetrDecoder(
-            args.num_input_channels,
-            feature_size=args.base_feature_size,
-            use_encoder5=args.use_encoder5,
-        )
-        if args.decoder_pretrain_path is not None:
-            # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
-            state_dict = {
-                k: v
-                for k, v in torch.load(args.pretrain_path)["state_dict"].items()
-                if not k.startswith('swinViT.') and not k.startswith('out.')
-            }
-            miss, unexpected = model.load_state_dict(state_dict)
-            assert len(miss) == 0 and len(unexpected) == 0
-            print(f'load pre-trained swin-unetr decoder from {args.pretrain_path}')
+        if args.umei_impl:
+            from umei.models.swin import SwinUnetrDecoder
+            input_stride = None
+            if args.umei_sunetr_decode_use_in:
+                input_stride = [patch_size // 2 for patch_size in args.vit_patch_shape]
+            model = SwinUnetrDecoder(
+                in_channels=args.num_input_channels,
+                feature_size=args.base_feature_size,
+                num_layers=len(args.vit_depths),
+                input_stride=input_stride,
+            )
+        else:
+            from monai.networks.nets import SwinUnetrDecoder
+            model = SwinUnetrDecoder(
+                in_channels=args.num_input_channels,
+                feature_size=args.base_feature_size,
+                use_encoder5=args.use_encoder5,
+            )
+            if args.decoder_pretrain_path is not None:
+                # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
+                state_dict = {
+                    k: v
+                    for k, v in torch.load(args.pretrain_path)["state_dict"].items()
+                    if not k.startswith('swinViT.') and not k.startswith('out.')
+                }
+                miss, unexpected = model.load_state_dict(state_dict)
+                assert len(miss) == 0 and len(unexpected) == 0
+                print(f'load pre-trained swin-unetr decoder from {args.pretrain_path}')
+
         return model
     else:
         raise ValueError(f'not supported decoder: {args.decoder}')

@@ -29,6 +29,8 @@ class UMeIArgs(TrainingArguments):
     vit_depths: list[int] = field(default_factory=lambda: [2, 2, 2, 2])
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
+    umei_sunetr_decode_use_in: bool = field(default=False)
+    umei_impl: bool = field(default=False)
     use_encoder5: bool = field(default=False)
     num_seg_heads: int = field(default=1)
     cls_loss_factor: float = field(default=1)
@@ -99,6 +101,8 @@ class UMeIArgs(TrainingArguments):
         # self.output_dir = Path(self.output_dir)
         for size, patch_size in zip(self.sample_shape, self.vit_patch_shape):
             assert size % patch_size == 0
+            assert patch_size >= 2
+
         if self.fold_ids is None:
             self.fold_ids = list(range(self.num_folds))
         else:

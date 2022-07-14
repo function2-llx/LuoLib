@@ -128,6 +128,10 @@ class AmosDataModule(CVDataModule):
                 b_max=1,
                 clip=True,
             ))
+        if not on_predict:
+            transforms.append(
+                monai.transforms.CropForegroundd([self.args.img_key, self.args.seg_key], source_key=self.args.img_key)
+            )
         return monai.transforms.Compose(transforms)
 
     @property

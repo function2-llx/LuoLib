@@ -11,54 +11,13 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from monai.data import MetaTensor
-from monai.networks.blocks import UnetrBasicBlock, UnetrUpBlock
 from monai.utils import ImageMetaKey
 from umei.utils import MyWandbLogger
+from umei.models.swin import SwinUnetrDecoder
+
 from .args import SwinMAEArgs
 from .mask_swin import MaskSwin
 from .utils import channel_last
-
-class SwinMAEDecoder(nn.Module):
-    def __init__(
-        self,
-        feature_size: int = 24,
-        num_layers: int = 4,
-        norm_name: tuple | str = "instance",
-        spatial_dims: int = 3,
-        use_skip: bool = True,
-    ) -> None:
-        super().__init__()
-
-        self.bottleneck = UnetrBasicBlock(
-            spatial_dims=spatial_dims,
-            in_channels=feature_size << num_layers - 1,
-            out_channels=feature_size << num_layers - 1,
-            kernel_size=3,
-            stride=1,
-            norm_name=norm_name,
-            res_block=True,
-        )
-
-        self.ups = nn.ModuleList([
-            UnetrUpBlock(
-                spatial_dims=spatial_dims,
-                in_channels=feature_size << i,
-                out_channels=feature_size << i - 1,
-                kernel_size=3,
-                upsample_kernel_size=2,
-                norm_name=norm_name,
-                res_block=True,
-                use_skip=use_skip,
-            )
-            for i in range(1, num_layers)
-        ])
-
-    def forward(self, hidden_states: list[torch.Tensor]) -> torch.Tensor:
-        x = self.bottleneck(hidden_states[-1])
-        for z, up in zip(hidden_states[-2::-1], self.ups[::-1]):
-            up: UnetrUpBlock
-            x = up(x, z if up.use_skip else None)
-        return x
 
 class SwinMAE(pl.LightningModule):
     logger: MyWandbLogger
@@ -78,7 +37,7 @@ class SwinMAE(pl.LightningModule):
             num_heads=args.vit_num_heads,
             use_checkpoint=True,
         )
-        self.decoder = SwinMAEDecoder(feature_size=args.base_feature_size, use_skip=args.use_skip)
+        self.decoder = SwinUnetrDecoder(feature_size=args.base_feature_size)
 
         self.pred = nn.Conv3d(
             args.base_feature_size,
@@ -143,18 +102,23 @@ class SwinMAE(pl.LightningModule):
             mean = p_x.mean(dim=-1, keepdim=True)
             var = p_x.var(dim=-1, keepdim=True)
             p_x = (p_x - mean) / torch.sqrt(var + 1e-6)
-        loss = self.loss_fn(p_pred[mask], p_x[mask]) \
-            + self.args.non_mask_factor * self.loss_fn(p_pred[~mask], p_x[~mask])
-        return loss, mask, pred
+        mask_loss = self.loss_fn(p_pred[mask], p_x[mask])
+        non_mask_loss = self.loss_fn(p_pred[~mask], p_x[~mask])
+        loss = mask_loss + self.args.non_mask_factor * non_mask_loss
+        return mask_loss, non_mask_loss, loss, mask, pred
 
     def training_step(self, x: torch.Tensor, *args, **kwargs):
-        loss, _mask, _pred = self.forward(x)
+        mask_loss, non_mask_loss, loss, _, _ = self.forward(x)
         self.log('train/loss', loss)
+        self.log('train/mask-loss', loss)
+        self.log('train/non-mask-loss', loss)
         return loss
 
     def validation_step(self, x: MetaTensor, *args, **kwargs):
-        loss, mask, pred = self.forward(x)
+        mask_loss, non_mask_loss, loss, mask, pred = self.forward(x)
         self.log('val/loss', loss)
+        self.log('val/mask-loss', loss)
+        self.log('val/non-mask-loss', loss)
 
         # for better visualization
         pred.clamp_(min=0, max=1)

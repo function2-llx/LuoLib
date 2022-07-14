@@ -1,16 +1,18 @@
+from __future__ import annotations
+
 from collections.abc import Sequence
-from typing import Type
+from typing import Optional, Type
 
 from einops import rearrange
 import torch
 from torch import nn
 
-from monai.networks.blocks import PatchEmbed
+from monai.networks.blocks import PatchEmbed, UnetrBasicBlock, UnetrUpBlock
 from monai.networks.nets.swin_unetr import BasicLayer, PatchMerging
-from umei import UEncoderBase
-from umei.model import UEncoderOutput
+from umei import UDecoderBase, UEncoderBase
+from umei.model import UDecoderOutput, UEncoderOutput
 
-__all__ = ['SwinTransformer']
+__all__ = ['SwinTransformer', 'SwinUnetrDecoder']
 
 class SwinTransformer(UEncoderBase):
     """
@@ -37,6 +39,7 @@ class SwinTransformer(UEncoderBase):
         norm_layer: Type[nn.LayerNorm] = nn.LayerNorm,
         patch_norm: bool = True,
         use_checkpoint: bool = False,
+        spatial_dims: int = 3,
     ) -> None:
         """
         Args:
@@ -57,6 +60,7 @@ class SwinTransformer(UEncoderBase):
         """
 
         super().__init__()
+        assert spatial_dims == 3
         num_layers = len(depths)
         self.embed_dim = embed_dim
         self.patch_norm = patch_norm
@@ -67,7 +71,7 @@ class SwinTransformer(UEncoderBase):
             in_chans=in_chans,
             embed_dim=embed_dim,
             norm_layer=norm_layer if self.patch_norm else None,  # type: ignore
-            spatial_dims=3,
+            spatial_dims=spatial_dims,
         )
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]
@@ -115,3 +119,74 @@ class SwinTransformer(UEncoderBase):
             cls_feature=self.avg_pool(hidden_states[-1]).flatten(1),
             hidden_states=hidden_states,
         )
+
+class SwinUnetrDecoder(UDecoderBase):
+    def __init__(
+        self,
+        in_channels: int,
+        feature_size: int = 24,
+        num_layers: int = 4,
+        norm_name: tuple | str = "instance",
+        spatial_dims: int = 3,
+        input_stride: Optional[Sequence[int] | int] = None,
+    ) -> None:
+        super().__init__()
+        assert spatial_dims == 3
+
+        self.bottleneck = UnetrBasicBlock(
+            spatial_dims=spatial_dims,
+            in_channels=feature_size << num_layers - 1,
+            out_channels=feature_size << num_layers - 1,
+            kernel_size=3,
+            stride=1,
+            norm_name=norm_name,
+            res_block=True,
+        )
+
+        self.ups = nn.ModuleList([
+            UnetrUpBlock(
+                spatial_dims=spatial_dims,
+                in_channels=feature_size << i,
+                out_channels=feature_size << i - 1,
+                kernel_size=3,
+                upsample_kernel_size=2,
+                norm_name=norm_name,
+                res_block=True,
+            )
+            for i in range(1, num_layers)
+        ])
+
+        if input_stride is not None:
+            self.input_encoder = UnetrBasicBlock(
+                spatial_dims=spatial_dims,
+                in_channels=in_channels,
+                out_channels=feature_size,
+                kernel_size=3,
+                stride=input_stride,
+                norm_name=norm_name,
+                res_block=True,
+            )
+            self.ups.append(
+                UnetrUpBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=feature_size,
+                    out_channels=feature_size,
+                    kernel_size=3,
+                    upsample_kernel_size=2,
+                    norm_name=norm_name,
+                    res_block=True,
+                )
+            )
+        else:
+            self.input_encoder = None
+
+    def forward(self, x_in: torch.Tensor, hidden_states: list[torch.Tensor]) -> UDecoderOutput:
+        if self.input_encoder is not None:
+            hidden_states = [self.input_encoder(x_in), *hidden_states]
+        x = self.bottleneck(hidden_states[-1])
+        feature_maps = []
+        for z, up in zip(hidden_states[-2::-1], self.ups[::-1]):
+            up: UnetrUpBlock
+            x = up(x, z if up.use_skip else None)
+            feature_maps.append(x)
+        return UDecoderOutput(feature_maps)

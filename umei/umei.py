@@ -82,9 +82,9 @@ class UMeI(LightningModule):
             return torch.stack([
                 interpolate(seg_head(fm), x.shape[2:], mode='trilinear')
                 for fm, seg_head in zip(reversed(feature_maps), self.seg_heads)
-            ]).softmax(dim=2).mean(dim=0)
+            ]).mean(dim=0)
         else:
-            return self.seg_heads[0](feature_maps[-1]).softmax(dim=1)
+            return interpolate(self.seg_heads[0](feature_maps[-1]), x.shape[2:], mode='trilinear')
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
         optimizer.zero_grad(set_to_none=self.args.optimizer_set_to_none)
