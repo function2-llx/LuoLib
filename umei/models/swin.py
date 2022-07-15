@@ -129,6 +129,7 @@ class SwinUnetrDecoder(UDecoderBase):
         norm_name: tuple | str = "instance",
         spatial_dims: int = 3,
         input_stride: Optional[Sequence[int] | int] = None,
+        encode_skip: bool = False,
     ) -> None:
         super().__init__()
         assert spatial_dims == 3
@@ -156,6 +157,22 @@ class SwinUnetrDecoder(UDecoderBase):
             for i in range(1, num_layers)
         ])
 
+        self.encode_skip = encode_skip
+        self.encoders = [None] * (num_layers - 1)   # type: ignore
+        if encode_skip:
+            self.encoders = nn.ModuleList([
+                UnetrBasicBlock(
+                    spatial_dims=spatial_dims,
+                    in_channels=feature_size << i,
+                    out_channels=feature_size << i,
+                    kernel_size=3,
+                    stride=1,
+                    norm_name=norm_name,
+                    res_block=True,
+                )
+                for i in range(num_layers - 1)
+            ])
+
         if input_stride is not None:
             self.input_encoder = UnetrBasicBlock(
                 spatial_dims=spatial_dims,
@@ -167,6 +184,7 @@ class SwinUnetrDecoder(UDecoderBase):
                 res_block=True,
             )
 
+            # don't prepend to self.ups, or will not load pre-trained weights properly
             self.last_up = UnetrUpBlock(
                 spatial_dims=spatial_dims,
                 in_channels=feature_size,
@@ -182,8 +200,10 @@ class SwinUnetrDecoder(UDecoderBase):
     def forward(self, x_in: torch.Tensor = None, hidden_states: list[torch.Tensor] = None) -> UDecoderOutput:
         x = self.bottleneck(hidden_states[-1])
         feature_maps = []
-        for z, up in zip(hidden_states[-2::-1], self.ups[::-1]):
+        for z, up, encoder in zip(hidden_states[-2::-1], self.ups[::-1], self.encoders[::-1]):
             up: UnetrUpBlock
+            if self.encode_skip:
+                z = encoder(z)
             x = up(x, z if up.use_skip else None)
             feature_maps.append(x)
         if self.input_encoder is not None:
