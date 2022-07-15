@@ -30,5 +30,7 @@ squared_dice: false
 dice_include_background: true
 dice_nr: 1e-5
 dice_dr: 1e-5
-pretrain_path: null
-umei_sunetr_decode_use_in: false
+pretrain_path: pretrained/swin-mae/mask90-r0.ckpt
+decoder_pretrain_path: pretrained/swin-mae/mask90-r0.ckpt
+umei_sunetr_decode_use_in: true
+encode_skip: True

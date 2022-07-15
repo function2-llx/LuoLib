@@ -29,6 +29,7 @@ class UMeIArgs(TrainingArguments):
     vit_depths: list[int] = field(default_factory=lambda: [2, 2, 2, 2])
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
+    encode_skip: bool = field(default=False)
     umei_sunetr_decode_use_in: bool = field(default=False)
     umei_impl: bool = field(default=False)
     use_encoder5: bool = field(default=False)

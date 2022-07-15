@@ -137,6 +137,7 @@ def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
                 feature_size=args.base_feature_size,
                 num_layers=len(args.vit_depths),
                 input_stride=input_stride,
+                encode_skip=args.encode_skip,
             )
             if args.decoder_pretrain_path is not None:
                 state_dict = filter_state_dict(torch.load(args.decoder_pretrain_path)["state_dict"], 'decoder')
