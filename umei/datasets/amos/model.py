@@ -1,7 +1,6 @@
 import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
-from torch.nn import functional as torch_f
 
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss

@@ -166,27 +166,27 @@ class SwinUnetrDecoder(UDecoderBase):
                 norm_name=norm_name,
                 res_block=True,
             )
-            self.ups.append(
-                UnetrUpBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=feature_size,
-                    out_channels=feature_size,
-                    kernel_size=3,
-                    upsample_kernel_size=2,
-                    norm_name=norm_name,
-                    res_block=True,
-                )
+
+            self.last_up = UnetrUpBlock(
+                spatial_dims=spatial_dims,
+                in_channels=feature_size,
+                out_channels=feature_size,
+                kernel_size=3,
+                upsample_kernel_size=2,
+                norm_name=norm_name,
+                res_block=True,
             )
         else:
             self.input_encoder = None
 
     def forward(self, x_in: torch.Tensor = None, hidden_states: list[torch.Tensor] = None) -> UDecoderOutput:
-        if self.input_encoder is not None:
-            hidden_states = [self.input_encoder(x_in), *hidden_states]
         x = self.bottleneck(hidden_states[-1])
         feature_maps = []
         for z, up in zip(hidden_states[-2::-1], self.ups[::-1]):
             up: UnetrUpBlock
             x = up(x, z if up.use_skip else None)
+            feature_maps.append(x)
+        if self.input_encoder is not None:
+            x = self.last_up(x, self.input_encoder(x_in))
             feature_maps.append(x)
         return UDecoderOutput(feature_maps)
