@@ -110,15 +110,15 @@ class SwinMAE(pl.LightningModule):
     def training_step(self, x: torch.Tensor, *args, **kwargs):
         mask_loss, non_mask_loss, loss, _, _ = self.forward(x)
         self.log('train/loss', loss)
-        self.log('train/mask-loss', loss)
-        self.log('train/non-mask-loss', loss)
+        self.log('train/mask-loss', mask_loss)
+        self.log('train/non-mask-loss', non_mask_loss)
         return loss
 
     def validation_step(self, x: MetaTensor, *args, **kwargs):
         mask_loss, non_mask_loss, loss, mask, pred = self.forward(x)
         self.log('val/loss', loss)
-        self.log('val/mask-loss', loss)
-        self.log('val/non-mask-loss', loss)
+        self.log('val/mask-loss', mask_loss)
+        self.log('val/non-mask-loss', non_mask_loss)
 
         # for better visualization
         pred.clamp_(min=0, max=1)
