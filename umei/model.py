@@ -140,8 +140,10 @@ def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
             )
             if args.decoder_pretrain_path is not None:
                 state_dict = filter_state_dict(torch.load(args.decoder_pretrain_path)["state_dict"], 'decoder')
-                miss, unexpected = model.load_state_dict(state_dict)
-                assert len(miss) == 0 and len(unexpected) == 0
+                miss, unexpected = model.load_state_dict(state_dict, strict=False)
+                assert len(unexpected) == 0
+                print('missing:', len(miss))
+                print(miss)
                 print(f'load pre-trained decoder from {args.pretrain_path}')
         else:
             from monai.networks.nets import SwinUnetrDecoder
@@ -157,7 +159,7 @@ def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
                     for k, v in torch.load(args.pretrain_path)["state_dict"].items()
                     if not k.startswith('swinViT.') and not k.startswith('out.')
                 }
-                miss, unexpected = model.load_state_dict(state_dict)
+                miss, unexpected = model.load_state_dict(state_dict, strict=False)
                 assert len(miss) == 0 and len(unexpected) == 0
                 print(f'load pre-trained swin-unetr decoder from {args.pretrain_path}')
 
