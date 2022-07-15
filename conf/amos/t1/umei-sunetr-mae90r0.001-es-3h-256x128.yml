@@ -1,0 +1,36 @@
+num_folds: 5
+sample_size: 256
+sample_slices: 128
+encoder: swt
+umei_impl: true
+base_feature_size: 48
+vit_patch_shape: [4, 4, 2]
+#mask_block_shape: [16, 16, 16]
+swin_window_size: [8, 8, 8]
+vit_depths: [2, 2, 6, 2]
+decoder: sunetr
+per_device_train_batch_size: 2
+per_device_eval_batch_size: 1
+num_crop_samples: 1
+learning_rate: 1e-4
+weight_decay: 1e-5
+num_train_epochs: 1000
+num_seg_heads: 3
+spacing: [1, 1, 2]
+task_id: 1
+norm_intensity: false
+#norm_pix_loss: false
+a_min: -175
+a_max: 250
+scale_p: 0.1
+shift_p: 0.1
+optimizer_set_to_none: true
+crop: cls
+squared_dice: false
+dice_include_background: true
+dice_nr: 1e-5
+dice_dr: 1e-5
+pretrain_path: pretrained/swin-mae/mask90-r0.001.ckpt
+decoder_pretrain_path: pretrained/swin-mae/mask90-r0.001.ckpt
+umei_sunetr_decode_use_in: true
+encode_skip: True
