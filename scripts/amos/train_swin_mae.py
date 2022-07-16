@@ -29,7 +29,7 @@ def main():
             save_dir=str(output_dir),
             group=args.exp_name,
             offline=args.log_offline,
-            resume=True,
+            resume=args.resume_log,
         ),
         callbacks=[
             ModelCheckpoint(
