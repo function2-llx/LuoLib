@@ -19,14 +19,17 @@ def main():
         datamodule.val_id = val_fold_id
         output_dir = args.output_dir / f'run-{args.seed}' / f'fold{val_fold_id}'
         output_dir.mkdir(exist_ok=True, parents=True)
+        log_name = f'{args.exp_name}/runs-{args.seed}/fold{val_fold_id}'
+        if args.do_eval:
+            log_name += '/eval'
         trainer = pl.Trainer(
             logger=MyWandbLogger(
-                project='amos',
-                name=f'{args.exp_name}/runs-{args.seed}/fold{val_fold_id}',
+                project='amos-eval' if args.do_eval else 'amos',
+                name=log_name,
                 save_dir=str(output_dir),
                 group=args.exp_name,
                 offline=args.log_offline,
-                resume=True,
+                resume=args.resume_log,
             ),
             callbacks=[
                 ModelCheckpoint(

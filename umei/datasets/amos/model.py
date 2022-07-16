@@ -8,6 +8,7 @@ from monai.metrics import DiceMetric
 from monai.networks import one_hot
 import monai.transforms
 from monai.utils import BlendMode, MetricReduction
+from torch.nn import functional as torch_f
 
 from umei import UMeI
 from umei.datasets.amos import AmosArgs
@@ -63,21 +64,17 @@ class AmosModel(UMeI):
         self.dice_metric.reset()
 
     def test_step(self, batch, *args, **kwargs):
-        img_meta_dict = batch[f'{self.args.img_key}_meta_dict']
-        pred_logit = self.sw_infer(batch[self.args.img_key])
-        pred_logit = self.resampler.__call__(
-            pred_logit[0],
-            src_affine=img_meta_dict['affine'],
-            dst_affine=img_meta_dict['original_affine'],
-            spatial_size=img_meta_dict['spatial_shape'],
-        )
-        pred = pred_logit.argmax(dim=0, keepdim=True)
-        pred = self.post_transform(pred)
-        self.dice_metric(
+        img = batch[self.args.img_key]
+        seg = batch[self.args.seg_key]
+        pred_logit = self.sw_infer(img)
+        pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
+        pred = pred_logit.argmax(dim=1, keepdim=True)
+        pred = self.post_transform(pred[0])
+        print(self.dice_metric(
             # add dummy batch dim
             one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
             one_hot(batch[self.args.seg_key], self.args.num_seg_classes),
-        )
+        ).array)
 
     def test_epoch_end(self, *args) -> None:
         dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
