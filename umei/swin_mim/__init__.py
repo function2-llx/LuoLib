@@ -1,2 +1,2 @@
 from .args import SwinMAEArgs
-from .model import SwinMAE
+from .model import SwinMIM

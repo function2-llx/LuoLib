@@ -5,7 +5,7 @@ import pytorch_lightning as pl
 import wandb
 
 from umei.datasets.amos import AmosArgs, AmosSwinMAEDataModule
-from umei.swin_mae import SwinMAE, SwinMAEArgs
+from umei.swin_mim import SwinMIM, SwinMAEArgs
 from umei.utils import MyWandbLogger, UMeIParser
 
 @dataclass
@@ -25,7 +25,7 @@ def main():
     # output_dir.mkdir(exist_ok=True, parents=True)
     trainer = pl.Trainer(
         logger=MyWandbLogger(
-            project='amos-swin_mae-test',
+            project='amos-swin_mim-test',
             name=f'{args.exp_name}/mask-{args.mask_ratio * 100}/run-{args.seed}',
             save_dir=str(log_save_dir),
             group=args.exp_name,
@@ -39,7 +39,7 @@ def main():
     last_ckpt_path = output_dir / 'last.ckpt'
     for mask_ratio in np.linspace(0, 1, 11):
         args.mask_ratio = mask_ratio
-        model = SwinMAE(args)
+        model = SwinMIM(args)
         trainer.validate(model, datamodule=datamodule, ckpt_path=str(last_ckpt_path))
     wandb.finish()
 

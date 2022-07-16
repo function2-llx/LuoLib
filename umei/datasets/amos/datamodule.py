@@ -14,7 +14,7 @@ import monai
 from monai.data import CacheDataset, DataLoader, Dataset, partition_dataset_classes
 from monai.utils import GridSampleMode, NumpyPadMode
 from umei.datamodule import CVDataModule
-from umei.swin_mae import SwinMAEArgs
+from umei.swin_mim import SwinMAEArgs
 from .args import AmosArgs
 
 DATASET_ROOT = Path(__file__).parent

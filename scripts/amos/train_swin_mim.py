@@ -8,7 +8,7 @@ import wandb
 
 from umei.datasets.amos import AmosSwinMAEDataModule, AmosArgs
 from umei.utils import MyWandbLogger, UMeIParser
-from umei.swin_mae import SwinMAEArgs, SwinMAE
+from umei.swin_mim import SwinMAEArgs, SwinMIM
 
 @dataclass
 class AmosSwinMAEArgs(AmosArgs, SwinMAEArgs):
@@ -24,7 +24,7 @@ def main():
     output_dir.mkdir(exist_ok=True, parents=True)
     trainer = pl.Trainer(
         logger=MyWandbLogger(
-            project='amos-swin_mae',
+            project='amos-swin_mim',
             name=f'{args.exp_name}/mask-{args.mask_ratio * 100}/run-{args.seed}',
             save_dir=str(output_dir),
             group=args.exp_name,
@@ -51,7 +51,7 @@ def main():
         strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),
         num_sanity_val_steps=args.num_sanity_val_steps,
     )
-    model = SwinMAE(args)
+    model = SwinMIM(args)
     last_ckpt_path = output_dir / 'last.ckpt'
     if not last_ckpt_path.exists():
         last_ckpt_path = None

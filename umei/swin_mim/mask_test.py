@@ -1,8 +1,8 @@
 import torch
 from tqdm import trange
 
-from umei.swin_mae.args import SwinMAEArgs
-from umei.swin_mae.model import MaskSwin
+from umei.swin_mim.args import SwinMAEArgs
+from umei.swin_mim.model import MaskSwin
 
 def main():
     args: SwinMAEArgs = SwinMAEArgs.from_yaml_file('../../conf/amos/t1/swin_mae-96x96.yml')
@@ -12,7 +12,7 @@ def main():
         in_chans=args.num_input_channels,
         base_feature_size=24,
         window_size=args.swin_window_size,
-        patch_shape=args.vit_patch_shape,
+        patch_size=args.vit_patch_shape,
         depths=args.vit_depths,
         num_heads=args.vit_num_heads,
         # mlp_ratio=4.0,

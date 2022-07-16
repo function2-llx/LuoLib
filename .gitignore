@@ -141,3 +141,4 @@ nnUNet_data
 runs/
 mae-fb/
 test.py
+SimMIM

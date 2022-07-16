@@ -19,7 +19,7 @@ from .args import SwinMAEArgs
 from .mask_swin import MaskSwin
 from .utils import channel_last
 
-class SwinMAE(pl.LightningModule):
+class SwinMIM(pl.LightningModule):
     logger: MyWandbLogger
 
     def __init__(self, args: SwinMAEArgs):
@@ -37,10 +37,9 @@ class SwinMAE(pl.LightningModule):
             num_heads=args.vit_num_heads,
             use_checkpoint=True,
         )
-        self.decoder = SwinUnetrDecoder(feature_size=args.base_feature_size)
 
         self.pred = nn.Conv3d(
-            args.base_feature_size,
+            (args.base_feature_size << len(args.vit_depths)) - args.base_feature_size,
             args.num_input_channels * np.product(args.vit_patch_shape),
             kernel_size=1,
         )
@@ -88,12 +87,14 @@ class SwinMAE(pl.LightningModule):
         )
 
     def forward(self, x: torch.Tensor):
-        encoder_out = self.encoder.forward(x)
-        mask = encoder_out.mask
-
-        decoder_out = self.decoder.forward(hidden_states=encoder_out.hidden_states)
-        # p_pred = self.pred(feature_map)
-        p_pred = self.pred(decoder_out.feature_maps[-1])
+        # p_xxx: patchified xxx
+        encode = self.encoder.forward(x)
+        mask = encode.mask
+        context = torch.cat([
+            z.repeat_interleave(1 << i, dim=2).repeat_interleave(1 << i, dim=3).repeat_interleave(1 << i, dim=4)
+            for i, z in enumerate(encode.hidden_states)
+        ], dim=1)
+        p_pred = self.pred(context)
         p_pred = channel_last(p_pred)
         pred = self.unpatchify(p_pred)
         p_x = self.patchify(x)
