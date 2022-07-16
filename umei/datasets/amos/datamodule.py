@@ -68,7 +68,12 @@ class AmosDataModule(CVDataModule):
         )
 
     # for skipping predicted subjects
-    def exclude_test(self, subjects: list[str]):
+    def exclude_test(self, subjects: list[str], idx_start: int = None, idx_end: int = None):
+        if idx_start is None:
+            idx_start = 0
+        if idx_end is None:
+            idx_end = len(self.cohort['test'])
+        self.cohort['test'] = self.cohort['test'][idx_start:idx_end]
         subjects = set(subjects)
         self.cohort['test'] = list(filter(
             lambda case: case['subject'] not in subjects,
