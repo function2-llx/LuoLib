@@ -5,20 +5,21 @@ import itertools
 from pathlib import Path
 from typing import Optional
 
+import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.trainer.supporters import CombinedLoader
 import torch
 from torch import nn
-from transformers import HfArgumentParser
-import nibabel as nib
+from tqdm import tqdm
 
 import monai
 from monai.data import NibabelWriter
 from monai.inferers import sliding_window_inference
 from monai.utils import BlendMode, ImageMetaKey
 from umei.datasets.amos import AmosArgs, AmosDataModule, AmosModel
+from umei.utils import UMeIParser
 
 @dataclass
 class PredictionArgs:
@@ -30,6 +31,7 @@ class PredictionArgs:
     different_dataloader: bool = field(default=False)
     il: int = field(default=None)
     ir: int = field(default=None)
+    post_labels: list[int] = field(default_factory=list)
 
 class AmosEnsemblePredictor(pl.LightningModule):
     def __init__(self, args: PredictionArgs):
@@ -46,26 +48,33 @@ class AmosEnsemblePredictor(pl.LightningModule):
             separate_folder=False,
             writer=NibabelWriter,   # type: ignore
         )
+        self.post_transform = monai.transforms.Compose([
+            monai.transforms.KeepLargestConnectedComponent(is_onehot=False, applied_labels=args.post_labels),
+        ])
 
-        for output_dir in args.model_output_dirs:
+        for output_dir in tqdm(args.model_output_dirs, ncols=80, desc='loading models'):
             output_dir = Path(output_dir)
-            args: AmosArgs = AmosArgs.from_yaml_file(output_dir / 'conf.yml')
-            self.datamodules.append(AmosDataModule(args))
-            self.models.append(AmosModel.load_from_checkpoint(str(output_dir / 'last.ckpt'), args=args))
-        if not self.args.overwrite:
+            model_args: AmosArgs = AmosArgs.from_yaml_file(output_dir / 'conf.yml')
+            self.datamodules.append(AmosDataModule(model_args))
+            self.models.append(AmosModel.load_from_checkpoint(str(output_dir / 'last.ckpt'), args=model_args))
+        if not args.overwrite:
             subjects = [
                 subject.name[:-sum(map(len, subject.suffixes))]
-                for subject in self.args.output_dir.iterdir()
+                for subject in args.output_dir.iterdir()
             ]
             for datamodule in self.datamodules:
                 datamodule.exclude_test(subjects, idx_start=args.il, idx_end=args.ir)
 
     def predict_dataloader(self):
-        return CombinedLoader([datamodule.predict_dataloader() for datamodule in self.datamodules])
+        if self.args.different_dataloader:
+            return CombinedLoader([datamodule.predict_dataloader() for datamodule in self.datamodules])
+        else:
+            return self.datamodules[0].predict_dataloader()
 
-    def predict_step(self, combined_batch: list[dict] | dict, *args, **kwargs):
+    def predict_step(self, combined_batch: list[dict], *args, **kwargs):
         ensemble_dist: Optional[torch.Tensor] = None
-        if isinstance(combined_batch, list):
+        if self.args.different_dataloader:
+            assert isinstance(combined_batch, list)
             example_batch = combined_batch[0]
         else:
             example_batch = combined_batch
@@ -90,7 +99,7 @@ class AmosEnsemblePredictor(pl.LightningModule):
                 # device='cpu',   # save gpu memory -- which can be a lot!
                 progress=True,
             )[0]
-            resampled_pred_logit, _ = self.resampler.__call__(
+            resampled_pred_logit = self.resampler.__call__(
                 pred_logit,
                 src_affine=batch['img_meta_dict']['affine'],
                 dst_affine=example_meta_dict['original_affine'],
@@ -102,12 +111,13 @@ class AmosEnsemblePredictor(pl.LightningModule):
             else:
                 ensemble_dist += pred_dist
         ensemble_dist /= len(self.models)
-
+        ensemble_pred = ensemble_dist.argmax(dim=0, keepdim=True)
+        pred = self.post_transform(ensemble_pred)
         # using the original header to pass the "tolerance" check for MRI
         # currently monai does not preserve the exact header
         nib.save(
             nib.Nifti1Image(
-                ensemble_dist.argmax(dim=0).numpy().astype(np.uint8),
+                pred[0].cpu().numpy().astype(np.uint8),
                 affine=example_meta_dict['original_affine'],
                 header=nib.load(example_meta_dict[ImageMetaKey.FILENAME_OR_OBJ]).header,
             ),
@@ -115,7 +125,7 @@ class AmosEnsemblePredictor(pl.LightningModule):
         )
 
 def main():
-    parser = HfArgumentParser(PredictionArgs)
+    parser = UMeIParser(PredictionArgs, use_conf=True, infer_output=False)
     args: PredictionArgs = parser.parse_args_into_dataclasses()[0]
     print(args)
     args.output_dir.mkdir(exist_ok=True, parents=True)

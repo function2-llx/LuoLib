@@ -4,6 +4,7 @@ import numpy as np
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.trainer.supporters import CombinedLoader
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
+from torch.utils.data import default_collate
 
 from monai.data import CacheDataset, DataLoader, select_cross_validation_folds
 from .args import UMeIArgs
@@ -41,7 +42,7 @@ class CVDataModule(LightningDataModule):
         raise NotImplementedError
 
     @property
-    def eval_transform(self):
+    def val_transform(self):
         raise NotImplementedError
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
@@ -76,7 +77,7 @@ class CVDataModule(LightningDataModule):
                 split: DataLoader(
                     dataset=CacheDataset(
                         self.partitions[part_id],
-                        transform=self.eval_transform,
+                        transform=self.val_transform,
                         cache_num=self.args.val_cache_num,
                         num_workers=self.args.dataloader_num_workers,
                     ),

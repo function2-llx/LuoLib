@@ -11,13 +11,14 @@ from transformers import HfArgumentParser
 yaml = YAML()
 
 class UMeIParser(HfArgumentParser):
-    def __init__(self, *args, use_conf: bool, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, *args, use_conf: bool, infer_output: bool = True, allow_abbrev=False, **kwargs):
+        super().__init__(*args, allow_abbrev=allow_abbrev, **kwargs)
         for action in self._actions:
             if hasattr(action.type, '__origin__') and issubclass(getattr(action.type, '__origin__'), Iterable):
                 action.type = action.type.__args__[0]
                 action.nargs = '+'
         self.use_conf = use_conf
+        self.infer_output = infer_output
 
     @staticmethod
     def save_args_as_conf(args, save_path: Path):
@@ -73,14 +74,15 @@ class UMeIParser(HfArgumentParser):
             else:
                 return None
 
-        if args.exp_name is None:
-            args.exp_name = infer_exp_name()
+        if self.infer_output:
+            if args.exp_name is None:
+                args.exp_name = infer_exp_name()
 
-        if args.output_dir is None:
-            if args.output_root is None or args.exp_name is None:
-                raise AttributeError('unable to infer `output_dir`')
-            else:
-                args.output_dir = Path(args.output_root) / args.exp_name
+            if args.output_dir is None:
+                if args.output_root is None or args.exp_name is None:
+                    raise AttributeError('unable to infer `output_dir`')
+                else:
+                    args.output_dir = Path(args.output_root) / args.exp_name
 
         # output_dir = Path(args.output_dir)
         # self.save_args_as_conf(args, output_dir / 'conf.yml')

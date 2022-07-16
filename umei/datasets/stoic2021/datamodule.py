@@ -50,7 +50,7 @@ class Stoic2021DataModule(CVDataModule):
         assert self.args.use_test_fold
 
         return DataLoader(
-            dataset=Dataset(self.partitions[-1], transform=self.eval_transform),
+            dataset=Dataset(self.partitions[-1], transform=self.val_transform),
             num_workers=self.args.dataloader_num_workers,
             batch_size=self.args.per_device_eval_batch_size,
             pin_memory=True,
@@ -151,7 +151,7 @@ class Stoic2021DataModule(CVDataModule):
         ])
 
     @property
-    def eval_transform(self) -> Callable:
+    def val_transform(self) -> Callable:
         return monai.transforms.Compose([
             self.loader_transform,
             self.normalize_transform,

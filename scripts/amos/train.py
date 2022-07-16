@@ -74,7 +74,7 @@ def main():
                     if k.startswith('out.')
                 })
                 print('DEBUG: load pre-trained seg head')
-            trainer.validate(model, ckpt_path=last_ckpt_path, datamodule=datamodule)
+            trainer.test(model, ckpt_path=last_ckpt_path, datamodule=datamodule)
 
         wandb.finish()
 

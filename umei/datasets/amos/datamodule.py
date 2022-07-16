@@ -80,6 +80,25 @@ class AmosDataModule(CVDataModule):
             self.cohort['test'],
         ))
 
+    def test_dataloader(self) -> EVAL_DATALOADERS:
+        return DataLoader(
+            dataset=Dataset(
+                self.partitions[self.val_id],
+                transform=self.test_transform,
+            ),
+            num_workers=self.args.dataloader_num_workers,
+            batch_size=1,
+            pin_memory=True,
+            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+            collate_fn=lambda batch: {
+                **batch[0],
+                **{
+                    k: default_collate([batch[0][k]])
+                    for k in [self.args.img_key, self.args.seg_key]
+                },
+            },
+        )
+
     def predict_dataloader(self) -> EVAL_DATALOADERS:
         return DataLoader(
             dataset=Dataset(self.cohort['test'], transform=self.predict_transform),
@@ -89,17 +108,17 @@ class AmosDataModule(CVDataModule):
             persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
             collate_fn=lambda batch: {
                 **batch[0],
-                'img': default_collate([batch[0]['img']]),
+                self.args.img_key: default_collate([batch[0][self.args.img_key]]),
             }
         )
 
-    def loader_transform(self, *, on_predict: bool) -> monai.transforms.Compose:
+    def loader_transform(self, *, load_seg: bool) -> monai.transforms.Compose:
         load_keys = [self.args.img_key]
-        if not on_predict:
+        if load_seg:
             load_keys.append(self.args.seg_key)
 
         def fix_seg_affine(data: dict):
-            if not on_predict:
+            if load_seg:
                 data[f'{self.args.seg_key}_meta_dict']['affine'] = data[f'{self.args.img_key}_meta_dict']['affine']
             return data
 
@@ -110,13 +129,13 @@ class AmosDataModule(CVDataModule):
             monai.transforms.OrientationD(load_keys, axcodes='RAS'),
         ])
 
-    def normalize_transform(self, *, on_predict: bool) -> monai.transforms.Compose:
-        all_keys = [self.args.img_key]
+    def normalize_transform(self, *, full_seg: bool) -> monai.transforms.Compose:
+        spacing_keys = [self.args.img_key]
         spacing_modes = [GridSampleMode.BILINEAR]
-        if not on_predict:
-            all_keys.append(self.args.seg_key)
+        if not full_seg:
+            spacing_keys.append(self.args.seg_key)
             spacing_modes.append(GridSampleMode.NEAREST)
-        transforms = [monai.transforms.SpacingD(all_keys, pixdim=self.args.spacing, mode=spacing_modes)]
+        transforms = [monai.transforms.SpacingD(spacing_keys, pixdim=self.args.spacing, mode=spacing_modes)]
         if self.args.norm_intensity:
             transforms.extend([
                 monai.transforms.NormalizeIntensityD(self.args.img_key),
@@ -133,7 +152,7 @@ class AmosDataModule(CVDataModule):
                 b_max=1,
                 clip=True,
             ))
-        if not on_predict:
+        if not full_seg:
             transforms.append(
                 monai.transforms.CropForegroundd([self.args.img_key, self.args.seg_key], source_key=self.args.img_key)
             )
@@ -180,14 +199,14 @@ class AmosDataModule(CVDataModule):
     def train_transform(self) -> Callable:
         # MONAI thinks Compose is randomized and skip cache, so we have to expand it lol
         return monai.transforms.Compose([
-            *self.loader_transform(on_predict=False).transforms,
-            *self.normalize_transform(on_predict=False).transforms,
+            *self.loader_transform(load_seg=True).transforms,
+            *self.normalize_transform(full_seg=False).transforms,
             *self.aug_transform.transforms,
             monai.transforms.SelectItemsD([self.args.img_key, self.args.seg_key]),
         ])
 
     @property
-    def eval_transform(self) -> Callable:
+    def val_transform(self) -> Callable:
         if self.args.use_monai:
             val_transform = monai.transforms.Compose(
                 [
@@ -213,15 +232,22 @@ class AmosDataModule(CVDataModule):
             )
             return val_transform
         return monai.transforms.Compose([
-            *self.loader_transform(on_predict=False).transforms,
-            *self.normalize_transform(on_predict=False).transforms,
+            *self.loader_transform(load_seg=True).transforms,
+            *self.normalize_transform(full_seg=False).transforms,
+        ])
+
+    @property
+    def test_transform(self):
+        return monai.transforms.Compose([
+            *self.loader_transform(load_seg=True).transforms,
+            *self.normalize_transform(full_seg=True).transforms,
         ])
 
     @property
     def predict_transform(self):
         return monai.transforms.Compose([
-            self.loader_transform(on_predict=True),
-            self.normalize_transform(on_predict=True),
+            self.loader_transform(load_seg=False),
+            self.normalize_transform(full_seg=True),
         ])
 
 class AmosSwinMAEDataModule(pl.LightningDataModule):
