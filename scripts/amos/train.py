@@ -54,9 +54,11 @@ def main():
             # limit_val_batches=0.2,
         )
         model = AmosModel(args)
-        last_ckpt_path = output_dir / 'last.ckpt'
-        if not last_ckpt_path.exists():
-            last_ckpt_path = None
+        last_ckpt_path = args.ckpt_path
+        if last_ckpt_path is None:
+            last_ckpt_path = output_dir / 'last.ckpt'
+            if not last_ckpt_path.exists():
+                last_ckpt_path = None
         if args.do_train:
             if trainer.is_global_zero:
                 conf_save_path = output_dir / 'conf.yml'

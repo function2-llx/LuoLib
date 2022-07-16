@@ -70,6 +70,7 @@ class UMeIArgs(TrainingArguments):
     optimizer_set_to_none: bool = field(default=False)
     num_sanity_val_steps: int = field(default=5)
     self_ensemble: bool = field(default=False)
+    ckpt_path: Path = field(default=None, metadata={'help': 'checkpoint path to resume'})
 
     @property
     def sample_shape(self) -> tuple[int, int, int]:
