@@ -66,6 +66,7 @@ class UMeIArgs(TrainingArguments):
     log_offline: bool = field(default=False)
     train_cache_num: int = field(default=0)
     val_cache_num: int = field(default=0)
+    eval_epochs: int = field(default=1)
     optimizer_set_to_none: bool = field(default=False)
     num_sanity_val_steps: int = field(default=5)
     self_ensemble: bool = field(default=False)
