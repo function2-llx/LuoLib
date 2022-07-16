@@ -22,6 +22,7 @@ def main():
         log_dir = output_dir
         if args.do_eval:
             log_dir /= 'eval'
+        log_dir.mkdir(exist_ok=True, parents=True)
         trainer = pl.Trainer(
             logger=MyWandbLogger(
                 project='amos-eval' if args.do_eval else 'amos',
