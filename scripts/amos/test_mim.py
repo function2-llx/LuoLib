@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+import numpy as np
 import pytorch_lightning as pl
 import wandb
 
@@ -18,12 +19,15 @@ def main():
     pl.seed_everything(args.seed)
     datamodule = AmosSwinMAEDataModule(args)
     output_dir = args.output_dir / f'mask-{args.mask_ratio * 100}' / f'run-{args.seed}'
+    print(f'use output directory: {output_dir}')
+    log_save_dir = output_dir / 'mim-test'
+    log_save_dir.mkdir(exist_ok=True)
     # output_dir.mkdir(exist_ok=True, parents=True)
     trainer = pl.Trainer(
         logger=MyWandbLogger(
             project='amos-swin_mae-test',
             name=f'{args.exp_name}/mask-{args.mask_ratio * 100}/run-{args.seed}',
-            save_dir=str(output_dir),
+            save_dir=str(log_save_dir),
             group=args.exp_name,
             offline=args.log_offline,
             resume=args.resume_log,
@@ -33,7 +37,7 @@ def main():
         benchmark=True,
     )
     last_ckpt_path = output_dir / 'last.ckpt'
-    for mask_ratio in [0, 0.2, 0.4, 0.6, 1]:
+    for mask_ratio in np.linspace(0, 1, 11):
         args.mask_ratio = mask_ratio
         model = SwinMAE(args)
         trainer.validate(model, datamodule=datamodule, ckpt_path=str(last_ckpt_path))
