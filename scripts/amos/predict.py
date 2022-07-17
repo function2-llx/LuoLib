@@ -52,18 +52,20 @@ class AmosEnsemblePredictor(pl.LightningModule):
             monai.transforms.KeepLargestConnectedComponent(is_onehot=False, applied_labels=args.post_labels),
         ])
 
-        for output_dir in tqdm(args.model_output_dirs, ncols=80, desc='loading models'):
-            output_dir = Path(output_dir)
-            model_args: AmosArgs = AmosArgs.from_yaml_file(output_dir / 'conf.yml')
-            self.datamodules.append(AmosDataModule(model_args))
-            self.models.append(AmosModel.load_from_checkpoint(str(output_dir / 'last.ckpt'), args=model_args))
+        predicted_subjects = []
         if not args.overwrite:
-            subjects = [
+            predicted_subjects = [
                 subject.name[:-sum(map(len, subject.suffixes))]
                 for subject in args.output_dir.iterdir()
             ]
-            for datamodule in self.datamodules:
-                datamodule.exclude_test(subjects, idx_start=args.il, idx_end=args.ir)
+
+        for i, output_dir in enumerate(tqdm(args.model_output_dirs, ncols=80, desc='loading models')):
+            output_dir = Path(output_dir)
+            model_args: AmosArgs = AmosArgs.from_yaml_file(output_dir / 'conf.yml')
+            datamodule = AmosDataModule(model_args)
+            datamodule.filter_test(predicted_subjects, idx_start=args.il, idx_end=args.ir, print_included=(i == 0))
+            self.datamodules.append(datamodule)
+            self.models.append(AmosModel.load_from_checkpoint(str(output_dir / 'last.ckpt'), args=model_args))
 
     def predict_dataloader(self):
         if self.args.different_dataloader:
@@ -96,7 +98,7 @@ class AmosEnsemblePredictor(pl.LightningModule):
                 predictor=model.forward,
                 overlap=self.args.sw_overlap,
                 mode=BlendMode.GAUSSIAN,
-                # device='cpu',   # save gpu memory -- which can be a lot!
+                device='cpu',   # save gpu memory -- which can be a lot!
                 progress=True,
             )[0]
             resampled_pred_logit = self.resampler.__call__(

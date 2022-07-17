@@ -20,12 +20,12 @@ def main():
     print(args)
     pl.seed_everything(args.seed)
     datamodule = AmosSwinMAEDataModule(args)
-    output_dir = args.output_dir / f'mask-{args.mask_ratio * 100}' / f'run-{args.seed}'
+    output_dir = args.output_dir / f'mask{args.mask_ratio * 100}-r{args.non_mask_factor}' / f'run-{args.seed}'
     output_dir.mkdir(exist_ok=True, parents=True)
     trainer = pl.Trainer(
         logger=MyWandbLogger(
             project='amos-swin_mim',
-            name=f'{args.exp_name}/mask-{args.mask_ratio * 100}/run-{args.seed}',
+            name=f'{args.exp_name}/mask{args.mask_ratio * 100}-r{args.non_mask_factor}/run-{args.seed}',
             save_dir=str(output_dir),
             group=args.exp_name,
             offline=args.log_offline,

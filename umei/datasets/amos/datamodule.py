@@ -67,18 +67,24 @@ class AmosDataModule(CVDataModule):
             seed=args.seed,
         )
 
-    # for skipping predicted subjects
-    def exclude_test(self, subjects: list[str], idx_start: int = None, idx_end: int = None):
+    # skip predicted subjects, predict for subjects with specified index
+    def filter_test(self, predicted_subjects: list[str], idx_start: int = None, idx_end: int = None, print_included: bool = False):
         if idx_start is None:
             idx_start = 0
         if idx_end is None:
             idx_end = len(self.cohort['test'])
-        self.cohort['test'] = self.cohort['test'][idx_start:idx_end]
-        subjects = set(subjects)
-        self.cohort['test'] = list(filter(
-            lambda case: case['subject'] not in subjects,
-            self.cohort['test'],
-        ))
+        included = []
+        for i in range(idx_start, idx_end):
+            case = self.cohort['test'][i]
+            if case['subject'] not in predicted_subjects:
+                included.append(i)
+        if print_included:
+            print('include:', included)
+
+        self.cohort['test'] = [
+            self.cohort['test'][i]
+            for i in included
+        ]
 
     def test_dataloader(self) -> EVAL_DATALOADERS:
         return DataLoader(
