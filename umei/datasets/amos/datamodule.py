@@ -20,7 +20,7 @@ from .args import AmosArgs
 DATASET_ROOT = Path(__file__).parent
 DATA_DIR = DATASET_ROOT / 'origin'
 
-def load_cohort(task_id: int):
+def load_cohort(task_id: int, merge: bool = False):
     cohort = {
         'training': {},
         'test': {}
@@ -50,7 +50,10 @@ def load_cohort(task_id: int):
                 })
     for split in ['training', 'test']:
         cohort[split] = list(cohort[split].values())
-    return cohort
+    if merge:
+        return cohort['training'] + cohort['test']
+    else:
+        return cohort
 
 class AmosDataModule(CVDataModule):
     args: AmosArgs
@@ -256,7 +259,7 @@ class AmosDataModule(CVDataModule):
             self.normalize_transform(full_seg=True),
         ])
 
-class AmosSwinMAEDataModule(pl.LightningDataModule):
+class AmosSnimDataModule(pl.LightningDataModule):
     def __init__(self, args: AmosArgs | SwinMAEArgs):
         super().__init__()
         self.args = args

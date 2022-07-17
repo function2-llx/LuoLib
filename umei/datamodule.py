@@ -4,7 +4,6 @@ import numpy as np
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.trainer.supporters import CombinedLoader
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
-from torch.utils.data import default_collate
 
 from monai.data import CacheDataset, DataLoader, select_cross_validation_folds
 from .args import UMeIArgs

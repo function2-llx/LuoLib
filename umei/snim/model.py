@@ -10,27 +10,26 @@ from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from monai.data import MetaTensor
+from monai.data import DataLoader, MetaTensor
 from monai.utils import ImageMetaKey
 from umei.utils import MyWandbLogger
+from umei.models.swin import SwinTransformer
 
 
-from .args import SwinMAEArgs
-from .mask_swin import MaskSwin
-from .utils import channel_last
+from .args import SnimArgs
+from .mask_swin import SnimEncoder
+from .utils import channel_first, channel_last
 
-class SwinMIM(pl.LightningModule):
+class SnimModel(pl.LightningModule):
     logger: MyWandbLogger
 
-    def __init__(self, args: SwinMAEArgs):
+    def __init__(self, args: SnimArgs):
         super().__init__()
         self.args = args
 
-        self.encoder = MaskSwin(
-            mask_ratio=args.mask_ratio,
-            block_shape=args.mask_block_shape,
+        self.encoder = SwinTransformer(
             in_chans=args.num_input_channels,
-            base_feature_size=args.base_feature_size,
+            embed_dim=args.base_feature_size,
             window_size=args.swin_window_size,
             patch_size=args.vit_patch_shape,
             depths=args.vit_depths,
@@ -57,6 +56,33 @@ class SwinMIM(pl.LightningModule):
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
+
+    def random_masking(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        # corner spatial shape
+        corner_ss = [
+            size + block_patch_num - 1
+            for size, block_patch_num in zip(x.shape[2:], self.args.mask_block_shape)
+        ]
+        if self.mask_ratio == 1:
+            mask_num = np.product(x.shape[2:])
+        else:
+            mask_num: int = np.round(
+                np.log(1 - self.mask_ratio) /
+                np.log(1 - np.product(self.block_patch_shape) / np.product(corner_ss))
+            ).astype(int)
+        if mask_num == 0:
+            mask = torch.zeros(x.shape[0], *x.shape[2:], dtype=torch.bool)
+        else:
+            noise: torch.Tensor = torch.rand(x.shape[0], np.product(corner_ss), device=x.device)
+            kth = noise.kthvalue(mask_num, dim=-1, keepdim=True).values
+            corner_mask = rearrange(noise <= kth, 'n (h w d) -> n 1 h w d', h=corner_ss[0], w=corner_ss[1], d=corner_ss[2])
+            mask = self.corner_counter(corner_mask.float()).round() >= 1
+            mask = rearrange(mask, 'n 1 h w d -> n h w d')
+
+        x_mask = channel_last(x.clone())
+        x_mask[mask] = self.mask_token.to(x_mask.dtype)
+        x_mask = channel_first(x_mask)
+        return x_mask, mask
 
     def _init_weights(self, m: nn.Module):
         if isinstance(m, nn.Linear):

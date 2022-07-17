@@ -10,7 +10,7 @@ from torch import nn
 
 from umei.models.swin import SwinTransformer
 
-__all__ = ['MaskSwin']
+__all__ = ['SnimEncoder']
 
 from .utils import channel_first, channel_last
 
@@ -19,7 +19,7 @@ class MaskSwinOutput:
     mask: torch.Tensor = None
     hidden_states: list[torch.Tensor] = None
 
-class MaskSwin(SwinTransformer):
+class SnimEncoder(SwinTransformer):
     def __init__(
         self,
         mask_ratio: float,
@@ -43,32 +43,6 @@ class MaskSwin(SwinTransformer):
         nn.init.constant_(self.corner_counter.weight, 1)
         self.corner_counter.weight.requires_grad = False
 
-    def random_masking(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # corner spatial shape
-        corner_ss = [
-            size + block_patch_num - 1
-            for size, block_patch_num in zip(x.shape[2:], self.block_patch_shape)
-        ]
-        if self.mask_ratio == 1:
-            mask_num = np.product(x.shape[2:])
-        else:
-            mask_num: int = np.round(
-                np.log(1 - self.mask_ratio) /
-                np.log(1 - np.product(self.block_patch_shape) / np.product(corner_ss))
-            ).astype(int)
-        if mask_num == 0:
-            mask = torch.zeros(x.shape[0], *x.shape[2:], dtype=torch.bool)
-        else:
-            noise: torch.Tensor = torch.rand(x.shape[0], np.product(corner_ss), device=x.device)
-            kth = noise.kthvalue(mask_num, dim=-1, keepdim=True).values
-            corner_mask = rearrange(noise <= kth, 'n (h w d) -> n 1 h w d', h=corner_ss[0], w=corner_ss[1], d=corner_ss[2])
-            mask = self.corner_counter(corner_mask.float()).round() >= 1
-            mask = rearrange(mask, 'n 1 h w d -> n h w d')
-
-        x_mask = channel_last(x.clone())
-        x_mask[mask] = self.mask_token.to(x_mask.dtype)
-        x_mask = channel_first(x_mask)
-        return x_mask, mask
 
     def test_mask_ratio(self, x):
         x = self.patch_embed(x)

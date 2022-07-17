@@ -6,7 +6,7 @@ from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
 
-from umei.datasets.amos import AmosSwinMAEDataModule, AmosArgs
+from umei.datasets.amos import AmosSnimDataModule, AmosArgs
 from umei.utils import MyWandbLogger, UMeIParser
 from umei.swin_mim import SwinMAEArgs, SwinMIM
 
@@ -19,7 +19,7 @@ def main():
     args: AmosSwinMAEArgs = parser.parse_args_into_dataclasses()[0]
     print(args)
     pl.seed_everything(args.seed)
-    datamodule = AmosSwinMAEDataModule(args)
+    datamodule = AmosSnimDataModule(args)
     output_dir = args.output_dir / f'mask{args.mask_ratio * 100}-r{args.non_mask_factor}' / f'run-{args.seed}'
     output_dir.mkdir(exist_ok=True, parents=True)
     trainer = pl.Trainer(
