@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from monai.data import MetaTensor
 from monai.utils import ImageMetaKey
 from umei.utils import MyWandbLogger
-from umei.models.swin import SwinUnetrDecoder
+
 
 from .args import SwinMAEArgs
 from .mask_swin import MaskSwin
@@ -49,7 +49,7 @@ class SwinMIM(pl.LightningModule):
         # initialize patch_embed like nn.Linear (instead of nn.Convnd)
         w: torch.Tensor = self.encoder.patch_embed.proj.weight.data
         torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-
+        # so does the linear reconstruction head
         w: torch.Tensor = self.pred.weight.data
         torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 

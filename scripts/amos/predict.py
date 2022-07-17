@@ -100,9 +100,10 @@ class AmosEnsemblePredictor(pl.LightningModule):
                 predictor=model.forward,
                 overlap=self.args.sw_overlap,
                 mode=BlendMode.GAUSSIAN,
-                device='cpu',   # save gpu memory -- which can be a lot!
+                # device='cpu',   # save gpu memory -- which can be a lot!
                 progress=True,
             )
+            # FIXME: reorientation
             pred_logit = torch_f.interpolate(pred_logit, origin_nib.shape, mode='trilinear')
             pred_dist = pred_logit[0].softmax(dim=0)
             if ensemble_dist is None:
