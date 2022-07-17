@@ -5,6 +5,7 @@ import itertools
 from pathlib import Path
 from typing import Optional
 
+from nibabel import Nifti1Image
 import nibabel as nib
 import numpy as np
 import pytorch_lightning as pl
@@ -12,6 +13,7 @@ from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.trainer.supporters import CombinedLoader
 import torch
 from torch import nn
+from torch.nn import functional as torch_f
 from tqdm import tqdm
 
 import monai
@@ -39,7 +41,7 @@ class AmosEnsemblePredictor(pl.LightningModule):
         self.args = args
         self.datamodules = []
         self.models = nn.ModuleList()
-        self.resampler = monai.transforms.SpatialResample()
+        # self.resampler = monai.transforms.SpatialResample()
         self.saver = monai.transforms.SaveImage(
             output_dir=self.args.output_dir,
             output_postfix='',
@@ -88,7 +90,7 @@ class AmosEnsemblePredictor(pl.LightningModule):
             return
 
         print(f'predicting {subject}')
-        example_meta_dict = example_batch['img_meta_dict']
+        origin_nib: Nifti1Image = nib.load(example_batch['img_meta_dict'][ImageMetaKey.FILENAME_OR_OBJ])
         for batch, model in zip(combined_batch, self.models):
             model: AmosModel
             pred_logit = sliding_window_inference(
@@ -100,14 +102,9 @@ class AmosEnsemblePredictor(pl.LightningModule):
                 mode=BlendMode.GAUSSIAN,
                 device='cpu',   # save gpu memory -- which can be a lot!
                 progress=True,
-            )[0]
-            resampled_pred_logit = self.resampler.__call__(
-                pred_logit,
-                src_affine=batch['img_meta_dict']['affine'],
-                dst_affine=example_meta_dict['original_affine'],
-                spatial_size=example_meta_dict['spatial_shape'],
             )
-            pred_dist = resampled_pred_logit.softmax(dim=0)
+            pred_logit = torch_f.interpolate(pred_logit, origin_nib.shape, mode='trilinear')
+            pred_dist = pred_logit[0].softmax(dim=0)
             if ensemble_dist is None:
                 ensemble_dist = pred_dist
             else:
@@ -120,8 +117,8 @@ class AmosEnsemblePredictor(pl.LightningModule):
         nib.save(
             nib.Nifti1Image(
                 pred[0].cpu().numpy().astype(np.uint8),
-                affine=example_meta_dict['original_affine'],
-                header=nib.load(example_meta_dict[ImageMetaKey.FILENAME_OR_OBJ]).header,
+                affine=origin_nib.affine,
+                header=origin_nib.header,
             ),
             self.args.output_dir / f"{example_batch['subject']}.nii.gz",
         )
