@@ -1,4 +1,4 @@
 from .umei import UMeI
-from .model import UEncoderBase, UDecoderBase
+from monai.umei import UDecoderBase, UEncoderBase
 from . import transforms
 from .datamodule import CVDataModule

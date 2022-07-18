@@ -1,32 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from typing import Optional
 
 import torch
 from torch import nn
 
-# since monai models are adapted to umei API (relying on umei),
-# don't import monai globally or will lead to circular import
+from monai.umei import UEncoderBase
 from umei.args import UMeIArgs
-
-@dataclass
-class UEncoderOutput:
-    cls_feature: torch.Tensor = None
-    hidden_states: list[torch.Tensor] = field(default_factory=list)
-
-class UEncoderBase(nn.Module):
-    def forward(self, img: torch.Tensor, *args, **kwargs) -> UEncoderOutput:
-        raise NotImplementedError
-
-@dataclass
-class UDecoderOutput:
-    # low->high resolution
-    feature_maps: list[torch.Tensor]
-
-class UDecoderBase(nn.Module):
-    def forward(self, img: torch.Tensor, encoder_hidden_states: list[torch.Tensor]) -> UDecoderOutput:
-        raise not NotImplementedError
 
 def filter_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict:
     return {

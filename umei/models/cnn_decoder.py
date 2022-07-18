@@ -7,8 +7,7 @@ from torch import nn
 
 from monai.networks.blocks import UnetResBlock
 from monai.networks.blocks.dynunet_block import get_conv_layer
-from umei import UDecoderBase
-from umei.model import UDecoderOutput
+from monai.umei import UDecoderBase, UDecoderOutput
 
 # Modified UnetUpBlock
 class UpBlock(nn.Module):

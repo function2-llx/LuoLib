@@ -4,7 +4,8 @@ import numpy as np
 import pytorch_lightning as pl
 import wandb
 
-from umei.datasets.amos import AmosArgs, AmosSnimDataModule
+from umei.datasets.amos import AmosArgs
+from umei.snim.datamodule import AmosSnimDataModule
 from umei.swin_mim import SwinMIM, SwinMAEArgs
 from umei.utils import MyWandbLogger, UMeIParser
 

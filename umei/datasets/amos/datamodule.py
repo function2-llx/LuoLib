@@ -5,16 +5,13 @@ from pathlib import Path
 from typing import Callable
 
 import pandas as pd
-import pytorch_lightning as pl
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
-from sklearn.model_selection import train_test_split
+from pytorch_lightning.utilities.types import EVAL_DATALOADERS
 from torch.utils.data import default_collate
 
 import monai
-from monai.data import CacheDataset, DataLoader, Dataset, partition_dataset_classes
+from monai.data import DataLoader, Dataset, partition_dataset_classes
 from monai.utils import GridSampleMode, NumpyPadMode
 from umei.datamodule import CVDataModule
-from umei.swin_mim import SwinMAEArgs
 from .args import AmosArgs
 
 DATASET_ROOT = Path(__file__).parent
@@ -258,127 +255,3 @@ class AmosDataModule(CVDataModule):
             self.loader_transform(load_seg=False),
             self.normalize_transform(full_seg=True),
         ])
-
-class AmosSnimDataModule(pl.LightningDataModule):
-    def __init__(self, args: AmosArgs | SwinMAEArgs):
-        super().__init__()
-        self.args = args
-        self.train_images, self.val_images = train_test_split([
-            {args.img_key: subject[args.img_key]}
-            for cohort in load_cohort(args.task_id).values()
-            for subject in cohort
-        ], test_size=args.val_size, random_state=args.seed)
-
-    @property
-    def train_transform(self):
-        img_key = self.args.img_key
-        return monai.transforms.Compose([
-            monai.transforms.LoadImageD(img_key),
-            monai.transforms.AddChannelD(img_key),
-            monai.transforms.OrientationD(img_key, axcodes='RAS'),
-            monai.transforms.SpacingD(img_key, pixdim=self.args.spacing, mode=GridSampleMode.BILINEAR),
-            monai.transforms.ScaleIntensityRangeD(
-                img_key,
-                a_min=self.args.a_min,
-                a_max=self.args.a_max,
-                b_min=0,
-                b_max=1,
-                clip=True,
-            ),
-            monai.transforms.CropForegroundD(img_key, source_key=img_key),
-            *(
-                (monai.transforms.NormalizeIntensityD(img_key), )
-                if self.args.norm_intensity else ()
-            ),
-            monai.transforms.SpatialPadD(
-                img_key,
-                spatial_size=self.args.sample_shape,
-                mode=NumpyPadMode.CONSTANT
-            ),
-            monai.transforms.RandSpatialCropSamplesD(
-                img_key,
-                roi_size=self.args.sample_shape,
-                num_samples=self.args.num_crop_samples,
-                random_size=False,
-                random_center=True,
-            ),
-            monai.transforms.RandFlipD(img_key, prob=self.args.flip_p, spatial_axis=0),
-            monai.transforms.RandFlipD(img_key, prob=self.args.flip_p, spatial_axis=1),
-            monai.transforms.RandFlipD(img_key, prob=self.args.flip_p, spatial_axis=2),
-            monai.transforms.RandRotate90D(img_key, prob=self.args.rotate_p, max_k=3),
-            monai.transforms.RandScaleIntensityD(img_key, factors=0.1, prob=self.args.scale_p),
-            monai.transforms.RandShiftIntensityD(img_key, offsets=0.1, prob=self.args.shift_p),
-            monai.transforms.Lambda(lambda data: data[img_key]),
-        ])
-
-    @property
-    def val_transform(self):
-        img_key = self.args.img_key
-        return monai.transforms.Compose([
-            monai.transforms.LoadImageD(img_key),
-            monai.transforms.AddChannelD(img_key),
-            monai.transforms.OrientationD(img_key, axcodes='RAS'),
-            monai.transforms.SpacingD(img_key, pixdim=self.args.spacing, mode=GridSampleMode.BILINEAR),
-            monai.transforms.ScaleIntensityRangeD(
-                img_key,
-                a_min=self.args.a_min,
-                a_max=self.args.a_max,
-                b_min=0,
-                b_max=1,
-                clip=True,
-            ),
-            monai.transforms.CropForegroundD(img_key, source_key=img_key),
-            *(
-                (monai.transforms.NormalizeIntensityD(img_key), )
-                if self.args.norm_intensity else ()
-            ),
-            monai.transforms.SpatialPadD(
-                img_key,
-                spatial_size=self.args.sample_shape,
-                mode=NumpyPadMode.CONSTANT
-            ),
-            monai.transforms.RandSpatialCropSamplesD(
-                img_key,
-                roi_size=self.args.sample_shape,
-                num_samples=self.args.num_crop_samples,
-                random_size=False,
-                random_center=True,
-            ),
-            # monai.transforms.RandFlipD(img_key, prob=self.args.flip_p, spatial_axis=0),
-            # monai.transforms.RandFlipD(img_key, prob=self.args.flip_p, spatial_axis=1),
-            # monai.transforms.RandFlipD(img_key, prob=self.args.flip_p, spatial_axis=2),
-            # monai.transforms.RandRotate90D(img_key, prob=self.args.rotate_p, max_k=3),
-            # monai.transforms.RandScaleIntensityD(img_key, factors=0.1, prob=self.args.scale_p),
-            # monai.transforms.RandShiftIntensityD(img_key, offsets=0.1, prob=self.args.shift_p),
-            monai.transforms.Lambda(lambda data: data[img_key]),
-        ])
-
-    def train_dataloader(self) -> TRAIN_DATALOADERS:
-        return DataLoader(
-            dataset=CacheDataset(
-                self.train_images,
-                transform=self.train_transform,
-                cache_num=self.args.train_cache_num,
-                num_workers=self.args.dataloader_num_workers,
-            ),
-            batch_size=self.args.per_device_train_batch_size,
-            shuffle=True,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=True,
-            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
-        )
-
-    def val_dataloader(self) -> TRAIN_DATALOADERS:
-        return DataLoader(
-            dataset=CacheDataset(
-                self.val_images,
-                transform=self.val_transform,
-                cache_num=self.args.val_cache_num,
-                num_workers=self.args.dataloader_num_workers,
-            ),
-            batch_size=self.args.per_device_eval_batch_size,
-            shuffle=False,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=True,
-            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
-        )

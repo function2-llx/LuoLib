@@ -17,7 +17,7 @@ wandb login
 ## Run Experiments
 ```zsh
 export CUDA_VISIBLE_DEVICES=<cuda deivices ids>
-python scripts/<task>/train.py <conf yaml file> [extra arguments...]
+python scripts/<task>/main.py <conf yaml file> [extra arguments...]
 ```
 
 ## Stoic2021

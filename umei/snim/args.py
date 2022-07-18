@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from monai.utils import StrEnum
-from umei.args import UMeIArgs
+from umei.args import AugArgs, UMeIArgs
 
 class MaskValue(StrEnum):
     PARAM = "param"
@@ -10,13 +10,15 @@ class MaskValue(StrEnum):
     # NORMAL = "normal"
 
 @dataclass
-class SnimArgs(UMeIArgs):
+class SnimArgs(UMeIArgs, AugArgs):
     mask_ratio: float = field(default=0.75)
     mask_block_shape: list[int] = field(default=None)
     norm_pix_loss: bool = field(default=False)
-    val_size: int = field(default=4)
+    val_size: int = field(default=2)
     non_mask_factor: float = field(default=1e-3)
     mask_value: MaskValue = field(default='uniform', metadata={'choices': [v.value for v in MaskValue]})
+    num_sanity_val_steps: int = field(default=-1)
+    modality: str = field(default='ct', metadata={'choices': ['ct', 'mri']})
 
     @property
     def p_block_shape(self):

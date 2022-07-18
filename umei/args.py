@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from ruamel.yaml import YAML
+import torch
 from transformers import TrainingArguments
 
 from umei.utils import PathLike, UMeIParser
@@ -23,10 +24,10 @@ class UMeIArgs(TrainingArguments):
     spacing: list[float] = field(default=None)
     norm_intensity: bool = field(default=False)
     vit_hidden_size: int = field(default=768)
-    swin_window_size: list[int] = field(default_factory=lambda: [7, 7, 7])
-    vit_patch_shape: list[int] = field(default_factory=lambda: [2, 2, 2])
-    vit_num_heads: list[int] = field(default_factory=lambda: [3, 6, 12, 24])
-    vit_depths: list[int] = field(default_factory=lambda: [2, 2, 2, 2])
+    swin_window_size: list[int] = field(default=None)
+    vit_patch_shape: list[int] = field(default=None)
+    vit_num_heads: list[int] = field(default=None)
+    vit_depths: list[int] = field(default=None)
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
     encode_skip: bool = field(default=False)
@@ -67,11 +68,16 @@ class UMeIArgs(TrainingArguments):
     train_cache_num: int = field(default=0)
     val_cache_num: int = field(default=0)
     eval_epochs: int = field(default=1)
-    optimizer_set_to_none: bool = field(default=False)
+    optimizer_set_to_none: bool = field(default=True)
     num_sanity_val_steps: int = field(default=5)
     self_ensemble: bool = field(default=False)
     ckpt_path: Path = field(default=None, metadata={'help': 'checkpoint path to resume'})
     resume_log: bool = field(default=True)
+    train_batch_size: int = field(default=2, metadata={'help': 'effective train batch size'})
+
+    @TrainingArguments.n_gpu.getter
+    def n_gpu(self):
+        return torch.cuda.device_count()
 
     @property
     def sample_shape(self) -> tuple[int, int, int]:
@@ -103,6 +109,9 @@ class UMeIArgs(TrainingArguments):
         # as well as a lot of strange things happens
         # super().__post_init__()
         # self.output_dir = Path(self.output_dir)
+        assert self.train_batch_size % torch.cuda.device_count() == 0
+        self.per_device_train_batch_size = self.train_batch_size // torch.cuda.device_count()
+
         for size, patch_size in zip(self.sample_shape, self.vit_patch_shape):
             assert size % patch_size == 0
             assert patch_size >= 2
@@ -121,3 +130,12 @@ class UMeIArgs(TrainingArguments):
         args, _ = parser.parse_known_args(argv)
         # want to return `Self` type
         return parser.parse_dict(vars(args))[0]
+
+@dataclass
+class AugArgs:
+    flip_p: float = field(default=0.2)
+    rotate_p: float = field(default=0.2)
+    scale_p: float = field(default=0.1)
+    shift_p: float = field(default=0.1)
+    scale_factor: float = field(default=0.1)
+    shift_offset: float = field(default=0.1)

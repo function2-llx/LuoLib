@@ -1,31 +1,26 @@
-from dataclasses import dataclass, field
-
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
-import torch
 import wandb
 
-from umei.datasets.amos import AmosSnimDataModule, AmosArgs
-from umei.utils import MyWandbLogger, UMeIParser
-from umei.swin_mim import SwinMAEArgs, SwinMIM
-
-@dataclass
-class AmosSwinMAEArgs(AmosArgs, SwinMAEArgs):
-    num_sanity_val_steps: int = field(default=-1)
+from umei.snim import SnimArgs, SnimModel
+from umei.snim.datamodule import SnimDataModule, build_pretrain_datasets
+from umei.utils import UMeIParser
 
 def main():
-    parser = UMeIParser((AmosSwinMAEArgs, ), use_conf=True)
-    args: AmosSwinMAEArgs = parser.parse_args_into_dataclasses()[0]
+    parser = UMeIParser((SnimArgs, ), use_conf=True)
+    args: SnimArgs = parser.parse_args_into_dataclasses()[0]
     print(args)
     pl.seed_everything(args.seed)
-    datamodule = AmosSnimDataModule(args)
-    output_dir = args.output_dir / f'mask{args.mask_ratio * 100}-r{args.non_mask_factor}' / f'run-{args.seed}'
+    datamodule = SnimDataModule(args, build_pretrain_datasets(args))
+    exp_suffix = f'mask{args.mask_ratio * 100}-nmf{args.non_mask_factor}/run-{args.seed}'
+    output_dir = args.output_dir / exp_suffix
     output_dir.mkdir(exist_ok=True, parents=True)
     trainer = pl.Trainer(
-        logger=MyWandbLogger(
-            project='amos-swin_mim',
-            name=f'{args.exp_name}/mask{args.mask_ratio * 100}-r{args.non_mask_factor}/run-{args.seed}',
+        logger=WandbLogger(
+            project='snim',
+            name=f'{args.exp_name}/{exp_suffix}',
             save_dir=str(output_dir),
             group=args.exp_name,
             offline=args.log_offline,
@@ -43,15 +38,15 @@ def main():
             LearningRateMonitor(logging_interval='epoch')
         ],
         num_nodes=args.num_nodes,
-        gpus=torch.cuda.device_count(),
+        gpus=args.n_gpu,
         precision=args.precision,
         benchmark=True,
-        max_epochs=int(args.num_train_epochs),
+        max_steps=args.max_steps,
         log_every_n_steps=5,
         strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),
         num_sanity_val_steps=args.num_sanity_val_steps,
     )
-    model = SwinMIM(args)
+    model = SnimModel(args)
     last_ckpt_path = output_dir / 'last.ckpt'
     if not last_ckpt_path.exists():
         last_ckpt_path = None

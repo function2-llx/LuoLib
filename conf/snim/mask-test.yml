@@ -1,0 +1,6 @@
+sample_size: 192
+sample_slices: 192
+vit_patch_shape: [2, 2, 2]
+mask_block_shape: [16, 16, 16]
+train_batch_size: 8
+base_feature_size: 48

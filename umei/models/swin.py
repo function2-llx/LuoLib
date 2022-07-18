@@ -10,8 +10,7 @@ from torch import nn
 
 from monai.networks.blocks import PatchEmbed, UnetrBasicBlock, UnetrUpBlock
 from monai.networks.nets.swin_unetr import BasicLayer, PatchMerging
-from umei import UDecoderBase, UEncoderBase
-from umei.model import UDecoderOutput, UEncoderOutput
+from monai.umei import UDecoderBase, UDecoderOutput, UEncoderBase, UEncoderOutput
 
 __all__ = ['SwinTransformer', 'SwinUnetrDecoder']
 

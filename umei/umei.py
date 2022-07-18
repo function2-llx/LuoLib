@@ -8,7 +8,8 @@ from torch.nn.functional import interpolate
 from torch.optim import Optimizer
 
 from .args import UMeIArgs
-from .model import UEncoderOutput, build_decoder, build_encoder
+from .model import build_decoder, build_encoder
+from monai.umei import UEncoderOutput
 
 class UMeI(LightningModule):
     cls_loss_fn: nn.Module

@@ -6,6 +6,7 @@ from pathlib import Path
 from einops import rearrange
 import numpy as np
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import WandbLogger
 import torch
 from torch import nn
 from torch.optim import AdamW
@@ -14,40 +15,105 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from monai.data import MetaTensor
 from monai.utils import ImageMetaKey
 from umei.models.swin import SwinTransformer
-from umei.utils import MyWandbLogger
-
 from .args import MaskValue, SnimArgs
-from .utils import channel_first, channel_last, patchify, unpatchify
+from .utils import channel_first, channel_last, patch_axes_lengths, patchify, unpatchify
 
 class SnimEncoder(SwinTransformer):
-    def __init__(
-        self,
-        mask_value: MaskValue,
-        **kwargs,
-    ):
-        super().__init__(**kwargs)
-        self.mask_value = mask_value
+    def __init__(self, args: SnimArgs):
+        super().__init__(
+            in_chans=args.num_input_channels,
+            embed_dim=args.base_feature_size,
+            window_size=args.swin_window_size,
+            patch_size=args.vit_patch_shape,
+            depths=args.vit_depths,
+            num_heads=args.vit_num_heads,
+            use_checkpoint=True,
+        )
+        self.args = args
 
-        if mask_value == MaskValue.PARAM:
+        if args.mask_value == MaskValue.PARAM:
             self.mask_token = nn.Parameter(torch.empty(1, 1, self.patch_embed.embed_dim))
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> list[torch.Tensor]:
-        if self.mask_value == MaskValue.UNIFORM:
-            p_x = patchify(x.clone(), self.patch_size)
-            p_x[mask] = torch.rand(mask.sum(), p_x.shape[-1])
-            x = unpatchify(p_x)
-        elif self.mask_value == MaskValue.DIST:
+    def apply_mask(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        p_x = patchify(x.clone(), self.patch_size)
+        if self.args.mask_value == MaskValue.UNIFORM:
+            p_x[mask] = torch.rand(mask.sum(), p_x.shape[-1], device=x.device)
+        elif self.args.mask_value == MaskValue.DIST:
             raise NotImplementedError
+        elif self.args.mask_value == MaskValue.PARAM:
+            p_x[mask] = 0
+        x_mask = unpatchify(p_x, self.patch_size)
+        return x_mask
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        x_mask = self.apply_mask(x, mask)
+        # when using mask_token, original x is input into patch embedding
+        if self.args.mask_value != MaskValue.PARAM:
+            x = x_mask
         x = self.patch_embed(x)
-        if self.mask_value == MaskValue.PARAM:
+        if self.args.mask_value == MaskValue.PARAM:
+            x = channel_last(x)
             x[mask] = self.mask_token.to(x.dtype)
-        x = channel_first(x)
+            x = channel_first(x)
         x = self.pos_drop(x)
         hidden_states = self.forward_layers(x)
-        return hidden_states
+        return x_mask, hidden_states
+
+class SnimUpBlock(nn.Module):
+    def __init__(self, in_channels: int):
+        super().__init__()
+        out_channels = in_channels >> 1
+        self.up_conv = nn.ConvTranspose3d(
+            in_channels,
+            out_channels,
+            kernel_size=2,
+            stride=2,
+        )
+        self.norm1 = nn.InstanceNorm3d(out_channels)
+        self.act = nn.GELU()
+        self.linear = nn.Conv3d(out_channels, out_channels, kernel_size=1)
+        self.norm2 = nn.InstanceNorm3d(out_channels)
+
+    def forward(self, x: torch.Tensor, z: torch.Tensor):
+        x = self.up_conv(x)
+        x = self.norm1(x)
+        x = self.act(x)
+        x = self.linear(x)
+        x = self.norm2(x)
+        return x + z
+
+class SnimDecoder(nn.Module):
+    def __init__(self, args: SnimArgs):
+        super().__init__()
+        self.args = args
+        bottleneck_dim = args.base_feature_size << len(args.vit_depths) - 1
+        self.bottleneck = nn.Sequential(
+            nn.Conv3d(bottleneck_dim, bottleneck_dim, kernel_size=1),
+            nn.InstanceNorm3d(bottleneck_dim),
+            nn.GELU(),
+            nn.Conv3d(bottleneck_dim, bottleneck_dim, kernel_size=1),
+            nn.InstanceNorm3d(bottleneck_dim),
+        )
+        self.ups = nn.ModuleList([
+            SnimUpBlock(args.base_feature_size << i)
+            for i in range(1, len(args.vit_depths))
+        ])
+        self.pred = nn.ConvTranspose3d(
+            args.base_feature_size,
+            args.num_input_channels,
+            kernel_size=args.vit_patch_shape,   # type: ignore
+            stride=args.vit_patch_shape,    # type: ignore
+        )
+
+    def forward(self, hidden_states: list[torch.Tensor]):
+        x = self.bottleneck(hidden_states[-1])
+        for z, up in zip(hidden_states[-2::-1], self.ups[::-1]):
+            x = up(x, z)
+        x = self.pred(x)
+        return x
 
 class SnimModel(pl.LightningModule):
-    logger: MyWandbLogger
+    logger: WandbLogger
 
     def __init__(self, args: SnimArgs):
         super().__init__()
@@ -57,38 +123,15 @@ class SnimModel(pl.LightningModule):
         nn.init.constant_(self.corner_counter.weight, 1)
         self.corner_counter.weight.requires_grad = False
 
-        self.encoder = SnimEncoder(
-            in_chans=args.num_input_channels,
-            embed_dim=args.base_feature_size,
-            window_size=args.swin_window_size,
-            patch_size=args.vit_patch_shape,
-            depths=args.vit_depths,
-            num_heads=args.vit_num_heads,
-            use_checkpoint=True,
-            mask_value=args.mask_value,
-        )
-
-        self.pred = nn.Conv3d(
-            (args.base_feature_size << len(args.vit_depths)) - args.base_feature_size,
-            args.num_input_channels * np.product(args.vit_patch_shape),
-            kernel_size=1,
-        )
+        self.encoder = SnimEncoder(args)
+        self.decoder = SnimDecoder(args)
         self.loss_fn = nn.MSELoss()
-
         self.initialize_weights()
 
     def initialize_weights(self):
-        # initialize patch_embed's projection like nn.Linear (instead of nn.Convnd)
-        w: torch.Tensor = self.encoder.patch_embed.proj.weight.data
-        torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-        # so does the linear reconstruction head
-        w: torch.Tensor = self.pred.weight.data
-        torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
-
         if self.args.mask_value == MaskValue.PARAM:
             torch.nn.init.normal_(self.encoder.mask_token, std=0.02)
-
-        # initialize nn.Linear and nn.LayerNorm
+        # initialize nn.Linear, nn.LayerNorm nn.Conv3d with kernel_size=1
         self.apply(self._init_weights)
 
     def _init_weights(self, m: nn.Module):
@@ -100,6 +143,9 @@ class SnimModel(pl.LightningModule):
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.weight, 1.0)
             nn.init.constant_(m.bias, 0)
+        elif isinstance(m, (nn.Conv3d, nn.ConvTranspose3d)) and all(k <= s for k, s in zip(m.kernel_size, m.stride)):
+            w: torch.Tensor = m.weight.data
+            torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
     def gen_patch_mask(self, batch_size: int, img_shape: Sequence[int]) -> torch.Tensor:
         mask_shape = [
@@ -109,7 +155,7 @@ class SnimModel(pl.LightningModule):
         # corner spatial shape
         corner_ss = [
             size + block_patch_num - 1
-            for size, block_patch_num in zip(mask_shape, self.args.mask_block_shape)
+            for size, block_patch_num in zip(mask_shape, self.args.p_block_shape)
         ]
         if self.args.mask_ratio == 1:
             mask_num = np.product(mask_shape)
@@ -139,13 +185,11 @@ class SnimModel(pl.LightningModule):
 
     def forward(self, x: torch.Tensor):
         # p_xxx: patchified xxx
-        mask = self.gen_patch_mask(x.shape[0], x.shape[2:])
-        hidden_states = self.encoder.forward(x, mask)
-        context = torch.cat([self.repeat_hidden_state(z, 1 << i) for i, z in enumerate(hidden_states)], dim=1)
-        p_pred = self.pred(context)
-        p_pred = channel_last(p_pred)
-        pred = unpatchify(p_pred, self.args.vit_patch_shape)
         p_x = patchify(x, self.args.vit_patch_shape)
+        mask = self.gen_patch_mask(x.shape[0], x.shape[2:])
+        x_mask, hidden_states = self.encoder.forward(x, mask)
+        pred = self.decoder.forward(hidden_states)
+        p_pred = patchify(pred, self.args.vit_patch_shape)
         if self.args.norm_pix_loss:
             # note: the mean and var are calculated across channels
             mean = p_x.mean(dim=-1, keepdim=True)
@@ -154,48 +198,44 @@ class SnimModel(pl.LightningModule):
         mask_loss = self.loss_fn(p_pred[mask], p_x[mask])
         non_mask_loss = self.loss_fn(p_pred[~mask], p_x[~mask])
         loss = mask_loss + self.args.non_mask_factor * non_mask_loss
-        return mask_loss, non_mask_loss, loss, mask, pred
+        return mask_loss, non_mask_loss, loss, mask, x_mask, pred
 
-    def training_step(self, x: torch.Tensor, *args, **kwargs):
-        mask_loss, non_mask_loss, loss, _, _ = self.forward(x)
+    def training_step(self, x: MetaTensor, *args, **kwargs):
+        mask_loss, non_mask_loss, loss, _, _, _ = self.forward(x.as_tensor())
         self.log('train/loss', loss)
         self.log('train/mask-loss', mask_loss)
         self.log('train/non-mask-loss', non_mask_loss)
         return loss
 
     def validation_step(self, x: MetaTensor, *args, **kwargs):
-        mask_loss, non_mask_loss, loss, mask, pred = self.forward(x)
+        filename = Path(x.meta[ImageMetaKey.FILENAME_OR_OBJ][0]).name
+        x = x.as_tensor()
+        mask_loss, non_mask_loss, loss, mask, x_mask, pred = self.forward(x)
         self.log('val/loss', loss)
         self.log('val/loss(mask)', mask_loss)
         self.log('val/loss(non-mask)', non_mask_loss)
 
         # for better visualization
         pred.clamp_(min=0, max=1)
-
-        x_mask = self.patchify(x.clone())
-        x_mask[mask] = 0
-        x_mask = self.unpatchify(x_mask)
-
-        pred_ol = self.patchify(pred.clone())
-        pred_ol[~mask] = self.patchify(x)[~mask].to(pred_ol.dtype)
-        pred_ol = self.unpatchify(pred_ol)
+        pred_ol = patchify(pred.clone(), self.args.vit_patch_shape)
+        pred_ol[~mask] = patchify(x, self.args.vit_patch_shape)[~mask].to(pred_ol.dtype)
+        pred_ol = unpatchify(pred_ol, self.args.vit_patch_shape)
 
         slice_idx = x.shape[-1] // 2
-        filename = Path(x.meta[ImageMetaKey.FILENAME_OR_OBJ][0]).name
         self.logger.log_image(
             f'val/{filename}',
             images=[
-                x[0, ..., slice_idx].rot90(dims=(1, 2)).cpu(),
-                x_mask[0, ..., slice_idx].rot90(dims=(1, 2)).cpu(),
-                pred[0, ..., slice_idx].rot90(dims=(1, 2)).cpu(),
-                pred_ol[0, ..., slice_idx].rot90(dims=(1, 2)).cpu(),
+                x[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
+                x_mask[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
+                pred[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
+                pred_ol[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
             ],
-            caption=['original', f'mask', 'pred', 'pred-ol'],
+            caption=['original', 'mask', 'pred', 'pred-ol'],
         )
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
         return {
             'optimizer': optimizer,
-            'lr_scheduler': CosineAnnealingLR(optimizer, T_max=int(self.args.num_train_epochs)),
+            'lr_scheduler': CosineAnnealingLR(optimizer, T_max=self.args.max_steps),
         }

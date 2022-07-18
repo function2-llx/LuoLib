@@ -5,9 +5,9 @@ from torch.optim import RAdam
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torchmetrics
 
-from umei import UEncoderBase, UMeI
+from umei import UMeI
 from .args import Stoic2021Args
-from ...model import UEncoderOutput
+from monai.umei import UEncoderBase, UEncoderOutput
 
 class Stoic2021Model(UMeI):
     args: Stoic2021Args

@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from umei.args import UMeIArgs
+from umei.args import AugArgs, UMeIArgs
 
 @dataclass
-class AmosArgs(UMeIArgs):
+class AmosArgs(UMeIArgs, AugArgs):
     monitor: str = field(default='val/dice/avg')
     monitor_mode: str = field(default='max')
     output_root: Path = field(default=Path('output/amos'))
@@ -23,10 +23,6 @@ class AmosArgs(UMeIArgs):
     use_monai: bool = field(default=False, metadata={'help': 'run validation for models produced by '
                                                              'official monai implementation'})
     crop: str = field(default='cls', metadata={'choices': ['cls', 'pn']})
-    flip_p: float = field(default=0.2)
-    rotate_p: float = field(default=0.2)
-    scale_p: float = field(default=0.1)
-    shift_p: float = field(default=0.1)
     dice_dr: float = field(default=1e-6)
     dice_nr: float = field(default=0)
     dice_include_background: bool = field(default=False)
