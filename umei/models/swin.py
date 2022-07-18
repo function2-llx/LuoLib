@@ -167,12 +167,15 @@ class SwinTransformer(UEncoderBase):
 
         return hidden_states
 
-    def forward(self, x: torch.Tensor) -> UEncoderOutput:
+    def pool_hidden_states(self, hidden_states: list[torch.Tensor]):
+        return self.avg_pool(hidden_states[-1]).flatten(1)
+
+    def forward(self, x: torch.Tensor, *args) -> UEncoderOutput:
         x = self.patch_embed(x)
         x = self.pos_drop(x)
         hidden_states = self.forward_layers(x)
         return UEncoderOutput(
-            cls_feature=self.avg_pool(hidden_states[-1]).flatten(1),
+            cls_feature=self.pool_hidden_states(hidden_states),
             hidden_states=hidden_states,
         )
 

@@ -1,0 +1,21 @@
+sample_size: 96
+sample_slices: 96
+base_feature_size: 48
+vit_patch_shape: [2, 2, 2]
+mask_block_shape: [16, 16, 16]
+per_device_train_batch_size: 2
+per_device_eval_batch_size: 1
+num_crop_samples: 4
+learning_rate: 1e-4
+weight_decay: 1e-5
+num_train_epochs: 1000
+num_seg_heads: 3
+spacing: [1.5, 1.5, 2]
+task_id: 1
+norm_intensity: false
+norm_pix_loss: false
+a_min: -175
+a_max: 250
+scale_p: 0
+shift_p: 0
+optimizer_set_to_none: true

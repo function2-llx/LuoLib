@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from einops import rearrange
@@ -10,15 +11,40 @@ from torch import nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from monai.data import DataLoader, MetaTensor
+from monai.data import MetaTensor
 from monai.utils import ImageMetaKey
-from umei.utils import MyWandbLogger
 from umei.models.swin import SwinTransformer
+from umei.utils import MyWandbLogger
 
+from .args import MaskValue, SnimArgs
+from .utils import channel_first, channel_last, patchify, unpatchify
 
-from .args import SnimArgs
-from .mask_swin import SnimEncoder
-from .utils import channel_first, channel_last
+class SnimEncoder(SwinTransformer):
+    def __init__(
+        self,
+        mask_value: MaskValue,
+        **kwargs,
+    ):
+        super().__init__(**kwargs)
+        self.mask_value = mask_value
+
+        if mask_value == MaskValue.PARAM:
+            self.mask_token = nn.Parameter(torch.empty(1, 1, self.patch_embed.embed_dim))
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> list[torch.Tensor]:
+        if self.mask_value == MaskValue.UNIFORM:
+            p_x = patchify(x.clone(), self.patch_size)
+            p_x[mask] = torch.rand(mask.sum(), p_x.shape[-1])
+            x = unpatchify(p_x)
+        elif self.mask_value == MaskValue.DIST:
+            raise NotImplementedError
+        x = self.patch_embed(x)
+        if self.mask_value == MaskValue.PARAM:
+            x[mask] = self.mask_token.to(x.dtype)
+        x = channel_first(x)
+        x = self.pos_drop(x)
+        hidden_states = self.forward_layers(x)
+        return hidden_states
 
 class SnimModel(pl.LightningModule):
     logger: MyWandbLogger
@@ -27,7 +53,11 @@ class SnimModel(pl.LightningModule):
         super().__init__()
         self.args = args
 
-        self.encoder = SwinTransformer(
+        self.corner_counter = nn.Conv3d(1, 1, kernel_size=args.p_block_shape, bias=False)
+        nn.init.constant_(self.corner_counter.weight, 1)
+        self.corner_counter.weight.requires_grad = False
+
+        self.encoder = SnimEncoder(
             in_chans=args.num_input_channels,
             embed_dim=args.base_feature_size,
             window_size=args.swin_window_size,
@@ -35,6 +65,7 @@ class SnimModel(pl.LightningModule):
             depths=args.vit_depths,
             num_heads=args.vit_num_heads,
             use_checkpoint=True,
+            mask_value=args.mask_value,
         )
 
         self.pred = nn.Conv3d(
@@ -44,45 +75,21 @@ class SnimModel(pl.LightningModule):
         )
         self.loss_fn = nn.MSELoss()
 
-        # initialize weights
-        # initialize patch_embed like nn.Linear (instead of nn.Convnd)
+        self.initialize_weights()
+
+    def initialize_weights(self):
+        # initialize patch_embed's projection like nn.Linear (instead of nn.Convnd)
         w: torch.Tensor = self.encoder.patch_embed.proj.weight.data
         torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
         # so does the linear reconstruction head
         w: torch.Tensor = self.pred.weight.data
         torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
-        torch.nn.init.normal_(self.encoder.mask_token, std=0.02)
+        if self.args.mask_value == MaskValue.PARAM:
+            torch.nn.init.normal_(self.encoder.mask_token, std=0.02)
 
         # initialize nn.Linear and nn.LayerNorm
         self.apply(self._init_weights)
-
-    def random_masking(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        # corner spatial shape
-        corner_ss = [
-            size + block_patch_num - 1
-            for size, block_patch_num in zip(x.shape[2:], self.args.mask_block_shape)
-        ]
-        if self.mask_ratio == 1:
-            mask_num = np.product(x.shape[2:])
-        else:
-            mask_num: int = np.round(
-                np.log(1 - self.mask_ratio) /
-                np.log(1 - np.product(self.block_patch_shape) / np.product(corner_ss))
-            ).astype(int)
-        if mask_num == 0:
-            mask = torch.zeros(x.shape[0], *x.shape[2:], dtype=torch.bool)
-        else:
-            noise: torch.Tensor = torch.rand(x.shape[0], np.product(corner_ss), device=x.device)
-            kth = noise.kthvalue(mask_num, dim=-1, keepdim=True).values
-            corner_mask = rearrange(noise <= kth, 'n (h w d) -> n 1 h w d', h=corner_ss[0], w=corner_ss[1], d=corner_ss[2])
-            mask = self.corner_counter(corner_mask.float()).round() >= 1
-            mask = rearrange(mask, 'n 1 h w d -> n h w d')
-
-        x_mask = channel_last(x.clone())
-        x_mask[mask] = self.mask_token.to(x_mask.dtype)
-        x_mask = channel_first(x_mask)
-        return x_mask, mask
 
     def _init_weights(self, m: nn.Module):
         if isinstance(m, nn.Linear):
@@ -94,36 +101,51 @@ class SnimModel(pl.LightningModule):
             nn.init.constant_(m.weight, 1.0)
             nn.init.constant_(m.bias, 0)
 
-    def patchify(self, x):
-        return rearrange(
-            x,
-            'n c (h ph) (w pw) (d pd) -> n h w d (ph pw pd c)',
-            ph=self.args.vit_patch_shape[0],
-            pw=self.args.vit_patch_shape[1],
-            pd=self.args.vit_patch_shape[2],
-        )
+    def gen_patch_mask(self, batch_size: int, img_shape: Sequence[int]) -> torch.Tensor:
+        mask_shape = [
+            size // patch_size
+            for size, patch_size in zip(img_shape, self.args.vit_patch_shape)
+        ]
+        # corner spatial shape
+        corner_ss = [
+            size + block_patch_num - 1
+            for size, block_patch_num in zip(mask_shape, self.args.mask_block_shape)
+        ]
+        if self.args.mask_ratio == 1:
+            mask_num = np.product(mask_shape)
+        else:
+            mask_num: int = np.round(
+                np.log(1 - self.args.mask_ratio) /
+                np.log(1 - np.product(self.args.p_block_shape) / np.product(corner_ss))
+            ).astype(int)
+        if mask_num == 0:
+            mask = torch.zeros(batch_size, *mask_shape, dtype=torch.bool)
+        else:
+            noise: torch.Tensor = torch.rand(batch_size, np.product(corner_ss), device=self.device)
+            kth = noise.kthvalue(mask_num, dim=-1, keepdim=True).values
+            corner_mask = rearrange(
+                noise <= kth,
+                'n (h w d) -> n 1 h w d',
+                h=corner_ss[0], w=corner_ss[1], d=corner_ss[2],
+            )
+            mask = self.corner_counter(corner_mask.float()).round() >= 1
+            mask = rearrange(mask, 'n 1 h w d -> n h w d')
 
-    def unpatchify(self, x):
-        return rearrange(
-            x,
-            'n h w d (ph pw pd c) -> n c (h ph) (w pw) (d pd)',
-            ph=self.args.vit_patch_shape[0],
-            pw=self.args.vit_patch_shape[1],
-            pd=self.args.vit_patch_shape[2],
-        )
+        return mask
+
+    @staticmethod
+    def repeat_hidden_state(z: torch.Tensor, k: int):
+        return z.repeat_interleave(k, dim=2).repeat_interleave(k, dim=3).repeat_interleave(k, dim=4)
 
     def forward(self, x: torch.Tensor):
         # p_xxx: patchified xxx
-        encode = self.encoder.forward(x)
-        mask = encode.mask
-        context = torch.cat([
-            z.repeat_interleave(1 << i, dim=2).repeat_interleave(1 << i, dim=3).repeat_interleave(1 << i, dim=4)
-            for i, z in enumerate(encode.hidden_states)
-        ], dim=1)
+        mask = self.gen_patch_mask(x.shape[0], x.shape[2:])
+        hidden_states = self.encoder.forward(x, mask)
+        context = torch.cat([self.repeat_hidden_state(z, 1 << i) for i, z in enumerate(hidden_states)], dim=1)
         p_pred = self.pred(context)
         p_pred = channel_last(p_pred)
-        pred = self.unpatchify(p_pred)
-        p_x = self.patchify(x)
+        pred = unpatchify(p_pred, self.args.vit_patch_shape)
+        p_x = patchify(x, self.args.vit_patch_shape)
         if self.args.norm_pix_loss:
             # note: the mean and var are calculated across channels
             mean = p_x.mean(dim=-1, keepdim=True)
@@ -144,8 +166,8 @@ class SnimModel(pl.LightningModule):
     def validation_step(self, x: MetaTensor, *args, **kwargs):
         mask_loss, non_mask_loss, loss, mask, pred = self.forward(x)
         self.log('val/loss', loss)
-        self.log('val/mask-loss', mask_loss)
-        self.log('val/non-mask-loss', non_mask_loss)
+        self.log('val/loss(mask)', mask_loss)
+        self.log('val/loss(non-mask)', non_mask_loss)
 
         # for better visualization
         pred.clamp_(min=0, max=1)

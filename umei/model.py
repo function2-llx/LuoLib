@@ -16,7 +16,7 @@ class UEncoderOutput:
     hidden_states: list[torch.Tensor] = field(default_factory=list)
 
 class UEncoderBase(nn.Module):
-    def forward(self, img: torch.Tensor) -> UEncoderOutput:
+    def forward(self, img: torch.Tensor, *args, **kwargs) -> UEncoderOutput:
         raise NotImplementedError
 
 @dataclass
