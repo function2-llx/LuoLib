@@ -16,7 +16,7 @@ from monai.data import MetaTensor
 from monai.utils import ImageMetaKey
 from umei.models.swin import SwinTransformer
 from .args import MaskValue, SnimArgs
-from .utils import channel_first, channel_last, patch_axes_lengths, patchify, unpatchify
+from .utils import channel_first, channel_last, patchify, unpatchify
 
 class SnimEncoder(SwinTransformer):
     def __init__(self, args: SnimArgs):
@@ -39,7 +39,14 @@ class SnimEncoder(SwinTransformer):
         if self.args.mask_value == MaskValue.UNIFORM:
             p_x[mask] = torch.rand(mask.sum(), p_x.shape[-1], device=x.device)
         elif self.args.mask_value == MaskValue.DIST:
-            raise NotImplementedError
+            # l_x = rearrange(p_x, 'n h w d c -> n (h w d) c')
+            for i in range(x.shape[0]):
+                samples = rearrange(p_x[i], 'h w d c -> c (h w d)')
+                mu = samples.mean(dim=1)
+                with torch.autocast(x.device.type, dtype=torch.float32):
+                    cov = samples.cov()
+                dist = torch.distributions.MultivariateNormal(mu, cov)
+                p_x[i][mask[i]] = dist.sample(mask[i].sum().view(-1))
         elif self.args.mask_value == MaskValue.PARAM:
             p_x[mask] = 0
         x_mask = unpatchify(p_x, self.patch_size)
@@ -216,6 +223,7 @@ class SnimModel(pl.LightningModule):
         self.log('val/loss(non-mask)', non_mask_loss)
 
         # for better visualization
+        x_mask.clamp_(min=0, max=1)
         pred.clamp_(min=0, max=1)
         pred_ol = patchify(pred.clone(), self.args.vit_patch_shape)
         pred_ol[~mask] = patchify(x, self.args.vit_patch_shape)[~mask].to(pred_ol.dtype)

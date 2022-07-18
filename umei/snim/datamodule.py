@@ -14,14 +14,17 @@ from umei.utils import DataSplit
 def build_pretrain_datasets(args: SnimArgs) -> dict[str, Dataset]:
     # current implement a placeholder for all BTCV data
 
-    from umei.datasets.btcv import load_cohort
-    all_data = load_cohort(img_only=True, merge=True)
-    train_data, val_data = train_test_split(all_data, test_size=args.val_size, random_state=args.seed)
+    from umei.datasets.btcv import load_cohort as btcv_load
 
+    btcv_data = btcv_load(img_only=True, merge=True)
+    from umei.datasets.amos import load_cohort as amos_load
+    btcv_train_data, btcv_val_data = train_test_split(btcv_data, test_size=args.val_size, random_state=args.seed)
+    amos_data = amos_load(task_id=1, merge=True)
+    amos_train_data, amos_val_data = train_test_split(amos_data, test_size=args.val_size, random_state=args.seed)
     # split naming: following MSD convention
     return {
         DataSplit.TRAIN: CacheDataset(
-            train_data,
+            btcv_train_data + amos_train_data,
             transform=monai.transforms.Compose([
                 monai.transforms.LoadImageD('img'),
                 monai.transforms.AddChannelD('img'),
@@ -58,7 +61,7 @@ def build_pretrain_datasets(args: SnimArgs) -> dict[str, Dataset]:
             cache_num=args.train_cache_num,
         ),
         DataSplit.VAL: CacheDataset(
-            val_data,
+            amos_val_data + btcv_val_data,
             transform=monai.transforms.Compose([
                 monai.transforms.LoadImageD('img'),
                 monai.transforms.AddChannelD('img'),

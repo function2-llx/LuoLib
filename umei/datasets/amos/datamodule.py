@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import json
 from pathlib import Path
 from typing import Callable
@@ -48,7 +49,10 @@ def load_cohort(task_id: int, merge: bool = False):
     for split in ['training', 'test']:
         cohort[split] = list(cohort[split].values())
     if merge:
-        return cohort['training'] + cohort['test']
+        return [
+            {'img': x['img']}
+            for x in itertools.chain(cohort['training'], cohort['test'])
+        ]
     else:
         return cohort
 
