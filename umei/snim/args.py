@@ -19,6 +19,7 @@ class SnimArgs(UMeIArgs, AugArgs):
     mask_value: MaskValue = field(default='uniform', metadata={'choices': [v.value for v in MaskValue]})
     num_sanity_val_steps: int = field(default=-1)
     modality: str = field(default='ct', metadata={'choices': ['ct', 'mri']})
+    uper_channels: int = field(default=512)
 
     @property
     def p_block_shape(self):

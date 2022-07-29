@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-import itertools
 from typing import Optional, Type
 
 from einops import rearrange
@@ -9,7 +8,7 @@ import torch
 from torch import nn
 
 from monai.networks.blocks import PatchEmbed, UnetrBasicBlock, UnetrUpBlock
-from monai.networks.nets.swin_unetr import BasicLayer, PatchMerging
+from monai.networks.nets.swin_unetr import BasicLayer, PatchMergingV2
 from monai.umei import UDecoderBase, UDecoderOutput, UEncoderBase, UEncoderOutput
 
 __all__ = ['SwinTransformer', 'SwinUnetrDecoder']
@@ -142,7 +141,7 @@ class SwinTransformer(UEncoderBase):
                 drop=drop_rate,
                 attn_drop=attn_drop_rate,
                 norm_layer=norm_layer,
-                downsample=PatchMerging if i_layer + 1 < num_layers else None,
+                downsample=PatchMergingV2 if i_layer + 1 < num_layers else None,
                 use_checkpoint=use_checkpoint,
             )
             for i_layer in range(num_layers)

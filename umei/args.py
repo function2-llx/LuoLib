@@ -104,6 +104,10 @@ class UMeIArgs(TrainingArguments):
     def num_seg_classes(self) -> Optional[int]:
         return None
 
+    @property
+    def vit_stages(self) -> int:
+        return len(self.vit_depths)
+
     def __post_init__(self):
         # disable super().__post__init__ or `output_dir` will restore str type specified in the base class
         # as well as a lot of strange things happens
