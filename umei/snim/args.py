@@ -15,11 +15,13 @@ class SnimArgs(UMeIArgs, AugArgs):
     mask_block_shape: list[int] = field(default=None)
     norm_pix_loss: bool = field(default=False)
     val_size: int = field(default=2)
-    non_mask_factor: float = field(default=1e-3)
+    visible_factor: float = field(default=1e-3)
     mask_value: MaskValue = field(default='uniform', metadata={'choices': [v.value for v in MaskValue]})
     num_sanity_val_steps: int = field(default=-1)
     modality: str = field(default='ct', metadata={'choices': ['ct', 'mri']})
     uper_channels: int = field(default=512)
+    uper_pool_scales: list[int] = field(default=None)
+    loss: str = field(default='l2', metadata={'choices': ['l1', 'l2']})
 
     @property
     def p_block_shape(self):

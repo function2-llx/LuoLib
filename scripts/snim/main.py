@@ -1,5 +1,5 @@
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
 import wandb
@@ -14,7 +14,7 @@ def main():
     print(args)
     pl.seed_everything(args.seed)
     datamodule = SnimDataModule(args, build_pretrain_datasets(args))
-    exp_suffix = f'mask{args.mask_ratio * 100}-nmf{args.non_mask_factor}/run-{args.seed}'
+    exp_suffix = f'mask{args.mask_ratio * 100}-vf{args.visible_factor}/run-{args.seed}'
     output_dir = args.output_dir / exp_suffix
     output_dir.mkdir(exist_ok=True, parents=True)
     trainer = pl.Trainer(
@@ -35,7 +35,8 @@ def main():
                 every_n_epochs=1,
                 save_on_train_epoch_end=True,
             ),
-            LearningRateMonitor(logging_interval='epoch')
+            LearningRateMonitor(logging_interval='step'),
+            ModelSummary(max_depth=2),
         ],
         num_nodes=args.num_nodes,
         gpus=args.n_gpu,

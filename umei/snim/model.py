@@ -8,14 +8,13 @@ import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 import torch
-from torch import nn
+from torch import nn, distributed as dist
 from torch.nn import functional as torch_f
-from torch.optim import AdamW
+from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from monai.data import MetaTensor
 from monai.networks.blocks import Convolution
-from monai.umei import UDecoderBase
 from monai.utils import ImageMetaKey
 from umei.models.swin import SwinTransformer
 from .args import MaskValue, SnimArgs
@@ -46,6 +45,7 @@ class SnimEncoder(SwinTransformer):
             for i in range(x.shape[0]):
                 samples = rearrange(p_x[i], 'h w d c -> c (h w d)')
                 mu = samples.mean(dim=1)
+                # force to use higher precision
                 with torch.autocast(x.device.type, dtype=torch.float32):
                     cov = samples.cov()
                 dist = torch.distributions.MultivariateNormal(mu, cov)
@@ -70,124 +70,44 @@ class SnimEncoder(SwinTransformer):
         hidden_states = self.forward_layers(x)
         return x_mask, hidden_states
 
-class SnimUpBlock(nn.Module):
-    def __init__(self, in_channels: int):
-        super().__init__()
-        out_channels = in_channels >> 1
-        self.up_conv = nn.ConvTranspose3d(
-            in_channels,
-            out_channels,
-            kernel_size=2,
-            stride=2,
-        )
-        self.norm1 = nn.InstanceNorm3d(out_channels)
-        self.act = nn.GELU()
-        self.linear = nn.Conv3d(out_channels, out_channels, kernel_size=1)
-        self.norm2 = nn.InstanceNorm3d(out_channels)
-
-    def forward(self, x: torch.Tensor, z: torch.Tensor):
-        x = self.up_conv(x)
-        x = self.norm1(x)
-        x = self.act(x)
-        x = self.linear(x)
-        x = self.norm2(x)
-        return x + z
-
-class UPerHead(UDecoderBase):
-    def __init__(self, in_channels: Sequence[int], channels: int, pool_scales: Sequence[int]):
-        super().__init__()
-
-        self.psp_modules = nn.ModuleList([
-            nn.Sequential(
-                nn.AdaptiveAvgPool3d(scale),
-                Convolution(spatial_dims=3, in_channels=in_channels[-1], out_channels=channels, kernel_size=1),
-            )
-            for scale in pool_scales
-        ])
-        self.psp_bottleneck = Convolution(
-            spatial_dims=3,
-            in_channels=len(pool_scales) * channels + in_channels[-1],
-            out_channels=channels,
-            kernel_size=3,
-        )
-        self.lateral_convs = nn.ModuleList([
-            Convolution(spatial_dims=3, in_channels=in_c, out_channels=channels, kernel_size=1)
-            for in_c in in_channels[:-1]
-        ])
-        self.fpn_convs = nn.ModuleList([
-            Convolution(
-                spatial_dims=3,
-                in_channels=channels,
-                out_channels=channels,
-                kernel_size=3,
-            )
-            for _ in range(len(in_channels) - 1)
-        ])
-        self.fpn_bottleneck = Convolution(
-            spatial_dims=3,
-            in_channels=len(in_channels) * channels,
-            out_channels=channels,
-            kernel_size=3,
-        )
-
-    def psp_forward(self, x: torch.Tensor):
-        psp_outs = [
-            torch_f.interpolate(module(x), x.shape[2:], mode='trilinear')
-            for module in self.psp_modules
-        ]
-        psp_outs.append(x)
-        output = self.psp_bottleneck(torch.cat(psp_outs, dim=1))
-        return output
-
-    def forward(self, img: torch.Tensor, hidden_states: list[torch.Tensor]):
-        laterals = [
-            conv(x)
-            for x, conv in zip(hidden_states, self.lateral_convs)
-        ]
-        laterals.append(self.psp_forward(hidden_states[-1]))
-
-        for i in range(len(laterals) - 1, 0, -1):
-            laterals[i - 1] += torch_f.interpolate(laterals[i], laterals[i - 1].shape[2:], mode='trilinear')
-
-        fpn_outs = [
-            conv(lateral)
-            for conv, lateral in zip(self.fpn_convs, laterals)
-        ]
-        fpn_outs.append(laterals[-1])
-        for i in range(1, len(fpn_outs)):
-            fpn_outs[i] = torch_f.interpolate(fpn_outs[i], size=fpn_outs[0].shape[2:], mode='trilinear')
-        output = self.fpn_bottleneck(torch.cat(fpn_outs, dim=1))
-        return output
-
 class SnimDecoder(nn.Module):
     def __init__(self, args: SnimArgs):
         super().__init__()
         self.args = args
-        bottleneck_dim = args.base_feature_size << len(args.vit_depths) - 1
-        self.bottleneck = nn.Sequential(
-            nn.Conv3d(bottleneck_dim, bottleneck_dim, kernel_size=1),
-            nn.InstanceNorm3d(bottleneck_dim),
-            nn.GELU(),
-            nn.Conv3d(bottleneck_dim, bottleneck_dim, kernel_size=1),
-            nn.InstanceNorm3d(bottleneck_dim),
-        )
-        self.ups = nn.ModuleList([
-            SnimUpBlock(args.base_feature_size << i)
-            for i in range(1, len(args.vit_depths))
+        assert tuple(args.vit_patch_shape) == (2, 2, 2)
+        self.up_projects = nn.ModuleList([
+            Convolution(
+                spatial_dims=3,
+                in_channels=args.base_feature_size << i,
+                out_channels=args.base_feature_size << i - 1,
+                kernel_size=1,
+            )
+            for i in range(1, args.vit_stages)
         ])
-        self.pred = nn.ConvTranspose3d(
-            args.base_feature_size,
-            args.num_input_channels,
-            kernel_size=args.vit_patch_shape,   # type: ignore
-            stride=args.vit_patch_shape,    # type: ignore
+        self.pred = nn.Sequential(
+            Convolution(
+                spatial_dims=3,
+                in_channels=args.base_feature_size,
+                out_channels=args.base_feature_size,
+                kernel_size=3,
+                strides=2,
+                is_transposed=True,
+            ),
+            Convolution(
+                spatial_dims=3,
+                in_channels=args.base_feature_size,
+                out_channels=args.num_input_channels,
+                kernel_size=1,
+                conv_only=True,
+            )
         )
 
     def forward(self, hidden_states: list[torch.Tensor]):
-        x = self.bottleneck(hidden_states[-1])
-        for z, up in zip(hidden_states[-2::-1], self.ups[::-1]):
-            x = up(x, z)
-        x = self.pred(x)
-        return x
+        x = hidden_states[-1]
+        for z, up_proj in zip(hidden_states[-2::-1], self.up_projects[::-1]):
+            x = z + up_proj(torch_f.interpolate(x, z.shape[2:], mode='trilinear'))
+        pred = self.pred(x)
+        return pred
 
 class SnimModel(pl.LightningModule):
     logger: WandbLogger
@@ -202,7 +122,11 @@ class SnimModel(pl.LightningModule):
 
         self.encoder = SnimEncoder(args)
         self.decoder = SnimDecoder(args)
-        self.loss_fn = nn.MSELoss()
+        self.loss_fn = {
+            'l1': nn.L1Loss(),
+            'l2': nn.MSELoss(),
+        }[args.loss]
+
         self.initialize_weights()
 
     def initialize_weights(self):
@@ -256,10 +180,6 @@ class SnimModel(pl.LightningModule):
 
         return mask
 
-    @staticmethod
-    def repeat_hidden_state(z: torch.Tensor, k: int):
-        return z.repeat_interleave(k, dim=2).repeat_interleave(k, dim=3).repeat_interleave(k, dim=4)
-
     def forward(self, x: torch.Tensor):
         # p_xxx: patchified xxx
         p_x = patchify(x, self.args.vit_patch_shape)
@@ -273,15 +193,15 @@ class SnimModel(pl.LightningModule):
             var = p_x.var(dim=-1, keepdim=True)
             p_x = (p_x - mean) / torch.sqrt(var + 1e-6)
         mask_loss = self.loss_fn(p_pred[mask], p_x[mask])
-        non_mask_loss = self.loss_fn(p_pred[~mask], p_x[~mask])
-        loss = mask_loss + self.args.non_mask_factor * non_mask_loss
-        return mask_loss, non_mask_loss, loss, mask, x_mask, pred
+        visible_loss = self.loss_fn(p_pred[~mask], p_x[~mask])
+        loss = mask_loss + self.args.visible_factor * visible_loss
+        return mask_loss, visible_loss, loss, mask, x_mask, pred
 
     def training_step(self, x: MetaTensor, *args, **kwargs):
-        mask_loss, non_mask_loss, loss, _, _, _ = self.forward(x.as_tensor())
+        mask_loss, visible_loss, loss, _, _, _ = self.forward(x.as_tensor())
         self.log('train/loss', loss)
-        self.log('train/mask-loss', mask_loss)
-        self.log('train/non-mask-loss', non_mask_loss)
+        self.log('train/loss(masked)', mask_loss)
+        self.log('train/loss(visible)', visible_loss)
         return loss
 
     def validation_step(self, x: MetaTensor, *args, **kwargs):
@@ -289,8 +209,8 @@ class SnimModel(pl.LightningModule):
         x = x.as_tensor()
         mask_loss, non_mask_loss, loss, mask, x_mask, pred = self.forward(x)
         self.log('val/loss', loss)
-        self.log('val/loss(mask)', mask_loss)
-        self.log('val/loss(non-mask)', non_mask_loss)
+        self.log('val/loss(masked)', mask_loss)
+        self.log('val/loss(visible)', non_mask_loss)
 
         # for better visualization
         x_mask.clamp_(min=0, max=1)
@@ -299,21 +219,48 @@ class SnimModel(pl.LightningModule):
         pred_ol[~mask] = patchify(x, self.args.vit_patch_shape)[~mask].to(pred_ol.dtype)
         pred_ol = unpatchify(pred_ol, self.args.vit_patch_shape)
 
-        slice_idx = x.shape[-1] // 2
-        self.logger.log_image(
-            f'val/{filename}',
-            images=[
-                x[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
-                x_mask[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
-                pred[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
-                pred_ol[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
-            ],
-            caption=['original', 'mask', 'pred', 'pred-ol'],
-        )
+        slice_ids = [int(x.shape[-1] * r) for r in [0.25, 0.5, 0.75]]
+        filenames = [None] * self.trainer.world_size
+        dist.all_gather_object(filenames, filename)
+        all_x, all_x_mask, all_pred, all_pred_ol = self.all_gather([x, x_mask, pred, pred_ol])
+        if self.trainer.is_global_zero:
+            for filename, x, x_mask, pred, pred_ol in zip(filenames, all_x, all_x_mask, all_pred, all_pred_ol):
+                for slice_idx in slice_ids:
+                    self.logger.log_image(
+                        f'val/{filename}/{slice_idx}',
+                        images=[
+                            x[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
+                            x_mask[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
+                            pred[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
+                            pred_ol[0, ..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
+                        ],
+                        caption=['original', 'mask', 'pred', 'pred-ol'],
+                    )
 
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
         return {
             'optimizer': optimizer,
-            'lr_scheduler': CosineAnnealingLR(optimizer, T_max=self.args.max_steps),
+            'lr_scheduler': {
+                'scheduler': CosineAnnealingLR(optimizer, T_max=self.args.max_steps),
+                'interval': 'step',
+            }
         }
+
+    def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
+        optimizer.zero_grad(set_to_none=self.args.optimizer_set_to_none)
+
+    # def optimizer_step(self, epoch, batch_idx, optimizer, optimizer_idx, optimizer_closure, **kwargs):
+    #     self.should_skip_lr_scheduler_step = False
+    #     scaler = getattr(self.trainer.strategy.precision_plugin, "scaler", None)
+    #     if scaler:
+    #         scale_before_step = scaler.get_scale()
+    #     optimizer.step(closure=optimizer_closure)
+    #     if scaler:
+    #         scale_after_step = scaler.get_scale()
+    #         self.should_skip_lr_scheduler_step = scale_before_step > scale_after_step
+    #
+    # def lr_scheduler_step(self, scheduler, optimizer_idx, metric):
+    #     if self.should_skip_lr_scheduler_step:
+    #         return
+    #     scheduler.step()

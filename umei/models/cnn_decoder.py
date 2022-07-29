@@ -124,7 +124,7 @@ class CnnDecoder(UDecoderBase):
             norm_name=norm_name,
         )
 
-    def forward(self, x_in, hidden_states: list[torch.Tensor]):
+    def forward(self, encoder_hidden_states: list[torch.Tensor], img):
         dec4 = self.bottleneck(hidden_states[4])
         dec3 = self.decoder4(dec4, hidden_states[4])
         dec2 = self.decoder3(dec3, hidden_states[3])

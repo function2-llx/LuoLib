@@ -254,7 +254,7 @@ class SwinUnetrDecoder(UDecoderBase):
         else:
             self.input_encoder = None
 
-    def forward(self, x_in: torch.Tensor = None, hidden_states: list[torch.Tensor] = None) -> UDecoderOutput:
+    def forward(self, hidden_states: list[torch.Tensor], x_in: torch.Tensor) -> UDecoderOutput:
         x = self.bottleneck(hidden_states[-1])
         feature_maps = []
         for z, up, encoder in zip(hidden_states[-2::-1], self.ups[::-1], self.encoders[::-1]):

@@ -59,7 +59,7 @@ class UMeI(LightningModule):
             ret['cls_logit'] = cls_out
         if self.decoder is not None and self.args.seg_key in batch:
             seg_label: torch.IntTensor = batch[self.args.seg_key]
-            feature_maps = self.decoder.forward(img, encoder_out.hidden_states).feature_maps
+            feature_maps = self.decoder.forward(encoder_out.hidden_states, img).feature_maps
             seg_loss = torch.stack([
                 self.seg_loss_fn(
                     interpolate(seg_head(fm), seg_label.shape[2:], mode='trilinear'),
@@ -78,7 +78,7 @@ class UMeI(LightningModule):
         output = self.encoder.forward(x)
         if self.decoder is None:
             return output.cls_feature
-        feature_maps = self.decoder.forward(x, output.hidden_states).feature_maps
+        feature_maps = self.decoder.forward(output.hidden_states, x).feature_maps
         if self.args.self_ensemble:
             return torch.stack([
                 interpolate(seg_head(fm), x.shape[2:], mode='trilinear')
