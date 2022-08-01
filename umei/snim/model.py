@@ -2,23 +2,24 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Type
 
 from einops import rearrange
 import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 import torch
-from torch import nn, distributed as dist
-from torch.nn import functional as torch_f
+from torch import distributed as dist, nn
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from monai.data import MetaTensor
-from monai.networks.blocks import Convolution
+from monai.networks.blocks import Convolution, ResidualUnit
+from monai.networks.layers import Act, Norm
 from monai.utils import ImageMetaKey
 from umei.models.swin import SwinTransformer
 from .args import MaskValue, SnimArgs
-from .utils import channel_first, channel_last, patchify, unpatchify
+from .utils import ChannelFirst, ChannelLast, channel_first, channel_last, patchify, unpatchify
 
 class SnimEncoder(SwinTransformer):
     def __init__(self, args: SnimArgs):
@@ -70,42 +71,100 @@ class SnimEncoder(SwinTransformer):
         hidden_states = self.forward_layers(x)
         return x_mask, hidden_states
 
+class LayerNorm3d(nn.Sequential):
+    def __init__(self, dim: int):
+        super().__init__(
+            ChannelLast(),
+            nn.LayerNorm(dim),
+            ChannelFirst(),
+        )
+
+@Norm.factory_function("layer3d")
+def layer_factory(_dim) -> Type[LayerNorm3d]:
+    return LayerNorm3d
+
 class SnimDecoder(nn.Module):
     def __init__(self, args: SnimArgs):
         super().__init__()
         self.args = args
         assert tuple(args.vit_patch_shape) == (2, 2, 2)
-        self.up_projects = nn.ModuleList([
-            Convolution(
+        self.lateral_convs = nn.ModuleList([
+            ResidualUnit(
                 spatial_dims=3,
                 in_channels=args.base_feature_size << i,
-                out_channels=args.base_feature_size << i - 1,
+                out_channels=args.base_feature_size << i,
                 kernel_size=1,
+                strides=1,
+                subunits=2,
+                norm=(Norm.LAYER3D, {'dim': args.base_feature_size << i}),
             )
-            for i in range(1, args.vit_stages)
+            for i in range(args.vit_stages)
+        ])
+        self.up_projects = nn.ModuleList([
+            nn.Sequential(
+                nn.ConvTranspose3d(
+                    in_channels=args.base_feature_size << i + 1,
+                    out_channels=args.base_feature_size << i,
+                    kernel_size=2,
+                    stride=2,
+                ),
+                LayerNorm3d(args.base_feature_size << i),
+                nn.PReLU(args.base_feature_size << i),
+                Convolution(
+                    spatial_dims=3,
+                    in_channels=args.base_feature_size << i,
+                    out_channels=args.base_feature_size << i,
+                    kernel_size=1,
+                    strides=1,
+                    norm=(Norm.LAYER3D, {'dim': args.base_feature_size << i}),
+                    act=Act.PRELU,
+                ),
+            )
+            for i in range(args.vit_stages - 1)
+        ])
+        self.convs = nn.ModuleList([
+            ResidualUnit(
+                spatial_dims=3,
+                in_channels=args.base_feature_size << i,
+                out_channels=args.base_feature_size << i,
+                kernel_size=1,
+                strides=1,
+                norm=(Norm.LAYER3D, {'dim': args.base_feature_size << i}),
+                act=Act.PRELU,
+            )
+            for i in range(args.vit_stages - 1)
         ])
         self.pred = nn.Sequential(
-            Convolution(
-                spatial_dims=3,
+            nn.ConvTranspose3d(
                 in_channels=args.base_feature_size,
                 out_channels=args.base_feature_size,
-                kernel_size=3,
-                strides=2,
-                is_transposed=True,
+                kernel_size=2,
+                stride=2,
             ),
+            LayerNorm3d(args.base_feature_size),
+            nn.PReLU(args.base_feature_size),
             Convolution(
                 spatial_dims=3,
                 in_channels=args.base_feature_size,
                 out_channels=args.num_input_channels,
                 kernel_size=1,
+                strides=1,
                 conv_only=True,
             )
         )
 
     def forward(self, hidden_states: list[torch.Tensor]):
-        x = hidden_states[-1]
-        for z, up_proj in zip(hidden_states[-2::-1], self.up_projects[::-1]):
-            x = z + up_proj(torch_f.interpolate(x, z.shape[2:], mode='trilinear'))
+        x = self.lateral_convs[-1](hidden_states[-1])
+        for z, lateral_conv, up_proj, conv in zip(
+            hidden_states[-2::-1],
+            self.lateral_convs[-2::-1],
+            self.up_projects[::-1],
+            self.convs[::-1],
+        ):
+            z = lateral_conv(z)
+            x = up_proj(x)
+            x = x + z
+            x = conv(x)
         pred = self.pred(x)
         return pred
 
