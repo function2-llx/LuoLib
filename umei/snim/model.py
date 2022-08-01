@@ -95,8 +95,9 @@ class SnimDecoder(nn.Module):
                 out_channels=args.base_feature_size << i,
                 kernel_size=1,
                 strides=1,
-                subunits=2,
                 norm=(Norm.LAYER3D, {'dim': args.base_feature_size << i}),
+                act=Act.PRELU,
+                subunits=2,
             )
             for i in range(args.vit_stages)
         ])
@@ -131,6 +132,7 @@ class SnimDecoder(nn.Module):
                 strides=1,
                 norm=(Norm.LAYER3D, {'dim': args.base_feature_size << i}),
                 act=Act.PRELU,
+                subunits=2,
             )
             for i in range(args.vit_stages - 1)
         ])

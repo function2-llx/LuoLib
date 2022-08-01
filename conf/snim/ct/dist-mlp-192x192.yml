@@ -8,7 +8,7 @@ swin_window_size: [6, 6, 6]
 mask_block_shape: [16, 16, 16]
 mask_ratio: 0.8
 visible_factor: 0.1
-train_batch_size: 4
+train_batch_size: 3
 learning_rate: 1e-4
 weight_decay: 1e-5
 max_steps: 100000
