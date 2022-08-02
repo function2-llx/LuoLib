@@ -14,7 +14,8 @@ def main():
     print(args)
     pl.seed_everything(args.seed)
     datamodule = SnimDataModule(args, build_pretrain_datasets(args))
-    exp_suffix = f'mask{args.mask_ratio * 100}-vf{args.visible_factor}/run-{args.seed}'
+    exp_suffix = f'mask{args.mask_ratio * 100}-{"x".join(map(str, args.mask_block_shape))}-vf{args.visible_factor}' \
+                 f'/run-{args.seed}'
     output_dir = args.output_dir / exp_suffix
     output_dir.mkdir(exist_ok=True, parents=True)
     trainer = pl.Trainer(
