@@ -1,5 +1,5 @@
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
 from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
@@ -47,7 +47,8 @@ def main():
                     save_last=True,
                     save_on_train_epoch_end=False,
                 ),
-                LearningRateMonitor(logging_interval='epoch')
+                LearningRateMonitor(logging_interval='epoch'),
+                ModelSummary(max_depth=2),
             ],
             num_nodes=args.num_nodes,
             gpus=torch.cuda.device_count(),

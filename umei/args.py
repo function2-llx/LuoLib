@@ -35,7 +35,7 @@ class UMeIArgs(TrainingArguments):
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
     encode_skip: bool = field(default=False)
-    umei_sunetr_decode_use_in: bool = field(default=False)
+    umei_sunetr_decode_use_in: bool = field(default=True)
     umei_impl: bool = field(default=True)
     use_encoder5: bool = field(default=False)
     num_seg_heads: int = field(default=1)
