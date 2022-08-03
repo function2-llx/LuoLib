@@ -1,27 +1,33 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Callable
 
-import pandas as pd
-from pytorch_lightning.utilities.types import EVAL_DATALOADERS
-from torch.utils.data import default_collate
-
-import monai
-from monai.data import DataLoader, Dataset, partition_dataset_classes
-from monai.utils import GridSampleMode, NumpyPadMode
-from umei.datamodule import CVDataModule
+from umei.utils import DataKey, DataSplit
 
 DATASET_ROOT = Path(__file__).parent
 DATA_DIR = DATASET_ROOT / 'origin'
 
-def load_cohort(img_only: bool = False, merge: bool = False):
-    # placeholder to load all image data
-    assert img_only and merge
+split_folder_map = {
+    DataSplit.TRAIN: 'Training',
+    DataSplit.TEST: 'Testing',
+}
 
-    return [
-        {'img': img_path}
-        for img_path in DATA_DIR.glob('*/img/*.nii.gz')
-    ]
+def load_cohort(img_only: bool = False, merge: bool = False):
+    if merge:
+        assert img_only
+        return [
+            {DataKey.IMG: img_path}
+            for img_path in DATA_DIR.glob('*/img/*.nii.gz')
+        ]
+    ret = {
+        split: [
+            {DataKey.IMG: filepath}
+            for filepath in (DATA_DIR / folder / 'img').glob('*.nii.gz')
+        ]
+        for split, folder in split_folder_map.items()
+    }
+    if not img_only:
+        for item in ret[DataSplit.TRAIN]:
+            item[DataKey.SEG] = DATA_DIR / split_folder_map[DataSplit.TRAIN] / 'label' / item[DataKey.IMG].name
+    return ret
 

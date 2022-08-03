@@ -1,12 +1,19 @@
+from __future__ import annotations
+
 from collections.abc import Sequence
+from typing import Callable
 
 import numpy as np
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.trainer.supporters import CombinedLoader
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
-from monai.data import CacheDataset, DataLoader, select_cross_validation_folds
-from .args import UMeIArgs
+import monai
+from monai.data import CacheDataset, DataLoader, partition_dataset, select_cross_validation_folds
+from monai.utils import GridSampleMode, NumpyPadMode
+from .args import AugArgs, SegArgs, UMeIArgs
+from .datasets.btcv import load_cohort
+from .utils import DataKey, DataSplit
 
 class CVDataModule(LightningDataModule):
     partitions: list[Sequence]
@@ -89,3 +96,115 @@ class CVDataModule(LightningDataModule):
             },
             mode='max_size_cycle',
         )
+
+class SegDataModule(CVDataModule):
+    args: UMeIArgs | SegArgs | AugArgs
+
+    def __init__(self, args: UMeIArgs | SegArgs):
+        super().__init__(args)
+        self.cohort = load_cohort()
+        self.partitions = partition_dataset(
+            self.cohort[DataSplit.TRAIN],
+            num_partitions=args.num_folds,
+            shuffle=True,
+            seed=args.seed,
+        )
+
+    def loader_transform(self, *, load_seg: bool) -> monai.transforms.Compose:
+        load_keys = [DataKey.IMG]
+        if load_seg:
+            load_keys.append(DataKey.SEG)
+
+        # def fix_seg_affine(data: dict):
+        #     if load_seg:
+        #         data[f'{DataKey.SEG}_meta_dict']['affine'] = data[f'{DataKey.IMG}_meta_dict']['affine']
+        #     return data
+
+        return monai.transforms.Compose([
+            monai.transforms.LoadImageD(load_keys),
+            # monai.transforms.Lambda(fix_seg_affine),
+            monai.transforms.AddChannelD(load_keys),
+            monai.transforms.OrientationD(load_keys, axcodes='RAS'),
+        ])
+
+    def normalize_transform(self, *, full_seg: bool) -> monai.transforms.Compose:
+        spacing_keys = [DataKey.IMG]
+        spacing_modes = [GridSampleMode.BILINEAR]
+        if not full_seg:
+            spacing_keys.append(DataKey.SEG)
+            spacing_modes.append(GridSampleMode.NEAREST)
+        transforms = [monai.transforms.SpacingD(spacing_keys, pixdim=self.args.spacing, mode=spacing_modes)]
+        if self.args.norm_intensity:
+            transforms.extend([
+                monai.transforms.NormalizeIntensityD(DataKey.IMG),
+                monai.transforms.ThresholdIntensityD(DataKey.IMG, threshold=-5, above=True, cval=-5),
+                monai.transforms.ThresholdIntensityD(DataKey.IMG, threshold=5, above=False, cval=5),
+                monai.transforms.ScaleIntensityD(DataKey.IMG, minv=0, maxv=1),
+            ])
+        else:
+            transforms.append(monai.transforms.ScaleIntensityRanged(
+                DataKey.IMG,
+                a_min=self.args.a_min,
+                a_max=self.args.a_max,
+                b_min=self.args.b_min,
+                b_max=self.args.b_max,
+                clip=True,
+            ))
+        if not full_seg:
+            transforms.append(
+                monai.transforms.CropForegroundd([DataKey.IMG, DataKey.SEG], source_key=DataKey.IMG)
+            )
+        return monai.transforms.Compose(transforms)
+
+    def aug_transform(self) -> monai.transforms.Compose:
+        crop_transform = {
+            'cls': monai.transforms.RandCropByLabelClassesD(
+                [DataKey.IMG, DataKey.SEG],
+                label_key=DataKey.SEG,
+                spatial_size=self.args.sample_shape,
+                num_classes=self.args.num_seg_classes,
+                num_samples=self.args.num_crop_samples,
+            ),
+            'pn': monai.transforms.RandCropByPosNegLabeld(
+                keys=[DataKey.IMG, DataKey.SEG],
+                label_key=DataKey.SEG,
+                spatial_size=self.args.sample_shape,
+                pos=1,
+                neg=1,
+                num_samples=self.args.num_crop_samples,
+                image_key=DataKey.IMG,
+                image_threshold=0,
+            )
+        }[self.args.crop]
+
+        return monai.transforms.Compose([
+            monai.transforms.SpatialPadD(
+                [DataKey.IMG, DataKey.SEG],
+                spatial_size=self.args.sample_shape,
+                mode=NumpyPadMode.CONSTANT
+            ),
+            crop_transform,
+            monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=self.args.flip_p, spatial_axis=0),
+            monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=self.args.flip_p, spatial_axis=1),
+            monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=self.args.flip_p, spatial_axis=2),
+            monai.transforms.RandRotate90D([DataKey.IMG, DataKey.SEG], prob=self.args.rotate_p, max_k=3),
+            monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=0.1, prob=self.args.scale_p),
+            monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=0.1, prob=self.args.shift_p),
+        ])
+
+    @property
+    def train_transform(self) -> Callable:
+        return monai.transforms.Compose([
+            *self.loader_transform(load_seg=True).transforms,
+            *self.normalize_transform(full_seg=False).transforms,
+            *self.aug_transform().transforms,
+            monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
+        ])
+
+    @property
+    def val_transform(self) -> Callable:
+        return monai.transforms.Compose([
+            *self.loader_transform(load_seg=True).transforms,
+            *self.normalize_transform(full_seg=False).transforms,
+            monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
+        ])

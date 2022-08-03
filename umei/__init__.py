@@ -1,3 +1,3 @@
 from . import transforms
 from .datamodule import CVDataModule
-from .umei import UMeI
+from .model import SegModel, UMeI

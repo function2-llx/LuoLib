@@ -1,32 +1,20 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from umei.args import AugArgs, UMeIArgs
+from umei.args import AugArgs, UMeIArgs, SegArgs, CTArgs
 
 @dataclass
-class AmosArgs(UMeIArgs, AugArgs):
+class AmosArgs(UMeIArgs, AugArgs, CTArgs, SegArgs):
     monitor: str = field(default='val/dice/avg')
     monitor_mode: str = field(default='max')
     output_root: Path = field(default=Path('output/amos'))
     conf_root: Path = field(default=Path('conf/amos'))
-    num_crop_samples: int = field(default=4)
     use_test_fold: bool = field(default=False)
     per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
-    sw_batch_size: int = field(default=8)
-    sw_overlap: float = field(default=0.25)
-    post_labels: list[int] = field(default_factory=list)
     # val_post: bool = field(default=False, metadata={'help': 'whether to perform post-processing during validation'})
     task_id: int = field(default=2, metadata={'choices': [1, 2]})
-    a_min: float = field(default=None)
-    a_max: float = field(default=None)
-    warmup_epochs: int = field(default=50)
     use_monai: bool = field(default=False, metadata={'help': 'run validation for models produced by '
                                                              'official monai implementation'})
-    crop: str = field(default='cls', metadata={'choices': ['cls', 'pn']})
-    dice_dr: float = field(default=1e-6)
-    dice_nr: float = field(default=0)
-    dice_include_background: bool = field(default=False)
-    squared_dice: bool = field(default=False)
 
     @property
     def num_seg_classes(self) -> int:

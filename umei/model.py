@@ -2,11 +2,25 @@ from __future__ import annotations
 
 from typing import Optional
 
+from pytorch_lightning import LightningModule
+from pytorch_lightning.utilities.types import STEP_OUTPUT
+
 import torch
 from torch import nn
+from torch.nn import functional as torch_f
+from torch.optim import AdamW, Optimizer
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
-from monai.umei import UEncoderBase
-from umei.args import UMeIArgs
+import monai
+from monai.inferers import sliding_window_inference
+from monai.losses import DiceCELoss
+from monai.metrics import DiceMetric
+from monai.networks import one_hot
+
+from monai.umei import UEncoderBase, UEncoderOutput
+from monai.utils import BlendMode, MetricReduction
+from umei.args import SegArgs, UMeIArgs
+from umei.utils import DataSplit
 
 def filter_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict:
     return {
@@ -147,3 +161,159 @@ def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
         return model
     else:
         raise ValueError(f'not supported decoder: {args.decoder}')
+
+class UMeI(LightningModule):
+    cls_loss_fn: nn.Module
+    seg_loss_fn: nn.Module
+
+    def __init__(self, args: UMeIArgs, *, has_decoder: bool):
+        super().__init__()
+        self.args = args
+        self.encoder = build_encoder(args)
+        with torch.no_grad():
+            self.encoder.eval()
+            dummy_input = torch.zeros(1, args.num_input_channels, *args.sample_shape)
+            dummy_encoder_output = self.encoder.forward(dummy_input)
+            encoder_feature_sizes = [feature.shape[1] for feature in dummy_encoder_output.hidden_states]
+        if self.args.num_cls_classes is not None:
+            encoder_cls_feature_size = dummy_encoder_output.cls_feature.shape[1]
+            self.cls_head = nn.Linear(encoder_cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
+            nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
+
+        self.decoder = None
+        if has_decoder:
+            self.decoder = build_decoder(args, encoder_feature_sizes)
+            with torch.no_grad():
+                dummy_decoder_output = self.decoder.forward(dummy_input, dummy_encoder_output.hidden_states)
+                decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
+            from monai.networks.blocks import UnetOutBlock
+            # i-th seg head for the last i-th output from decoder
+            self.seg_heads = nn.ModuleList([
+                UnetOutBlock(
+                    spatial_dims=3,
+                    in_channels=decoder_feature_sizes[-i - 1],
+                    out_channels=args.num_seg_classes,
+                )
+                for i in range(args.num_seg_heads)
+            ])
+
+    def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
+        img = batch[self.args.img_key]
+        encoder_out: UEncoderOutput = self.encoder(img)
+        ret = {'loss': torch.tensor(0., device=self.device)}
+        if self.args.cls_key in batch:
+            cls_out = self.cls_head(torch.cat((encoder_out.cls_feature, batch[self.args.clinical_key]), dim=1))
+            cls_loss = self.cls_loss_fn(cls_out, batch[self.args.cls_key])
+            # self.log('cls_loss', cls_loss, prog_bar=True)
+            ret['loss'] += cls_loss * self.args.cls_loss_factor
+            ret['cls_loss'] = cls_loss
+            ret['cls_logit'] = cls_out
+        if self.decoder is not None and self.args.seg_key in batch:
+            seg_label: torch.IntTensor = batch[self.args.seg_key]
+            feature_maps = self.decoder.forward(encoder_out.hidden_states, img).feature_maps
+            seg_loss = torch.stack([
+                self.seg_loss_fn(
+                    torch_f.interpolate(seg_head(fm), seg_label.shape[2:], mode='trilinear'),
+                    seg_label
+                ) / 2 ** i
+                for i, (fm, seg_head) in enumerate(zip(reversed(feature_maps), self.seg_heads))
+            ]).sum()
+            ret['loss'] += seg_loss * self.args.seg_loss_factor
+            ret['seg_loss'] = seg_loss
+        for k in ['cls_loss', 'seg_loss']:
+            if k in ret:
+                self.log(f'train/{k}', ret[k])
+        return ret
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        output = self.encoder.forward(x)
+        if self.decoder is None:
+            return output.cls_feature
+        feature_maps = self.decoder.forward(output.hidden_states, x).feature_maps
+        if self.args.self_ensemble:
+            return torch.stack([
+                torch_f.interpolate(seg_head(fm), x.shape[2:], mode='trilinear')
+                for fm, seg_head in zip(reversed(feature_maps), self.seg_heads)
+            ]).mean(dim=0)
+        else:
+            return torch_f.interpolate(self.seg_heads[0](feature_maps[-1]), x.shape[2:], mode='trilinear')
+
+    def configure_optimizers(self):
+        optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': CosineAnnealingLR(optimizer, T_max=int(self.args.num_train_epochs)),
+        }
+
+    def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
+        optimizer.zero_grad(set_to_none=self.args.optimizer_set_to_none)
+
+class SegModel(UMeI):
+    args: UMeIArgs | SegArgs
+
+    def __init__(self, args: UMeIArgs | SegArgs):
+        super().__init__(args, has_decoder=True)
+        self.args = args
+        self.seg_loss_fn = DiceCELoss(
+            include_background=self.args.dice_include_background,
+            to_onehot_y=True,
+            softmax=True,
+            squared_pred=self.args.squared_dice,
+            smooth_nr=self.args.dice_nr,
+            smooth_dr=self.args.dice_dr,
+        )
+        self.post_transform = monai.transforms.Compose([
+            monai.transforms.KeepLargestConnectedComponent(is_onehot=False, applied_labels=args.post_labels),
+        ])
+        self.dice_metric = DiceMetric()
+        self.resampler = monai.transforms.SpatialResample()
+
+    def sw_infer(self, img: torch.Tensor):
+        return sliding_window_inference(
+            img,
+            roi_size=self.args.sample_shape,
+            sw_batch_size=self.args.sw_batch_size,
+            predictor=self.forward,
+            overlap=self.args.sw_overlap,
+            mode=BlendMode.GAUSSIAN,
+        )
+
+    def on_validation_epoch_start(self):
+        self.dice_metric.reset()
+
+    def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
+        batch = batch[DataSplit.VAL]
+        pred_logit = self.sw_infer(batch[self.args.img_key])
+        pred = pred_logit.argmax(dim=1, keepdim=True)
+        self.dice_metric(
+            one_hot(pred, self.args.num_seg_classes),
+            one_hot(batch[self.args.seg_key], self.args.num_seg_classes),
+        )
+
+    def validation_epoch_end(self, *args) -> None:
+        dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
+        for i in range(dice.shape[0]):
+            self.log(f'val/dice/{i}', dice[i])
+        self.log('val/dice/avg', dice[1:].mean())
+
+    def on_test_epoch_start(self) -> None:
+        self.dice_metric.reset()
+
+    def test_step(self, batch, *args, **kwargs):
+        img = batch[self.args.img_key]
+        seg = batch[self.args.seg_key]
+        pred_logit = self.sw_infer(img)
+        pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
+        pred = pred_logit.argmax(dim=1, keepdim=True)
+        pred = self.post_transform(pred[0])
+        print(self.dice_metric(
+            # add dummy batch dim
+            one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
+            one_hot(batch[self.args.seg_key], self.args.num_seg_classes),
+        ).array)
+
+    def test_epoch_end(self, *args) -> None:
+        dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
+        for i in range(dice.shape[0]):
+            self.log(f'test/dice/{i}', dice[i])
+        self.log('test/dice/avg', dice[1:].mean())

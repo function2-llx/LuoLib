@@ -7,7 +7,7 @@ from einops import rearrange
 import torch
 from torch import nn
 
-from monai.networks.blocks import PatchEmbed, UnetrBasicBlock, UnetrUpBlock
+from monai.networks.blocks import PatchEmbed, UnetResBlock, UnetrBasicBlock, UnetrUpBlock
 from monai.networks.nets.swin_unetr import BasicLayer, PatchMergingV2
 from monai.umei import UDecoderBase, UDecoderOutput, UEncoderBase, UEncoderOutput
 
@@ -186,7 +186,6 @@ class SwinUnetrDecoder(UDecoderBase):
         norm_name: tuple | str = "instance",
         spatial_dims: int = 3,
         input_stride: Optional[Sequence[int] | int] = None,
-        encode_skip: bool = False,
     ) -> None:
         super().__init__()
         assert spatial_dims == 3
@@ -214,31 +213,26 @@ class SwinUnetrDecoder(UDecoderBase):
             for i in range(1, num_layers)
         ])
 
-        self.encode_skip = encode_skip
-        self.encoders = [None] * (num_layers - 1)   # type: ignore
-        if encode_skip:
-            self.encoders = nn.ModuleList([
-                UnetrBasicBlock(
-                    spatial_dims=spatial_dims,
-                    in_channels=feature_size << i,
-                    out_channels=feature_size << i,
-                    kernel_size=3,
-                    stride=1,
-                    norm_name=norm_name,
-                    res_block=True,
-                )
-                for i in range(num_layers - 1)
-            ])
+        self.lateral_convs = nn.ModuleList([
+            UnetResBlock(
+                spatial_dims=spatial_dims,
+                in_channels=feature_size << i,
+                out_channels=feature_size << i,
+                kernel_size=3,
+                stride=1,
+                norm_name=norm_name,
+            )
+            for i in range(num_layers - 1)
+        ])
 
         if input_stride is not None:
-            self.input_encoder = UnetrBasicBlock(
+            self.input_encoder = UnetResBlock(
                 spatial_dims=spatial_dims,
                 in_channels=in_channels,
                 out_channels=feature_size,
                 kernel_size=3,
                 stride=input_stride,
                 norm_name=norm_name,
-                res_block=True,
             )
 
             # don't prepend to self.ups, or will not load pre-trained weights properly
@@ -257,7 +251,7 @@ class SwinUnetrDecoder(UDecoderBase):
     def forward(self, hidden_states: list[torch.Tensor], x_in: torch.Tensor) -> UDecoderOutput:
         x = self.bottleneck(hidden_states[-1])
         feature_maps = []
-        for z, up, encoder in zip(hidden_states[-2::-1], self.ups[::-1], self.encoders[::-1]):
+        for z, up, encoder in zip(hidden_states[-2::-1], self.ups[::-1], self.lateral_convs[::-1]):
             up: UnetrUpBlock
             if self.encode_skip:
                 z = encoder(z)
