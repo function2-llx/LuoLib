@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from umei.args import AugArgs, UMeIArgs, SegArgs, CTArgs
+from umei.args import AugArgs, UMeIArgs, SegArgs
 
 @dataclass
-class AmosArgs(UMeIArgs, AugArgs, CTArgs, SegArgs):
+class AmosArgs(UMeIArgs, AugArgs, SegArgs):
     monitor: str = field(default='val/dice/avg')
     monitor_mode: str = field(default='max')
     output_root: Path = field(default=Path('output/amos'))
