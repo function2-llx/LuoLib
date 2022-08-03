@@ -194,7 +194,7 @@ class SwinUnetrDecoder(UDecoderBase):
             spatial_dims=spatial_dims,
             in_channels=feature_size << num_layers - 1,
             out_channels=feature_size << num_layers - 1,
-            kernel_size=(3, 3, 1),
+            kernel_size=3,
             stride=1,
             norm_name=norm_name,
         )
