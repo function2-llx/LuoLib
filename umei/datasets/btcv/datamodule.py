@@ -28,6 +28,6 @@ def load_cohort(img_only: bool = False, merge: bool = False):
     }
     if not img_only:
         for item in ret[DataSplit.TRAIN]:
-            item[DataKey.SEG] = DATA_DIR / split_folder_map[DataSplit.TRAIN] / 'label' / item[DataKey.IMG].name
+            item[DataKey.SEG] = DATA_DIR / split_folder_map[DataSplit.TRAIN] / 'label' / item[DataKey.IMG].name.replace('img', 'label')
     return ret
 

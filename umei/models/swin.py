@@ -251,11 +251,10 @@ class SwinUnetrDecoder(UDecoderBase):
     def forward(self, hidden_states: list[torch.Tensor], x_in: torch.Tensor) -> UDecoderOutput:
         x = self.bottleneck(hidden_states[-1])
         feature_maps = []
-        for z, up, encoder in zip(hidden_states[-2::-1], self.ups[::-1], self.lateral_convs[::-1]):
+        for z, up, lateral_conv in zip(hidden_states[-2::-1], self.ups[::-1], self.lateral_convs[::-1]):
             up: UnetrUpBlock
-            if self.encode_skip:
-                z = encoder(z)
-            x = up(x, z if up.use_skip else None)
+            z = lateral_conv(z)
+            x = up.forward(x, z if up.use_skip else None)
             feature_maps.append(x)
         if self.input_encoder is not None:
             x = self.last_up(x, self.input_encoder(x_in))

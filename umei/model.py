@@ -17,7 +17,7 @@ from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 
-from monai.umei import UEncoderBase, UEncoderOutput
+from monai.umei import UDecoderBase, UEncoderBase, UEncoderOutput
 from monai.utils import BlendMode, MetricReduction
 from umei.args import SegArgs, UMeIArgs
 from umei.utils import DataSplit
@@ -116,7 +116,7 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
     else:
         raise ValueError(f'not supported encoder: {args.encoder}')
 
-def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
+def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]) -> UDecoderBase:
     if args.decoder == 'cnn':
         from umei.models.cnn_decoder import CnnDecoder
         return CnnDecoder(encoder_feature_sizes, out_channels=args.base_feature_size // 2)
@@ -131,7 +131,6 @@ def build_decoder(args: UMeIArgs, encoder_feature_sizes: list[int]):
                 feature_size=args.base_feature_size,
                 num_layers=len(args.vit_depths),
                 input_stride=input_stride,
-                encode_skip=args.encode_skip,
             )
             if args.decoder_pretrain_path is not None:
                 state_dict = filter_state_dict(torch.load(args.decoder_pretrain_path)["state_dict"], 'decoder')
@@ -184,7 +183,7 @@ class UMeI(LightningModule):
         if has_decoder:
             self.decoder = build_decoder(args, encoder_feature_sizes)
             with torch.no_grad():
-                dummy_decoder_output = self.decoder.forward(dummy_input, dummy_encoder_output.hidden_states)
+                dummy_decoder_output = self.decoder.forward(dummy_encoder_output.hidden_states, dummy_input)
                 decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
             from monai.networks.blocks import UnetOutBlock
             # i-th seg head for the last i-th output from decoder

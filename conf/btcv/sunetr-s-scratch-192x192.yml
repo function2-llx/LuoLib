@@ -1,22 +1,25 @@
 num_folds: 5
-sample_size: 96
-sample_slices: 96
+sample_size: 192
+sample_slices: 192
 encoder: swt
-base_feature_size: 48
+base_feature_size: 24
+vit_depths: [2, 2, 2, 6, 2]
+vit_num_heads: [1, 2, 4, 8, 16]
 vit_patch_shape: [2, 2, 2]
+swin_window_size: [6, 6, 6]
 decoder: sunetr
-per_device_train_batch_size: 2
-per_device_eval_batch_size: 1
-num_crop_samples: 4
+train_batch_size: 2
+num_crop_samples: 2
 learning_rate: 1e-4
 weight_decay: 1e-5
-num_train_epochs: 1000
+num_train_epochs: 5000
 num_seg_heads: 3
-spacing: [1.5, 1.5, 2]
-task_id: 1
+spacing: [1, 1, 3]
 norm_intensity: false
 a_min: -175
 a_max: 250
+scale_p: 0.1
+shift_p: 0.1
 optimizer_set_to_none: true
 crop: cls
 squared_dice: false
