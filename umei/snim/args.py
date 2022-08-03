@@ -11,7 +11,7 @@ class MaskValue(StrEnum):
 
 @dataclass
 class SnimArgs(UMeIArgs, AugArgs):
-    mask_ratio: float = field(default=0.75)
+    mask_ratio: float = field(default=0.8)
     mask_block_shape: list[int] = field(default=None)
     norm_pix_loss: bool = field(default=False)
     val_size: int = field(default=2)

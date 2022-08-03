@@ -1,16 +1,20 @@
 import torch
 from tqdm import trange
 
+from umei.utils import UMeIParser
 from umei.snim.args import MaskValue, SnimArgs
 from umei.snim import SnimModel
 
 def main():
-    args: SnimArgs = SnimArgs.from_yaml_file('conf/snim/mask-test.yml')
+    parser = UMeIParser(SnimArgs, use_conf=True)
+    args: SnimArgs = parser.parse_args_into_dataclasses()[0]
     print(args)
     for value in MaskValue:
         if value == args.mask_value:
             print('mask value:', value)
-    model = SnimModel(args).cuda().eval()
+    model = SnimModel(args)
+    model = model.cuda()
+    model = model.eval()
     torch.backends.cudnn.benchmark = True
     batch_size = args.train_batch_size
     print(f'expected mask ratio: {args.mask_ratio * 100}%')

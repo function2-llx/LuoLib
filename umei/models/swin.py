@@ -190,14 +190,13 @@ class SwinUnetrDecoder(UDecoderBase):
         super().__init__()
         assert spatial_dims == 3
 
-        self.bottleneck = UnetrBasicBlock(
+        self.bottleneck = UnetResBlock(
             spatial_dims=spatial_dims,
             in_channels=feature_size << num_layers - 1,
             out_channels=feature_size << num_layers - 1,
-            kernel_size=3,
+            kernel_size=2,
             stride=1,
             norm_name=norm_name,
-            res_block=True,
         )
 
         self.ups = nn.ModuleList([
@@ -251,7 +250,7 @@ class SwinUnetrDecoder(UDecoderBase):
     def forward(self, hidden_states: list[torch.Tensor], x_in: torch.Tensor) -> UDecoderOutput:
         x = self.bottleneck(hidden_states[-1])
         feature_maps = []
-        for z, up, lateral_conv in zip(hidden_states[-2::-1], self.ups[::-1], self.lateral_convs[::-1]):
+        for z, up, lateral_conv in zip(hidden_states[-2::-1], self.lateral_convs[::-1], self.ups[::-1]):
             up: UnetrUpBlock
             z = lateral_conv(z)
             x = up.forward(x, z if up.use_skip else None)

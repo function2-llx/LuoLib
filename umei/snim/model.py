@@ -178,7 +178,6 @@ class SnimModel(pl.LightningModule):
         self.args = args
 
         self.corner_counter = nn.Conv3d(1, 1, kernel_size=args.p_block_shape, bias=False)
-        nn.init.constant_(self.corner_counter.weight, 1)
         self.corner_counter.weight.requires_grad = False
 
         self.encoder = SnimEncoder(args)
@@ -195,6 +194,7 @@ class SnimModel(pl.LightningModule):
             torch.nn.init.normal_(self.encoder.mask_token, std=0.02)
         # initialize nn.Linear, nn.LayerNorm nn.Conv3d with kernel_size=1
         self.apply(self._init_weights)
+        nn.init.constant_(self.corner_counter.weight, 1)
 
     def _init_weights(self, m: nn.Module):
         if isinstance(m, nn.Linear):
@@ -219,17 +219,19 @@ class SnimModel(pl.LightningModule):
             size + block_patch_num - 1
             for size, block_patch_num in zip(mask_shape, self.args.p_block_shape)
         ]
+        sample_space_size = np.product(corner_ss)
         if self.args.mask_ratio == 1:
             mask_num = np.product(mask_shape)
         else:
-            mask_num: int = np.round(
+            sample_num = np.round(
                 np.log(1 - self.args.mask_ratio) /
-                np.log(1 - np.product(self.args.p_block_shape) / np.product(corner_ss))
-            ).astype(int)
+                np.log(1 - np.product(self.args.p_block_shape) / sample_space_size)
+            )
+            mask_num = int(sample_space_size * (1 - (1 - 1 / sample_space_size) ** sample_num))
         if mask_num == 0:
             mask = torch.zeros(batch_size, *mask_shape, dtype=torch.bool)
         else:
-            noise: torch.Tensor = torch.rand(batch_size, np.product(corner_ss), device=self.device)
+            noise: torch.Tensor = torch.rand(batch_size, sample_space_size, device=self.device)
             kth = noise.kthvalue(mask_num, dim=-1, keepdim=True).values
             corner_mask = rearrange(
                 noise <= kth,
