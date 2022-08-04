@@ -45,6 +45,7 @@ def main():
         benchmark=True,
         max_steps=args.max_steps,
         log_every_n_steps=5,
+        check_val_every_n_epoch=args.eval_epochs,
         strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),
         num_sanity_val_steps=args.num_sanity_val_steps,
     )
