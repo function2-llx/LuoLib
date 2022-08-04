@@ -94,6 +94,7 @@ class SwinTransformer(UEncoderBase):
         patch_norm: bool = True,
         use_checkpoint: bool = False,
         spatial_dims: int = 3,
+        resample_cls: Type[PatchMergingV2] = PatchMergingV2,
     ) -> None:
         """
         Args:
@@ -141,7 +142,7 @@ class SwinTransformer(UEncoderBase):
                 drop=drop_rate,
                 attn_drop=attn_drop_rate,
                 norm_layer=norm_layer,
-                downsample=PatchMergingV2 if i_layer + 1 < num_layers else None,
+                downsample=resample_cls if i_layer + 1 < num_layers else None,
                 use_checkpoint=use_checkpoint,
             )
             for i_layer in range(num_layers)
@@ -225,7 +226,7 @@ class SwinUnetrDecoder(UDecoderBase):
         ])
 
         if input_stride is not None:
-            self.input_encoder = UnetResBlock(
+            self.last_lateral = UnetResBlock(
                 spatial_dims=spatial_dims,
                 in_channels=in_channels,
                 out_channels=feature_size,
@@ -245,7 +246,7 @@ class SwinUnetrDecoder(UDecoderBase):
                 res_block=True,
             )
         else:
-            self.input_encoder = None
+            self.last_lateral = None
 
     def forward(self, hidden_states: list[torch.Tensor], x_in: torch.Tensor) -> UDecoderOutput:
         x = self.bottleneck(hidden_states[-1])
@@ -255,7 +256,7 @@ class SwinUnetrDecoder(UDecoderBase):
             z = lateral_conv(z)
             x = up.forward(x, z if up.use_skip else None)
             feature_maps.append(x)
-        if self.input_encoder is not None:
-            x = self.last_up(x, self.input_encoder(x_in))
+        if self.last_lateral is not None:
+            x = self.last_up(x, self.last_lateral(x_in))
             feature_maps.append(x)
         return UDecoderOutput(feature_maps)
