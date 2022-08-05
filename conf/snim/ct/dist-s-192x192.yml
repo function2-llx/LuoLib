@@ -5,7 +5,7 @@ vit_depths: [2, 2, 2, 6, 2]
 vit_num_heads: [1, 2, 4, 8, 16]
 vit_patch_shape: [2, 2, 2]
 swin_window_size: [6, 6, 6]
-mask_block_shape: [16, 16, 16]
+mask_block_shape: [2, 2, 2]
 mask_ratio: 0.8
 visible_factor: 1
 train_batch_size: 2

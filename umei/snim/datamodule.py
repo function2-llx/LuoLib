@@ -9,10 +9,10 @@ from torch.utils.data import Dataset
 from monai.data import DataLoader, CacheDataset
 from monai.utils import GridSampleMode, NumpyPadMode
 from umei.snim import SnimArgs
-from umei.utils import DataSplit
+from umei.utils import DataKey, DataSplit
 
 def build_pretrain_datasets(args: SnimArgs) -> dict[str, Dataset]:
-    # current implement a placeholder for all BTCV data
+    # current implement a placeholder for all AMOS and BTCV data
 
     from umei.datasets.btcv import load_cohort as btcv_load
 
@@ -26,74 +26,74 @@ def build_pretrain_datasets(args: SnimArgs) -> dict[str, Dataset]:
         DataSplit.TRAIN: CacheDataset(
             btcv_train_data + amos_train_data,
             transform=monai.transforms.Compose([
-                monai.transforms.LoadImageD('img'),
-                monai.transforms.AddChannelD('img'),
-                monai.transforms.OrientationD('img', axcodes='RAS'),
-                monai.transforms.SpacingD('img', pixdim=args.spacing, mode=GridSampleMode.BILINEAR),
+                monai.transforms.LoadImageD(DataKey.IMG),
+                monai.transforms.AddChannelD(DataKey.IMG),
+                monai.transforms.OrientationD(DataKey.IMG, axcodes='RAS'),
+                monai.transforms.SpacingD(DataKey.IMG, pixdim=args.spacing, mode=GridSampleMode.BILINEAR),
                 monai.transforms.ScaleIntensityRangeD(
-                    'img',
+                    DataKey.IMG,
                     a_min=-175,
                     a_max=250,
                     b_min=0,
                     b_max=1,
                     clip=True,
                 ),
-                monai.transforms.CropForegroundD('img', source_key='img'),
+                monai.transforms.CropForegroundD(DataKey.IMG, source_key=DataKey.IMG),
                 monai.transforms.SpatialPadD(
-                    'img',
+                    DataKey.IMG,
                     spatial_size=args.sample_shape,
                     mode=NumpyPadMode.CONSTANT,
                 ),
                 monai.transforms.RandSpatialCropD(
-                    'img',
+                    DataKey.IMG,
                     roi_size=args.sample_shape,
                     random_center=True,
                     random_size=False,
                 ),
-                monai.transforms.RandFlipD('img', prob=args.flip_p, spatial_axis=0),
-                monai.transforms.RandFlipD('img', prob=args.flip_p, spatial_axis=1),
-                monai.transforms.RandFlipD('img', prob=args.flip_p, spatial_axis=2),
-                monai.transforms.RandRotate90D('img', prob=args.rotate_p, max_k=3),
-                monai.transforms.RandScaleIntensityD('img', factors=args.scale_factor, prob=args.scale_p),
-                monai.transforms.RandShiftIntensityD('img', offsets=args.shift_offset, prob=args.shift_p),
-                monai.transforms.Lambda(lambda data: data['img']),
+                monai.transforms.RandFlipD(DataKey.IMG, prob=args.flip_p, spatial_axis=0),
+                monai.transforms.RandFlipD(DataKey.IMG, prob=args.flip_p, spatial_axis=1),
+                monai.transforms.RandFlipD(DataKey.IMG, prob=args.flip_p, spatial_axis=2),
+                monai.transforms.RandRotate90D(DataKey.IMG, prob=args.rotate_p, max_k=3),
+                monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=args.scale_factor, prob=args.scale_p),
+                monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=args.shift_offset, prob=args.shift_p),
+                monai.transforms.Lambda(lambda data: data[DataKey.IMG]),
             ]),
             cache_num=args.train_cache_num,
         ),
         DataSplit.VAL: CacheDataset(
             amos_val_data + btcv_val_data,
             transform=monai.transforms.Compose([
-                monai.transforms.LoadImageD('img'),
-                monai.transforms.AddChannelD('img'),
-                monai.transforms.OrientationD('img', axcodes='RAS'),
-                monai.transforms.SpacingD('img', pixdim=args.spacing, mode=GridSampleMode.BILINEAR),
+                monai.transforms.LoadImageD(DataKey.IMG),
+                monai.transforms.AddChannelD(DataKey.IMG),
+                monai.transforms.OrientationD(DataKey.IMG, axcodes='RAS'),
+                monai.transforms.SpacingD(DataKey.IMG, pixdim=args.spacing, mode=GridSampleMode.BILINEAR),
                 monai.transforms.ScaleIntensityRangeD(
-                    'img',
+                    DataKey.IMG,
                     a_min=-175,
                     a_max=250,
                     b_min=0,
                     b_max=1,
                     clip=True,
                 ),
-                monai.transforms.CropForegroundD('img', source_key='img'),
+                monai.transforms.CropForegroundD(DataKey.IMG, source_key=DataKey.IMG),
                 monai.transforms.SpatialPadD(
-                    'img',
+                    DataKey.IMG,
                     spatial_size=args.sample_shape,
                     mode=NumpyPadMode.CONSTANT,
                 ),
                 monai.transforms.RandSpatialCropD(
-                    'img',
+                    DataKey.IMG,
                     roi_size=args.sample_shape,
                     random_center=True,
                     random_size=False,
                 ),
-                # monai.transforms.RandFlipD('img', prob=args.flip_p, spatial_axis=0),
-                # monai.transforms.RandFlipD('img', prob=args.flip_p, spatial_axis=1),
-                # monai.transforms.RandFlipD('img', prob=args.flip_p, spatial_axis=2),
-                # monai.transforms.RandRotate90D('img', prob=args.rotate_p, max_k=3),
-                # monai.transforms.RandScaleIntensityD('img', factors=args.scale_factor, prob=args.scale_p),
-                # monai.transforms.RandShiftIntensityD('img', offsets=args.shift_offset, prob=args.shift_p),
-                monai.transforms.Lambda(lambda data: data['img']),
+                # monai.transforms.RandFlipD(DataKey.IMG, prob=args.flip_p, spatial_axis=0),
+                # monai.transforms.RandFlipD(DataKey.IMG, prob=args.flip_p, spatial_axis=1),
+                # monai.transforms.RandFlipD(DataKey.IMG, prob=args.flip_p, spatial_axis=2),
+                # monai.transforms.RandRotate90D(DataKey.IMG, prob=args.rotate_p, max_k=3),
+                # monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=args.scale_factor, prob=args.scale_p),
+                # monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=args.shift_offset, prob=args.shift_p),
+                monai.transforms.Lambda(lambda data: data[DataKey.IMG]),
             ]),
         ),
     }
