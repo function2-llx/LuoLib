@@ -297,8 +297,8 @@ class SegModel(UMeI):
     def validation_epoch_end(self, *args) -> None:
         dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
         for i in range(dice.shape[0]):
-            self.log(f'val/dice/{i}', dice[i])
-        self.log('val/dice/avg', dice[1:].mean())
+            self.log(f'val/dice/{i}', dice[i], sync_dist=True)
+        self.log('val/dice/avg', dice[1:].mean(), sync_dist=True)
 
     def on_test_epoch_start(self) -> None:
         self.dice_metric.reset()
@@ -319,5 +319,5 @@ class SegModel(UMeI):
     def test_epoch_end(self, *args) -> None:
         dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
         for i in range(dice.shape[0]):
-            self.log(f'test/dice/{i}', dice[i])
-        self.log('test/dice/avg', dice[1:].mean())
+            self.log(f'test/dice/{i}', dice[i], sync_dist=True)
+        self.log('test/dice/avg', dice[1:].mean(), sync_dist=True)

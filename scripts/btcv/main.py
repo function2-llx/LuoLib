@@ -14,6 +14,12 @@ task_name = 'btcv'
 def main():
     parser = UMeIParser((BTCVArgs, ), use_conf=True)
     args: BTCVArgs = parser.parse_args_into_dataclasses()[0]
+    if args.pretrain_path is None:
+        ft_suffix = 'scratch'
+    else:
+        # well, this is vulnerable
+        ft_suffix = args.pretrain_path.parts[-3]
+    args.output_dir /= ft_suffix
     print(args)
     datamodule = SegDataModule(args)
     for val_fold_id in range(datamodule.num_cv_folds):
@@ -30,7 +36,7 @@ def main():
         trainer = pl.Trainer(
             logger=MyWandbLogger(
                 project=f'{task_name}-eval' if args.do_eval else task_name,
-                name=f'{args.exp_name}/runs-{args.seed}/fold{val_fold_id}',
+                name=str(output_dir.relative_to(args.output_root)),
                 save_dir=str(log_dir),
                 group=args.exp_name,
                 offline=args.log_offline,
@@ -51,7 +57,8 @@ def main():
                 ModelSummary(max_depth=2),
             ],
             num_nodes=args.num_nodes,
-            gpus=torch.cuda.device_count(),
+            accelerator='gpu',
+            devices=torch.cuda.device_count(),
             precision=args.precision,
             benchmark=True,
             max_epochs=int(args.num_train_epochs),
