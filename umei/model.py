@@ -10,6 +10,7 @@ from torch import nn
 from torch.nn import functional as torch_f
 from torch.optim import AdamW, Optimizer
 from torch.optim.lr_scheduler import CosineAnnealingLR
+from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
 
 import monai
 from monai.inferers import sliding_window_inference
@@ -241,7 +242,11 @@ class UMeI(LightningModule):
         optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
         return {
             'optimizer': optimizer,
-            'lr_scheduler': CosineAnnealingLR(optimizer, T_max=int(self.args.num_train_epochs)),
+            'lr_scheduler': LinearWarmupCosineAnnealingLR(
+                optimizer,
+                warmup_epochs=self.args.warmup_epochs,
+                max_epochs=int(self.args.num_train_epochs),
+            ),
         }
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
