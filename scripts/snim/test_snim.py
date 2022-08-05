@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.strategies import DDPStrategy
+import torch
 import wandb
 
 from umei.snim import SnimArgs, SnimDataModule, SnimModel, build_pretrain_datasets
@@ -46,7 +47,11 @@ def main():
     for mask_ratio in np.linspace(0, 1, 11):
         args.mask_ratio = mask_ratio
         model = SnimModel(args)
-        trainer.validate(model, datamodule=datamodule, ckpt_path=str(last_ckpt_path))
+        state_dict: dict = torch.load(last_ckpt_path)['state_dict']
+        state_dict.pop('corner_counter.weight')
+        model.load_state_dict(state_dict, strict=False)
+        trainer.validate(model, datamodule=datamodule)
+        # trainer.validate(model, datamodule=datamodule, ckpt_path=str(last_ckpt_path))
     wandb.finish()
 
 if __name__ == '__main__':
