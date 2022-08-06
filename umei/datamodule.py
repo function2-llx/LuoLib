@@ -23,11 +23,7 @@ class UMeIDataModule(LightningDataModule):
     def train_data(self) -> Sequence:
         raise NotImplementedError
 
-    def val_data(self) -> dict[DataSplit, Sequence]:
-        raise NotImplementedError
-
-    # all data for fit (including train & val)
-    def fit_data(self) -> Sequence:
+    def val_data(self) -> dict[DataSplit, Sequence] | Sequence:
         raise NotImplementedError
 
     @property
@@ -54,24 +50,39 @@ class UMeIDataModule(LightningDataModule):
         )
 
     def val_dataloader(self):
-        return CombinedLoader(
-            loaders={
-                split: DataLoader(
-                    dataset=CacheDataset(
-                        data,
-                        transform=self.val_transform,
-                        cache_num=self.args.val_cache_num,
+        val_data = self.val_data()
+        if isinstance(val_data, dict):
+            return CombinedLoader(
+                loaders={
+                    split: DataLoader(
+                        dataset=CacheDataset(
+                            data,
+                            transform=self.val_transform,
+                            cache_num=self.args.val_cache_num,
+                            num_workers=self.args.dataloader_num_workers,
+                        ),
                         num_workers=self.args.dataloader_num_workers,
-                    ),
+                        batch_size=self.args.per_device_eval_batch_size,
+                        pin_memory=True,
+                        persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+                    )
+                    for split, data in self.val_data().items()
+                },
+                mode='max_size_cycle',
+            )
+        else:
+            return DataLoader(
+                dataset=CacheDataset(
+                    val_data,
+                    transform=self.val_transform,
+                    cache_num=self.args.val_cache_num,
                     num_workers=self.args.dataloader_num_workers,
-                    batch_size=self.args.per_device_eval_batch_size,
-                    pin_memory=True,
-                    persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
-                )
-                for split, data in self.val_data().items()
-            },
-            mode='max_size_cycle',
-        )
+                ),
+                num_workers=self.args.dataloader_num_workers,
+                batch_size=self.args.per_device_eval_batch_size,
+                pin_memory=True,
+                persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+            )
 
 class CVDataModule(UMeIDataModule):
     def __init__(self, args: UMeIArgs):
@@ -84,6 +95,10 @@ class CVDataModule(UMeIDataModule):
             shuffle=True,
             seed=args.seed,
         )
+
+    # all data for fit (including train & val)
+    def fit_data(self) -> Sequence:
+        raise NotImplementedError
 
     @property
     def val_id(self) -> int:

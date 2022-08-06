@@ -5,7 +5,7 @@ from pytorch_lightning.strategies import DDPStrategy
 import wandb
 
 from umei.snim import SnimArgs, SnimModel
-from umei.snim.datamodule import SnimDataModule, build_pretrain_datasets
+from umei.snim.datamodule import SnimDataModule, build_pretrain_data
 from umei.utils import UMeIParser
 
 def main():
@@ -13,7 +13,7 @@ def main():
     args: SnimArgs = parser.parse_args_into_dataclasses()[0]
     print(args)
     pl.seed_everything(args.seed)
-    datamodule = SnimDataModule(args, build_pretrain_datasets(args))
+    datamodule = SnimDataModule(args, build_pretrain_data(args))
     exp_suffix = f'mask{args.mask_ratio * 100}-{"x".join(map(str, args.mask_block_shape))}-vf{args.visible_factor}' \
                  f'/run-{args.seed}'
     output_dir = args.output_dir / exp_suffix

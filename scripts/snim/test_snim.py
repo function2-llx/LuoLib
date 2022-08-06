@@ -6,7 +6,7 @@ from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
 
-from umei.snim import SnimArgs, SnimDataModule, SnimModel, build_pretrain_datasets
+from umei.snim import SnimArgs, SnimDataModule, SnimModel, build_pretrain_data
 from umei.utils import MyWandbLogger, UMeIParser
 
 @dataclass
@@ -23,7 +23,7 @@ def main():
     test_suffix = f'test-{"x".join(map(str, args.test_mask_block_shape))}'
 
     args.mask_block_shape = args.test_mask_block_shape
-    datamodule = SnimDataModule(args, build_pretrain_datasets(args))
+    datamodule = SnimDataModule(args, build_pretrain_data(args))
     output_dir = args.output_dir / exp_suffix
     print(f'use output directory: {output_dir}')
     log_save_dir = output_dir / 'snim-test' / test_suffix
