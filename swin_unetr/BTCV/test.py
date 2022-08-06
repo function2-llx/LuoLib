@@ -16,6 +16,7 @@ from monai.inferers import sliding_window_inference
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 from monai.networks.nets import SwinUNETR
+from monai.utils import MetricReduction
 from utils.data_utils import get_loader
 from utils.utils import resample_3d
 import nibabel as nib
@@ -117,8 +118,8 @@ def main():
 
         print("Overall Mean Dice: {}".format(np.mean(dice_list_case)))
 
-    mean_dice = dice_metric.aggregate()
-    print('MONAI dice: ', mean_dice, mean_dice[1:].mean())
+    mean_dice = dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
+    print('MONAI dice: ', mean_dice.cpu().numpy(), mean_dice[1:].mean().item())
 
 if __name__ == '__main__':
     main()

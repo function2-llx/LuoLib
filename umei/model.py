@@ -267,7 +267,8 @@ class SegModel(UMeI):
         self.post_transform = monai.transforms.Compose([
             monai.transforms.KeepLargestConnectedComponent(is_onehot=False, applied_labels=args.post_labels),
         ])
-        self.dice_metric = DiceMetric()
+        self.dice_pre = DiceMetric()
+        self.dice_post = DiceMetric()
         self.resampler = monai.transforms.SpatialResample()
 
     def sw_infer(self, img: torch.Tensor):
@@ -281,42 +282,61 @@ class SegModel(UMeI):
         )
 
     def on_validation_epoch_start(self):
-        self.dice_metric.reset()
+        self.dice_post.reset()
 
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         batch = batch[DataSplit.VAL]
         pred_logit = self.sw_infer(batch[DataKey.IMG])
         pred = pred_logit.argmax(dim=1, keepdim=True)
-        self.dice_metric(
+        self.dice_post(
             one_hot(pred, self.args.num_seg_classes),
             one_hot(batch[DataKey.SEG], self.args.num_seg_classes),
         )
 
     def validation_epoch_end(self, *args) -> None:
-        dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
+        dice = self.dice_post.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i], sync_dist=True)
         self.log('val/dice/avg', dice[1:].mean(), sync_dist=True)
 
     def on_test_epoch_start(self) -> None:
-        self.dice_metric.reset()
+        self.dice_pre.reset()
+        self.dice_post.reset()
 
     def test_step(self, batch, *args, **kwargs):
         img = batch[DataKey.IMG]
         seg = batch[DataKey.SEG]
         pred_logit = self.sw_infer(img)
+
+        pred = pred_logit.argmax(dim=1, keepdim=True).to(torch.uint8)
+        from swin_unetr.BTCV.utils import resample_3d
+        pred = resample_3d(pred[0, 0].cpu().numpy(), seg.shape[2:])
+        pred = torch.from_numpy(pred)[None].to(seg.device)
+        # pred = torch_f.interpolate(pred, seg.shape[2:], mode='nearest')
+        pred = self.post_transform(pred)
+        result = self.dice_pre(
+            # add dummy batch dim
+            one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
+            one_hot(seg, self.args.num_seg_classes),
+        ).array
+        print('argmax pre:', result, np.nanmean(result[0, 1:]))
+
         pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
         pred = pred_logit.argmax(dim=1, keepdim=True)
         pred = self.post_transform(pred[0])
-        result = self.dice_metric(
+        result = self.dice_post(
             # add dummy batch dim
             one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
             one_hot(batch[DataKey.SEG], self.args.num_seg_classes),
         ).array
-        print(result, np.nanmean(result[0, 1:]))
+        print('argmax post:', result, np.nanmean(result[0, 1:]))
 
     def test_epoch_end(self, *args) -> None:
-        dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
-        for i in range(dice.shape[0]):
-            self.log(f'test/dice/{i}', dice[i], sync_dist=True)
-        self.log('test/dice/avg', dice[1:].mean(), sync_dist=True)
+        for phase, dice_metric in [
+            ('pre', self.dice_pre),
+            ('post', self.dice_post),
+        ]:
+            dice = dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
+            for i in range(dice.shape[0]):
+                self.log(f'test/dice-{phase}/{i}', dice[i], sync_dist=True)
+            self.log(f'test/dice-{phase}/avg', dice[1:].mean(), sync_dist=True)
