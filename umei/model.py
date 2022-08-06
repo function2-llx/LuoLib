@@ -2,26 +2,23 @@ from __future__ import annotations
 
 from typing import Optional
 
+from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities.types import STEP_OUTPUT
-
 import torch
 from torch import nn
 from torch.nn import functional as torch_f
 from torch.optim import AdamW, Optimizer
-from torch.optim.lr_scheduler import CosineAnnealingLR
-from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
 
 import monai
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
-
 from monai.umei import UDecoderBase, UEncoderBase, UEncoderOutput
 from monai.utils import BlendMode, MetricReduction
 from umei.args import SegArgs, UMeIArgs
-from umei.utils import DataSplit
+from umei.utils import DataKey, DataSplit
 
 def filter_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict:
     return {
@@ -198,7 +195,7 @@ class UMeI(LightningModule):
             ])
 
     def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
-        img = batch[self.args.img_key]
+        img = batch[DataKey.IMG]
         encoder_out: UEncoderOutput = self.encoder(img)
         ret = {'loss': torch.tensor(0., device=self.device)}
         if self.args.cls_key in batch:
@@ -208,8 +205,8 @@ class UMeI(LightningModule):
             ret['loss'] += cls_loss * self.args.cls_loss_factor
             ret['cls_loss'] = cls_loss
             ret['cls_logit'] = cls_out
-        if self.decoder is not None and self.args.seg_key in batch:
-            seg_label: torch.IntTensor = batch[self.args.seg_key]
+        if self.decoder is not None and DataKey.SEG in batch:
+            seg_label: torch.IntTensor = batch[DataKey.SEG]
             feature_maps = self.decoder.forward(encoder_out.hidden_states, img).feature_maps
             seg_loss = torch.stack([
                 self.seg_loss_fn(
@@ -287,11 +284,11 @@ class SegModel(UMeI):
 
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         batch = batch[DataSplit.VAL]
-        pred_logit = self.sw_infer(batch[self.args.img_key])
+        pred_logit = self.sw_infer(batch[DataKey.IMG])
         pred = pred_logit.argmax(dim=1, keepdim=True)
         self.dice_metric(
             one_hot(pred, self.args.num_seg_classes),
-            one_hot(batch[self.args.seg_key], self.args.num_seg_classes),
+            one_hot(batch[DataKey.SEG], self.args.num_seg_classes),
         )
 
     def validation_epoch_end(self, *args) -> None:
@@ -304,8 +301,8 @@ class SegModel(UMeI):
         self.dice_metric.reset()
 
     def test_step(self, batch, *args, **kwargs):
-        img = batch[self.args.img_key]
-        seg = batch[self.args.seg_key]
+        img = batch[DataKey.IMG]
+        seg = batch[DataKey.SEG]
         pred_logit = self.sw_infer(img)
         pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
         pred = pred_logit.argmax(dim=1, keepdim=True)
@@ -313,7 +310,7 @@ class SegModel(UMeI):
         print(self.dice_metric(
             # add dummy batch dim
             one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
-            one_hot(batch[self.args.seg_key], self.args.num_seg_classes),
+            one_hot(batch[DataKey.SEG], self.args.num_seg_classes),
         ).array)
 
     def test_epoch_end(self, *args) -> None:
