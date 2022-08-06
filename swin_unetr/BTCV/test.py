@@ -14,6 +14,7 @@ import torch
 import numpy as np
 from monai.inferers import sliding_window_inference
 from monai.metrics import DiceMetric
+from monai.networks import one_hot
 from monai.networks.nets import SwinUNETR
 from utils.data_utils import get_loader
 from utils.utils import resample_3d
@@ -95,11 +96,13 @@ def main():
                                                    model,
                                                    overlap=args.infer_overlap,
                                                    mode="gaussian")
-            # val_outputs = torch.softmax(val_outputs, 1).cpu().numpy()
-            val_outputs = val_outputs.argmax(dim=1, keepdim=True)
-            dice_metric(val_outputs, val_labels)
-            val_outputs = val_outputs.cpu().numpy().as_type(np.uint8)[0, 0]
+            val_outputs = torch.softmax(val_outputs, 1).cpu().numpy()
+            val_outputs = np.argmax(val_outputs, axis=1).astype(np.uint8)[0]
             val_outputs = resample_3d(val_outputs, target_shape)
+            result = dice_metric(
+                one_hot(torch.from_numpy(val_outputs).to(val_labels.device)[None, None], num_classes=14),
+                one_hot(val_labels, num_classes=14),
+            )
             val_labels = val_labels.cpu().numpy()[0, 0, :, :, :]
             dice_list_sub = []
             for i in range(1, 14):
@@ -107,6 +110,7 @@ def main():
                 dice_list_sub.append(organ_Dice)
             mean_dice = np.mean(dice_list_sub)
             print("Mean Organ Dice: {}".format(mean_dice))
+            print('MONAI:', result[:, 1:].nanmean().item())
             dice_list_case.append(mean_dice)
             nib.save(nib.Nifti1Image(val_outputs.astype(np.uint8), original_affine),
                      os.path.join(output_directory, img_name))
