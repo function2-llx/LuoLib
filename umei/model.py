@@ -312,7 +312,7 @@ class SegModel(UMeI):
             one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
             one_hot(batch[DataKey.SEG], self.args.num_seg_classes),
         ).array
-        print(result, result[1:].mean())
+        print(result, result[0, 1:].mean())
 
     def test_epoch_end(self, *args) -> None:
         dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
