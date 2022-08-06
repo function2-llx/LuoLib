@@ -17,7 +17,7 @@ from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 from monai.umei import UDecoderBase, UEncoderBase, UEncoderOutput
-from monai.utils import BlendMode, MetricReduction
+from monai.utils import MetricReduction
 from umei.args import SegArgs, UMeIArgs
 from umei.utils import DataKey, DataSplit
 
@@ -331,7 +331,7 @@ class SegModel(UMeI):
         ).array
         print('argmax post:', result, np.nanmean(result[0, 1:]))
 
-    def test_epoch_end(self, *args) -> None:
+    def test_epoch_end(self, *args):
         for phase, dice_metric in [
             ('pre', self.dice_pre),
             ('post', self.dice_post),
