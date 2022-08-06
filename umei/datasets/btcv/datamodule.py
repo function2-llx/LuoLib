@@ -59,3 +59,6 @@ class BTCVDataModule(SegDataModule):
         return {
             DataSplit.VAL: self.data[DataSplit.VAL]
         }
+
+    def test_data(self) -> Sequence:
+        return self.data[DataSplit.VAL]

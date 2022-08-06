@@ -10,7 +10,7 @@ from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
 import monai
 from monai.config import PathLike
-from monai.data import CacheDataset, DataLoader, partition_dataset, select_cross_validation_folds
+from monai.data import CacheDataset, DataLoader, Dataset, partition_dataset, select_cross_validation_folds
 from monai.utils import GridSampleMode, NumpyPadMode
 from .args import AugArgs, SegArgs, UMeIArgs
 from .utils import DataKey, DataSplit
@@ -26,12 +26,19 @@ class UMeIDataModule(LightningDataModule):
     def val_data(self) -> dict[DataSplit, Sequence] | Sequence:
         raise NotImplementedError
 
+    def test_data(self) -> Sequence:
+        raise NotImplementedError
+
     @property
     def train_transform(self):
         raise NotImplementedError
 
     @property
     def val_transform(self):
+        raise NotImplementedError
+
+    @property
+    def test_transform(self):
         raise NotImplementedError
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
@@ -83,6 +90,18 @@ class UMeIDataModule(LightningDataModule):
                 pin_memory=True,
                 persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
             )
+
+    def test_dataloader(self):
+        return DataLoader(
+            dataset=Dataset(
+                self.test_data(),
+                transform=self.test_transform,
+            ),
+            num_workers=self.args.dataloader_num_workers,
+            batch_size=self.args.per_device_eval_batch_size,
+            pin_memory=True,
+            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+        )
 
 class CVDataModule(UMeIDataModule):
     def __init__(self, args: UMeIArgs):
@@ -245,6 +264,14 @@ class SegDataModule(UMeIDataModule):
         return monai.transforms.Compose([
             *self.loader_transform(load_seg=True).transforms,
             *self.normalize_transform(full_seg=False).transforms,
+            monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
+        ])
+
+    @property
+    def test_transform(self):
+        return monai.transforms.Compose([
+            *self.loader_transform(load_seg=True).transforms,
+            *self.normalize_transform(full_seg=True).transforms,
             monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
         ])
 

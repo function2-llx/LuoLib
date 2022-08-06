@@ -160,3 +160,7 @@ class SegArgs:
     sw_batch_size: int = field(default=4)
     sw_overlap: float = field(default=0.25)
     num_crop_samples: int = field(default=4)
+    per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
+
+    def __post_init__(self):
+        assert self.per_device_eval_batch_size == 1
