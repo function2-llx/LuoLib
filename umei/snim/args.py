@@ -10,7 +10,7 @@ class MaskValue(StrEnum):
     # NORMAL = "normal"
 
 @dataclass
-class SnimArgs(UMeIArgs, AugArgs):
+class SnimArgs(AugArgs, UMeIArgs):
     mask_ratio: float = field(default=0.8)
     mask_block_shape: list[int] = field(default=None)
     norm_pix_loss: bool = field(default=False)

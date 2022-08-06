@@ -4,7 +4,7 @@ from pathlib import Path
 from umei.args import AugArgs, SegArgs, UMeIArgs
 
 @dataclass
-class BTCVArgs(UMeIArgs, AugArgs, SegArgs):
+class BTCVArgs(AugArgs, SegArgs, UMeIArgs):
     monitor: str = field(default='val/dice/avg')
     monitor_mode: str = field(default='max')
     output_root: Path = field(default=Path('output/btcv'))

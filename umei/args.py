@@ -116,6 +116,7 @@ class UMeIArgs(TrainingArguments):
     def __post_init__(self):
         # disable super().__post__init__ or `output_dir` will restore str type specified in the base class
         # as well as a lot of strange things happens
+        # so make sure UMeIArgs is inherited last
         # super().__post_init__()
         # self.output_dir = Path(self.output_dir)
         assert self.train_batch_size % torch.cuda.device_count() == 0
