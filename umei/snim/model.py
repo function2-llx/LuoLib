@@ -49,8 +49,9 @@ class SnimEncoder(SwinTransformer):
                 # force to use higher precision
                 with torch.autocast(x.device.type, dtype=torch.float32):
                     cov = samples.cov()
-                dist = torch.distributions.MultivariateNormal(mu, cov)
-                p_x[i][mask[i]] = dist.sample(mask[i].sum().view(-1))
+                if torch.is_nonzero(cov.count_nonzero()):
+                    dist = torch.distributions.MultivariateNormal(mu, cov)
+                    p_x[i][mask[i]] = dist.sample(mask[i].sum().view(-1))
         elif self.args.mask_value == MaskValue.PARAM:
             # only for visualization
             p_x[mask] = 0
