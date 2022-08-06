@@ -95,10 +95,11 @@ def main():
                                                    model,
                                                    overlap=args.infer_overlap,
                                                    mode="gaussian")
-            val_outputs = torch.softmax(val_outputs, 1).cpu().numpy()
-            val_outputs = np.argmax(val_outputs, axis=1).astype(np.uint8)[0]
-            val_outputs = resample_3d(val_outputs, target_shape)
+            # val_outputs = torch.softmax(val_outputs, 1).cpu().numpy()
+            val_outputs = val_outputs.argmax(dim=1, keepdim=True)
             dice_metric(val_outputs, val_labels)
+            val_outputs = val_outputs.cpu().numpy().as_type(np.uint8)[0, 0]
+            val_outputs = resample_3d(val_outputs, target_shape)
             val_labels = val_labels.cpu().numpy()[0, 0, :, :, :]
             dice_list_sub = []
             for i in range(1, 14):
