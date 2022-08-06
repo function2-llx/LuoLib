@@ -13,6 +13,7 @@ import os
 import torch
 import numpy as np
 from monai.inferers import sliding_window_inference
+from monai.metrics import DiceMetric
 from monai.networks.nets import SwinUNETR
 from utils.data_utils import get_loader
 from utils.utils import resample_3d
@@ -75,6 +76,8 @@ def main():
     model.eval()
     model.to(device)
 
+    dice_metric = DiceMetric()
+
     with torch.no_grad():
         dice_list_case = []
         for i, batch in enumerate(val_loader):
@@ -94,8 +97,9 @@ def main():
                                                    mode="gaussian")
             val_outputs = torch.softmax(val_outputs, 1).cpu().numpy()
             val_outputs = np.argmax(val_outputs, axis=1).astype(np.uint8)[0]
-            val_labels = val_labels.cpu().numpy()[0, 0, :, :, :]
             val_outputs = resample_3d(val_outputs, target_shape)
+            dice_metric(val_outputs, val_labels)
+            val_labels = val_labels.cpu().numpy()[0, 0, :, :, :]
             dice_list_sub = []
             for i in range(1, 14):
                 organ_Dice = dice(val_outputs == i, val_labels == i)
@@ -107,6 +111,9 @@ def main():
                      os.path.join(output_directory, img_name))
 
         print("Overall Mean Dice: {}".format(np.mean(dice_list_case)))
+
+    mean_dice = dice_metric.aggregate()
+    print('MONAI dice: ', mean_dice, mean_dice[1:].mean())
 
 if __name__ == '__main__':
     main()

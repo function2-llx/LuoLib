@@ -28,6 +28,8 @@ def main():
     if args.do_eval:
         log_dir /= f'eval-sw{args.sw_overlap}-{args.sw_blend_mode}'
     log_dir.mkdir(exist_ok=True, parents=True)
+    print('real output dir:', output_dir)
+    print('log dir:', log_dir)
     trainer = pl.Trainer(
         logger=MyWandbLogger(
             project=f'{task_name}-eval' if args.do_eval else task_name,

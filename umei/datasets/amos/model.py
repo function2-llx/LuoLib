@@ -1,4 +1,5 @@
 import torch
+from torch.nn import functional as torch_f
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
@@ -7,9 +8,7 @@ from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 import monai.transforms
-from monai.utils import BlendMode, MetricReduction
-from torch.nn import functional as torch_f
-
+from monai.utils import MetricReduction
 from umei import UMeI
 from umei.datasets.amos import AmosArgs
 

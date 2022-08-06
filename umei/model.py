@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Optional
 
+import numpy as np
 from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities.types import STEP_OUTPUT
@@ -312,7 +313,7 @@ class SegModel(UMeI):
             one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
             one_hot(batch[DataKey.SEG], self.args.num_seg_classes),
         ).array
-        print(result, result[0, 1:].mean())
+        print(result, np.nanmean(result[0, 1:]))
 
     def test_epoch_end(self, *args) -> None:
         dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
