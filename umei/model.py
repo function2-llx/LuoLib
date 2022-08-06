@@ -307,11 +307,12 @@ class SegModel(UMeI):
         pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
         pred = pred_logit.argmax(dim=1, keepdim=True)
         pred = self.post_transform(pred[0])
-        print(self.dice_metric(
+        result = self.dice_metric(
             # add dummy batch dim
             one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
             one_hot(batch[DataKey.SEG], self.args.num_seg_classes),
-        ).array)
+        ).array
+        print(result, result[1:].mean())
 
     def test_epoch_end(self, *args) -> None:
         dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
