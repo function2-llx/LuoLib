@@ -276,7 +276,7 @@ class SegModel(UMeI):
             sw_batch_size=self.args.sw_batch_size,
             predictor=self.forward,
             overlap=self.args.sw_overlap,
-            mode=BlendMode.GAUSSIAN,
+            mode=self.args.sw_blend_mode,
         )
 
     def on_validation_epoch_start(self):

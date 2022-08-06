@@ -26,7 +26,7 @@ def main():
     output_dir.mkdir(exist_ok=True, parents=True)
     log_dir = output_dir
     if args.do_eval:
-        log_dir /= 'eval'
+        log_dir /= f'eval-sw{args.sw_overlap}-{args.sw_blend_mode}'
     log_dir.mkdir(exist_ok=True, parents=True)
     trainer = pl.Trainer(
         logger=MyWandbLogger(

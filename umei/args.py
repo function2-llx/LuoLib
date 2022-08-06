@@ -9,6 +9,7 @@ from ruamel.yaml import YAML
 import torch
 from transformers import TrainingArguments
 
+from monai.utils import BlendMode
 from umei.utils import PathLike, UMeIParser
 
 yaml = YAML()
@@ -160,6 +161,7 @@ class SegArgs:
     post_labels: list[int] = field(default_factory=list)
     sw_batch_size: int = field(default=4)
     sw_overlap: float = field(default=0.25)
+    sw_blend_mode: BlendMode = field(default=BlendMode.GAUSSIAN, metadata={'choices': list(BlendMode)})
     num_crop_samples: int = field(default=4)
     per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
 
