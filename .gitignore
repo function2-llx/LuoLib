@@ -142,3 +142,4 @@ runs/
 mae-fb/
 test.py
 SimMIM
+*.pt
