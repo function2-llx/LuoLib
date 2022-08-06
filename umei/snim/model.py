@@ -6,12 +6,12 @@ from typing import Type
 
 from einops import rearrange
 import numpy as np
+from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 import torch
 from torch import distributed as dist, nn
 from torch.optim import AdamW, Optimizer
-from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from monai.data import MetaTensor
 from monai.networks.blocks import Convolution, ResidualUnit
@@ -49,7 +49,7 @@ class SnimEncoder(SwinTransformer):
                 # force to use higher precision
                 with torch.autocast(x.device.type, dtype=torch.float32):
                     cov = samples.cov()
-                if torch.is_nonzero(cov.count_nonzero()):
+                if cov.count_nonzero(dim=0).count_nonzero().item() == cov.shape[0]:
                     dist = torch.distributions.MultivariateNormal(mu, cov)
                     p_x[i][mask[i]] = dist.sample(mask[i].sum().view(-1))
         elif self.args.mask_value == MaskValue.PARAM:
@@ -306,7 +306,11 @@ class SnimModel(pl.LightningModule):
         return {
             'optimizer': optimizer,
             'lr_scheduler': {
-                'scheduler': CosineAnnealingLR(optimizer, T_max=self.args.max_steps),
+                'scheduler': LinearWarmupCosineAnnealingLR(
+                    optimizer,
+                    warmup_epochs=self.args.warmup_steps,
+                    max_epochs=self.args.max_steps,
+                ),
                 'interval': 'step',
             }
         }

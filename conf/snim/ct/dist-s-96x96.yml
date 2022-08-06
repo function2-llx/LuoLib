@@ -1,6 +1,6 @@
 sample_size: 96
 sample_slices: 96
-base_feature_size: 48
+base_feature_size: 24
 vit_depths: [2, 2, 6, 2]
 vit_num_heads: [3, 6, 12, 24]
 vit_patch_shape: [2, 2, 2]
