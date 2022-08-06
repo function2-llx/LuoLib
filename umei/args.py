@@ -157,6 +157,6 @@ class SegArgs:
     dice_include_background: bool = field(default=False)
     squared_dice: bool = field(default=False)
     post_labels: list[int] = field(default_factory=list)
-    sw_batch_size: int = field(default=8)
+    sw_batch_size: int = field(default=4)
     sw_overlap: float = field(default=0.25)
     num_crop_samples: int = field(default=4)

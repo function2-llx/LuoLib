@@ -271,9 +271,9 @@ class SnimModel(pl.LightningModule):
         filename = Path(x.meta[ImageMetaKey.FILENAME_OR_OBJ][0]).name
         x = x.as_tensor()
         mask_loss, non_mask_loss, loss, mask, x_mask, pred = self.forward(x)
-        self.log('val/loss', loss)
-        self.log('val/loss(masked)', mask_loss)
-        self.log('val/loss(visible)', non_mask_loss)
+        self.log('val/loss', loss, sync_dist=True)
+        self.log('val/loss(masked)', mask_loss, sync_dist=True)
+        self.log('val/loss(visible)', non_mask_loss, sync_dist=True)
 
         # for better visualization
         x_mask.clamp_(min=0, max=1)

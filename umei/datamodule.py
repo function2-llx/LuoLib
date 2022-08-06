@@ -9,19 +9,81 @@ from pytorch_lightning.trainer.supporters import CombinedLoader
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
 import monai
+from monai.config import PathLike
 from monai.data import CacheDataset, DataLoader, partition_dataset, select_cross_validation_folds
 from monai.utils import GridSampleMode, NumpyPadMode
 from .args import AugArgs, SegArgs, UMeIArgs
-from .datasets.btcv import load_cohort
 from .utils import DataKey, DataSplit
 
-class CVDataModule(LightningDataModule):
-    partitions: list[Sequence]
-
+class UMeIDataModule(LightningDataModule):
     def __init__(self, args: UMeIArgs):
         super().__init__()
         self.args = args
+
+    def train_data(self) -> Sequence:
+        raise NotImplementedError
+
+    def val_data(self) -> dict[DataSplit, Sequence]:
+        raise NotImplementedError
+
+    # all data for fit (including train & val)
+    def fit_data(self) -> Sequence:
+        raise NotImplementedError
+
+    @property
+    def train_transform(self):
+        raise NotImplementedError
+
+    @property
+    def val_transform(self):
+        raise NotImplementedError
+
+    def train_dataloader(self) -> TRAIN_DATALOADERS:
+        return DataLoader(
+            dataset=CacheDataset(
+                self.train_data(),
+                transform=self.train_transform,
+                cache_num=self.args.train_cache_num,
+                num_workers=self.args.dataloader_num_workers,
+            ),
+            batch_size=self.args.per_device_train_batch_size,
+            shuffle=True,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=True,
+            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+        )
+
+    def val_dataloader(self):
+        return CombinedLoader(
+            loaders={
+                split: DataLoader(
+                    dataset=CacheDataset(
+                        data,
+                        transform=self.val_transform,
+                        cache_num=self.args.val_cache_num,
+                        num_workers=self.args.dataloader_num_workers,
+                    ),
+                    num_workers=self.args.dataloader_num_workers,
+                    batch_size=self.args.per_device_eval_batch_size,
+                    pin_memory=True,
+                    persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+                )
+                for split, data in self.val_data().items()
+            },
+            mode='max_size_cycle',
+        )
+
+class CVDataModule(UMeIDataModule):
+    def __init__(self, args: UMeIArgs):
+        super().__init__(args)
         self.val_id = 0
+
+        self.partitions = partition_dataset(
+            self.fit_data(),
+            num_partitions=args.num_folds,
+            shuffle=True,
+            seed=args.seed,
+        )
 
     @property
     def val_id(self) -> int:
@@ -38,38 +100,18 @@ class CVDataModule(LightningDataModule):
 
     @property
     def val_parts(self) -> dict[str, int]:
-        ret = {'val': self.val_id}
+        ret = {DataSplit.VAL: self.val_id}
         if self.args.use_test_fold:
-            ret['test'] = self.args.num_folds - 1
+            ret[DataSplit.TEST] = self.args.num_folds - 1
         return ret
 
-    @property
-    def train_transform(self):
-        raise NotImplementedError
-
-    @property
-    def val_transform(self):
-        raise NotImplementedError
-
-    def train_dataloader(self) -> TRAIN_DATALOADERS:
-        return DataLoader(
-            dataset=CacheDataset(
-                select_cross_validation_folds(
-                    self.partitions,
-                    folds=np.delete(range(self.num_cv_folds), self.val_id),
-                ),
-                transform=self.train_transform,
-                cache_num=self.args.train_cache_num,
-                num_workers=self.args.dataloader_num_workers,
-            ),
-            batch_size=self.args.per_device_train_batch_size,
-            shuffle=True,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=True,
-            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+    def train_data(self):
+        return select_cross_validation_folds(
+            self.partitions,
+            folds=np.delete(range(self.num_cv_folds), self.val_id),
         )
 
-    def val_dataloader(self):
+    def val_data(self):
         val_ids = list(self.val_parts.values())
         if not all(
             len(self.partitions[val_ids[0]]) == len(self.partitions[val_ids[i]])
@@ -78,37 +120,19 @@ class CVDataModule(LightningDataModule):
             import warnings
             warnings.warn(f'length of val{self.val_id} and test folds are not equal')
 
-        return CombinedLoader(
-            loaders={
-                split: DataLoader(
-                    dataset=CacheDataset(
-                        self.partitions[part_id],
-                        transform=self.val_transform,
-                        cache_num=self.args.val_cache_num,
-                        num_workers=self.args.dataloader_num_workers,
-                    ),
-                    num_workers=self.args.dataloader_num_workers,
-                    batch_size=self.args.per_device_eval_batch_size,
-                    pin_memory=True,
-                    persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
-                )
-                for split, part_id in self.val_parts.items()
-            },
-            mode='max_size_cycle',
-        )
+        return {
+            split: select_cross_validation_folds(
+                self.partitions,
+                folds=part_id,
+            )
+            for split, part_id in self.val_parts.items()
+        }
 
-class SegDataModule(CVDataModule):
+class SegDataModule(UMeIDataModule):
     args: UMeIArgs | SegArgs | AugArgs
 
     def __init__(self, args: UMeIArgs | SegArgs):
         super().__init__(args)
-        self.cohort = load_cohort()
-        self.partitions = partition_dataset(
-            self.cohort[DataSplit.TRAIN],
-            num_partitions=args.num_folds,
-            shuffle=True,
-            seed=args.seed,
-        )
 
     def loader_transform(self, *, load_seg: bool) -> monai.transforms.Compose:
         load_keys = [DataKey.IMG]
@@ -208,3 +232,19 @@ class SegDataModule(CVDataModule):
             *self.normalize_transform(full_seg=False).transforms,
             monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
         ])
+
+def load_decathlon_datalist(
+    data_list_file_path: PathLike,
+    is_segmentation: bool = True,
+    data_list_key: str = "training",
+    base_dir: PathLike = None,
+):
+    from monai.data import load_decathlon_datalist as monai_load
+    data = monai_load(data_list_file_path, is_segmentation, data_list_key, base_dir)
+    for item in data:
+        for data_key, decathlon_key in [
+            (DataKey.IMG, 'image'),
+            (DataKey.SEG, 'label'),
+        ]:
+            item[data_key] = item.pop(decathlon_key)
+    return data
