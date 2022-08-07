@@ -18,6 +18,7 @@ def main():
     else:
         # well, this is vulnerable
         ft_suffix = args.pretrain_path.parts[-3]
+    ft_suffix = f'{ft_suffix}-{int(args.num_train_epochs)}ep-{int(args.warmup_epochs)}wu'
     args.output_dir /= ft_suffix
     print(args)
     datamodule = BTCVDataModule(args)
