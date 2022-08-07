@@ -279,6 +279,7 @@ class SegModel(UMeI):
             predictor=self.forward,
             overlap=self.args.sw_overlap,
             mode=self.args.sw_blend_mode,
+            progress=self.trainer.testing,
         )
 
     def on_validation_epoch_start(self):
