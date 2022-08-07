@@ -152,7 +152,7 @@ class AugArgs:
     shift_offset: float = field(default=0.1)
 
 @dataclass
-class SegArgs:
+class SegArgs(UMeIArgs):
     crop: str = field(default='cls', metadata={'choices': ['cls', 'pn'], 'help': 'patch cropping strategy'})
     dice_dr: float = field(default=1e-5)
     dice_nr: float = field(default=1e-5)
@@ -166,4 +166,5 @@ class SegArgs:
     per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
 
     def __post_init__(self):
+        super().__post_init__()
         assert self.per_device_eval_batch_size == 1
