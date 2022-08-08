@@ -215,7 +215,7 @@ class UMeI(LightningModule):
                     seg_label
                 ) / 2 ** i
                 for i, (fm, seg_head) in enumerate(zip(reversed(feature_maps), self.seg_heads))
-            ]).sum()
+            ]).sum() / (2 - 0.5 ** (self.args.num_seg_heads - 1))
             ret['loss'] += seg_loss * self.args.seg_loss_factor
             ret['seg_loss'] = seg_loss
         for k in ['cls_loss', 'seg_loss']:
