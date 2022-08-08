@@ -164,6 +164,7 @@ class SegArgs(UMeIArgs):
     sw_blend_mode: BlendMode = field(default=BlendMode.GAUSSIAN, metadata={'choices': list(BlendMode)})
     num_crop_samples: int = field(default=4)
     per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
+    spline_seg: bool = field(default=False)
 
     def __post_init__(self):
         super().__post_init__()

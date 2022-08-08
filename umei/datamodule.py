@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Hashable, Sequence
 from typing import Callable
 
 import numpy as np
@@ -10,7 +10,7 @@ from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
 import monai
 from monai.config import PathLike
-from monai.data import CacheDataset, DataLoader, Dataset, partition_dataset, select_cross_validation_folds
+from monai.data import CacheDataset, DataLoader, Dataset, MetaTensor, partition_dataset, select_cross_validation_folds
 from monai.utils import GridSampleMode, NumpyPadMode
 from .args import AugArgs, SegArgs, UMeIArgs
 from .utils import DataKey, DataSplit
@@ -186,12 +186,25 @@ class SegDataModule(UMeIDataModule):
         ])
 
     def normalize_transform(self, *, full_seg: bool) -> monai.transforms.Compose:
-        spacing_keys = [DataKey.IMG]
-        spacing_modes = [GridSampleMode.BILINEAR]
+        transforms = [monai.transforms.SpacingD(DataKey.IMG, pixdim=self.args.spacing, mode=GridSampleMode.BILINEAR)]
+
+        def space_seg(data: dict[Hashable, MetaTensor]):
+            from batchgenerators.augmentations.utils import resize_segmentation
+            img = data[DataKey.IMG]
+            seg = data[DataKey.SEG]
+            seg.array = resize_segmentation(seg.array, data[DataKey.IMG].shape, order=1)
+            seg.affine = img.affine
+            return data
+
         if not full_seg:
-            spacing_keys.append(DataKey.SEG)
-            spacing_modes.append(GridSampleMode.NEAREST)
-        transforms = [monai.transforms.SpacingD(spacing_keys, pixdim=self.args.spacing, mode=spacing_modes)]
+            if self.args.spline_seg:
+                transforms.append(monai.transforms.Lambda(space_seg))
+            else:
+                transforms.append(monai.transforms.SpacingD(
+                    DataKey.SEG,
+                    pixdim=self.args.spacing,
+                    mode=GridSampleMode.NEAREST,
+                ))
         if self.args.norm_intensity:
             transforms.extend([
                 monai.transforms.NormalizeIntensityD(DataKey.IMG),
@@ -263,7 +276,7 @@ class SegDataModule(UMeIDataModule):
     def val_transform(self) -> Callable:
         return monai.transforms.Compose([
             *self.loader_transform(load_seg=True).transforms,
-            *self.normalize_transform(full_seg=False).transforms,
+            *self.normalize_transform(full_seg=True).transforms,
             monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
         ])
 

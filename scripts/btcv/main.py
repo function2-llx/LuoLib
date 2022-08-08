@@ -18,7 +18,9 @@ def main():
     else:
         # well, this is vulnerable
         ft_suffix = args.pretrain_path.parts[-3]
-    ft_suffix = f'{ft_suffix}-{int(args.num_train_epochs)}ep-{int(args.warmup_epochs)}wu'
+    if args.spline_seg:
+        ft_suffix += '-sps'
+    ft_suffix += f'-{int(args.num_train_epochs)}ep-{int(args.warmup_epochs)}wu'
     args.output_dir /= ft_suffix
     print(args)
     datamodule = BTCVDataModule(args)
@@ -43,6 +45,7 @@ def main():
         callbacks=[
             ModelCheckpoint(
                 dirpath=output_dir,
+                # filename=f'ep{{epoch}}-{args.monitor.replace("/", " ")}={{{args.monitor}:.3f}}',
                 filename=f'{args.monitor.replace("/", " ")}={{{args.monitor}:.3f}}',
                 auto_insert_metric_name=False,
                 monitor=args.monitor,
@@ -50,6 +53,14 @@ def main():
                 verbose=True,
                 save_last=True,
                 save_on_train_epoch_end=False,
+            ),
+            ModelCheckpoint(
+                dirpath=output_dir,
+                filename=f'ep{{epoch}}',
+                auto_insert_metric_name=False,
+                verbose=True,
+                save_on_train_epoch_end=False,
+                every_n_epochs=1,
             ),
             LearningRateMonitor(logging_interval='epoch'),
             ModelSummary(max_depth=2),

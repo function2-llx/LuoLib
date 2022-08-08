@@ -287,11 +287,13 @@ class SegModel(UMeI):
 
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         batch = batch[DataSplit.VAL]
+        seg = batch[DataKey.SEG]
         pred_logit = self.sw_infer(batch[DataKey.IMG])
+        pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
         pred = pred_logit.argmax(dim=1, keepdim=True)
         self.dice_post(
             one_hot(pred, self.args.num_seg_classes),
-            one_hot(batch[DataKey.SEG], self.args.num_seg_classes),
+            one_hot(seg, self.args.num_seg_classes),
         )
 
     def validation_epoch_end(self, *args) -> None:
@@ -305,9 +307,8 @@ class SegModel(UMeI):
         self.dice_post.reset()
 
     def test_step(self, batch, *args, **kwargs):
-        img = batch[DataKey.IMG]
         seg = batch[DataKey.SEG]
-        pred_logit = self.sw_infer(img)
+        pred_logit = self.sw_infer(batch[DataKey.IMG])
 
         pred = pred_logit.argmax(dim=1, keepdim=True).to(torch.uint8)
         from swin_unetr.BTCV.utils import resample_3d
