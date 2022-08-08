@@ -45,8 +45,7 @@ def main():
         callbacks=[
             ModelCheckpoint(
                 dirpath=output_dir,
-                # filename=f'ep{{epoch}}-{args.monitor.replace("/", " ")}={{{args.monitor}:.3f}}',
-                filename=f'{args.monitor.replace("/", " ")}={{{args.monitor}:.3f}}',
+                filename=f'ep{{epoch}}-{args.monitor.replace("/", " ")}={{{args.monitor}:.3f}}',
                 auto_insert_metric_name=False,
                 monitor=args.monitor,
                 mode=args.monitor_mode,
@@ -56,11 +55,12 @@ def main():
             ),
             ModelCheckpoint(
                 dirpath=output_dir,
-                filename=f'ep{{epoch}}',
+                filename=f'ep{{epoch}}-{args.monitor.replace("/", " ")}={{{args.monitor}:.3f}}',
                 auto_insert_metric_name=False,
                 verbose=True,
                 save_on_train_epoch_end=False,
-                every_n_epochs=1,
+                save_top_k=-1,
+                every_n_epochs=250,
             ),
             LearningRateMonitor(logging_interval='epoch'),
             ModelSummary(max_depth=2),

@@ -12,7 +12,7 @@ train_batch_size: 1
 num_crop_samples: 4
 learning_rate: 2e-4
 weight_decay: 1e-5
-num_train_epochs: 1500
+num_train_epochs: 3000
 warmup_epochs: 100
 num_seg_heads: 1
 spacing: [1.5, 1.5, 2]

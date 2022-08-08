@@ -73,6 +73,7 @@ class UMeIArgs(TrainingArguments):
     log_offline: bool = field(default=False)
     train_cache_num: int = field(default=0)
     val_cache_num: int = field(default=0)
+    val_empty_cuda_cache: bool = field(default=False)
     eval_epochs: int = field(default=1)
     optimizer_set_to_none: bool = field(default=True)
     num_sanity_val_steps: int = field(default=5)

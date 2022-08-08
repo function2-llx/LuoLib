@@ -283,6 +283,8 @@ class SegModel(UMeI):
         )
 
     def on_validation_epoch_start(self):
+        if self.args.val_empty_cuda_cache:
+            torch.cuda.empty_cache()
         self.dice_post.reset()
 
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
@@ -297,6 +299,8 @@ class SegModel(UMeI):
         )
 
     def validation_epoch_end(self, *args) -> None:
+        if self.args.val_empty_cuda_cache:
+            torch.cuda.empty_cache()
         dice = self.dice_post.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i], sync_dist=True)
