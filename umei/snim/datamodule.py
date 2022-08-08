@@ -15,18 +15,23 @@ from umei.snim import SnimArgs
 from umei.utils import DataKey, DataSplit
 
 def build_pretrain_data(args: SnimArgs) -> dict[str, Sequence]:
-    # current implement a placeholder for all AMOS and BTCV data
-    from umei.datasets.btcv import load_cohort as btcv_load
-    btcv_data = btcv_load(img_only=True, merge=True)
-    btcv_train_data, btcv_val_data = train_test_split(btcv_data, test_size=args.val_size, random_state=args.seed)
+    train_data = []
+    val_data = []
+    # from umei.datasets.btcv import load_cohort as btcv_load
+    # btcv_data = btcv_load(img_only=True, merge=True)
+    # btcv_train_data, btcv_val_data = train_test_split(btcv_data, test_size=args.val_size, random_state=args.seed)
+    # train_data.extend(btcv_train_data)
+    # val_data.extend(btcv_val_data)
 
     from umei.datasets.amos import load_cohort as amos_load
     amos_data = amos_load(task_id=1, merge=True)
     amos_train_data, amos_val_data = train_test_split(amos_data, test_size=args.val_size, random_state=args.seed)
+    train_data.extend(amos_train_data)
+    val_data.extend(amos_val_data)
 
     return {
-        DataSplit.TRAIN: btcv_train_data + amos_train_data,
-        DataSplit.VAL: amos_val_data + btcv_val_data,
+        DataSplit.TRAIN: train_data,
+        DataSplit.VAL: val_data,
     }
 
 class SnimDataModule(UMeIDataModule):
