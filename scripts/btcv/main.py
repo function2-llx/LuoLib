@@ -18,6 +18,7 @@ def main():
     else:
         # well, this is vulnerable
         ft_suffix = args.pretrain_path.parts[-3]
+    ft_suffix += f'-{args.crop}'
     if args.spline_seg:
         ft_suffix += '-sps'
     ft_suffix += f'-{int(args.num_train_epochs)}ep-{int(args.warmup_epochs)}wu'
