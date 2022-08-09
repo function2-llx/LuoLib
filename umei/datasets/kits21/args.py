@@ -4,17 +4,16 @@ from pathlib import Path
 from umei.args import AugArgs, SegArgs
 
 @dataclass
-class BTCVArgs(AugArgs, SegArgs):
+class KiTS21Args(AugArgs, SegArgs):
     monitor: str = field(default='val/dice/avg')
     monitor_mode: str = field(default='max')
-    output_root: Path = field(default=Path('output/btcv'))
-    conf_root: Path = field(default=Path('conf/btcv'))
-    eval_epochs: int = field(default=10)
-    # val_post: bool = field(default=False, metadata={'help': 'whether to perform post-processing during validation'})
+    output_root: Path = field(default=Path('output/kits21'))
+    conf_root: Path = field(default=Path('conf/kits21'))
+    fold_ids: list[int] = field(default_factory=lambda: [0])
 
     @property
     def num_seg_classes(self) -> int:
-        return 14
+        return 4
 
     @property
     def num_input_channels(self) -> int:
