@@ -2,13 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-import monai
-import pytorch_lightning as pl
-from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset
 
-from monai.data import DataLoader, CacheDataset
+import monai
 from monai.utils import GridSampleMode, NumpyPadMode
 from umei.datamodule import UMeIDataModule
 from umei.snim import SnimArgs
@@ -17,17 +13,23 @@ from umei.utils import DataKey, DataSplit
 def build_pretrain_data(args: SnimArgs) -> dict[str, Sequence]:
     train_data = []
     val_data = []
-    # from umei.datasets.btcv import load_cohort as btcv_load
-    # btcv_data = btcv_load(img_only=True, merge=True)
-    # btcv_train_data, btcv_val_data = train_test_split(btcv_data, test_size=args.val_size, random_state=args.seed)
-    # train_data.extend(btcv_train_data)
-    # val_data.extend(btcv_val_data)
 
-    from umei.datasets.amos import load_cohort as amos_load
-    amos_data = amos_load(task_id=1, merge=True)
-    amos_train_data, amos_val_data = train_test_split(amos_data, test_size=args.val_size, random_state=args.seed)
-    train_data.extend(amos_train_data)
-    val_data.extend(amos_val_data)
+    for dataset in args.datasets:
+        if dataset == 'btcv':
+            from umei.datasets.btcv import load_cohort
+            data = load_cohort(img_only=True, merge=True)
+        elif dataset == 'amos':
+            from umei.datasets.amos import load_cohort
+            data = load_cohort(task_id=1, merge=True)
+        elif dataset == 'act1k':
+            from umei.datasets.act1k import load_cohort
+            data = load_cohort()
+        else:
+            raise RuntimeError
+
+        train_part, val_part = train_test_split(data, test_size=args.val_size, random_state=args.seed)
+        train_data.extend(train_part)
+        val_data.extend(val_part)
 
     return {
         DataSplit.TRAIN: train_data,

@@ -22,6 +22,7 @@ class SnimArgs(AugArgs, UMeIArgs):
     uper_channels: int = field(default=512)
     uper_pool_scales: list[int] = field(default=None)
     loss: str = field(default='l2', metadata={'choices': ['l1', 'l2']})
+    datasets: list[str] = field(default=None, metadata={'choices': ['btcv', 'amos', 'act1k']})
 
     @property
     def p_block_shape(self):
@@ -37,5 +38,7 @@ class SnimArgs(AugArgs, UMeIArgs):
 
         if self.norm_pix_loss:
             assert self.norm_intensity
+
+        self.datasets = sorted(set(self.datasets))
 
     num_input_channels: int = field(default=1)
