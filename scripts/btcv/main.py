@@ -16,8 +16,9 @@ def main():
     if args.pretrain_path is None:
         ft_suffix = 'scratch'
     else:
+        # pre-train params/pre-train datasets
         # well, this is vulnerable
-        ft_suffix = args.pretrain_path.parts[-3]
+        ft_suffix = '/'.join(args.pretrain_path.parts[-4:-2])
     ft_suffix += f'-{args.crop}-s{args.num_seg_heads}'
     if args.spline_seg:
         ft_suffix += '-sps'
