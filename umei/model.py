@@ -83,12 +83,15 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
                 use_checkpoint=True,
             )
             if args.pretrain_path is not None:
-                state_dict = filter_state_dict(torch.load(args.pretrain_path)["state_dict"], 'encoder')
-                miss, unexpected = model.load_state_dict(state_dict, strict=False)
-                assert len(miss) == 0
-                print(f'load pre-trained encoder from {args.pretrain_path}')
-                print('unexpected: ', len(unexpected))
-                print(unexpected)
+                if not args.pretrain_path.exists():
+                    print(f'warning: {args.pretrain_path} not found')
+                else:
+                    state_dict = filter_state_dict(torch.load(args.pretrain_path)["state_dict"], 'encoder')
+                    miss, unexpected = model.load_state_dict(state_dict, strict=False)
+                    assert len(miss) == 0
+                    print(f'load pre-trained encoder from {args.pretrain_path}')
+                    print('unexpected: ', len(unexpected))
+                    print(unexpected)
         else:
             from monai.networks.nets.swin_unetr import SwinTransformer
             model = SwinTransformer(
