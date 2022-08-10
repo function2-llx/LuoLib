@@ -13,8 +13,9 @@ import monai
 from monai.data import DataLoader, Dataset, partition_dataset_classes
 from monai.utils import GridSampleMode, NumpyPadMode
 from umei.datamodule import CVDataModule
+from umei.utils import DataKey
+
 from .args import AmosArgs
-from ...utils import DataKey
 
 DATASET_ROOT = Path(__file__).parent
 DATA_DIR = DATASET_ROOT / 'origin'

@@ -33,6 +33,8 @@ class UMeIArgs(TrainingArguments):
     vit_patch_shape: list[int] = field(default=None)
     vit_num_heads: list[int] = field(default=None)
     vit_depths: list[int] = field(default=None)
+    # vit_stem: str = field(default='linear', metadata={'choices': ['linear', 'conv']})
+    vit_conv_stem: bool = field(default=False)
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
     encode_skip: bool = field(default=False)

@@ -6,8 +6,10 @@ from typing import Optional, Type
 from einops import rearrange
 import torch
 from torch import nn
+from torch.nn import LayerNorm
 
-from monai.networks.blocks import PatchEmbed, UnetResBlock, UnetrBasicBlock, UnetrUpBlock
+from monai.networks.blocks import Convolution, PatchEmbed, ResidualUnit, UnetResBlock, UnetrUpBlock
+from monai.networks.layers import Act
 from monai.networks.nets.swin_unetr import BasicLayer, PatchMergingV2
 from monai.umei import UDecoderBase, UDecoderOutput, UEncoderBase, UEncoderOutput
 
@@ -68,6 +70,42 @@ __all__ = ['SwinTransformer', 'SwinUnetrDecoder']
 #     #     x = self.proj(x).flatten(2).transpose(1, 2)
 #     #     return
 
+class PatchEmbedWithConv(PatchEmbed):
+    def __init__(
+        self,
+        patch_size: Sequence[int] | int,
+        in_chans: int = 1,
+        embed_dim: int = 48,
+        norm_layer: Type[LayerNorm] = nn.LayerNorm,
+        spatial_dims: int = 3,
+        conv: bool = True,
+    ) -> None:
+        super().__init__(patch_size, in_chans, embed_dim, norm_layer, spatial_dims)
+        if conv:
+            # TODO: support for patch size 4!
+            assert all(x == 2 for x in patch_size)
+            assert norm_layer is None
+            self.proj = nn.Sequential(
+                Convolution(
+                    spatial_dims=3,
+                    in_channels=in_chans,
+                    out_channels=embed_dim,
+                    kernel_size=3,
+                    strides=2,
+                    act=Act.GELU,
+                ),
+                ResidualUnit(
+                    spatial_dims=3,
+                    in_channels=embed_dim,
+                    out_channels=embed_dim,
+                    kernel_size=3,
+                    strides=1,
+                    subunits=2,
+                    act=Act.GELU,
+                )
+            )
+
+
 class SwinTransformer(UEncoderBase):
     """
     Modify from MONAI implementation, support 3D only
@@ -95,6 +133,7 @@ class SwinTransformer(UEncoderBase):
         use_checkpoint: bool = False,
         spatial_dims: int = 3,
         resample_cls: Type[PatchMergingV2] = PatchMergingV2,
+        conv_stem: bool = False,
     ) -> None:
         """
         Args:
@@ -121,12 +160,13 @@ class SwinTransformer(UEncoderBase):
         self.patch_norm = patch_norm
         self.window_size = window_size
         self.patch_size = patch_size
-        self.patch_embed = PatchEmbed(
+        self.patch_embed = PatchEmbedWithConv(
             patch_size=self.patch_size,
             in_chans=in_chans,
             embed_dim=embed_dim,
-            norm_layer=norm_layer if self.patch_norm else None,  # type: ignore
+            norm_layer=norm_layer if self.patch_norm and not conv_stem else None,
             spatial_dims=spatial_dims,
+            conv=conv_stem,
         )
         self.pos_drop = nn.Dropout(p=drop_rate)
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(depths))]

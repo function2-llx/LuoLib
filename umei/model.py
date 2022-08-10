@@ -81,6 +81,7 @@ def build_encoder(args: UMeIArgs) -> UEncoderBase:
                 depths=args.vit_depths,
                 num_heads=args.vit_num_heads,
                 use_checkpoint=True,
+                conv_stem=args.vit_conv_stem,
             )
             if args.pretrain_path is not None:
                 if not args.pretrain_path.exists():
