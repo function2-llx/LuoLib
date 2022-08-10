@@ -31,6 +31,7 @@ class SnimEncoder(SwinTransformer):
             depths=args.vit_depths,
             num_heads=args.vit_num_heads,
             use_checkpoint=True,
+            conv_stem=args.vit_conv_stem,
         )
         self.args = args
 
