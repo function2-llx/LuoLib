@@ -14,6 +14,7 @@ from monai.data import DataLoader, Dataset, partition_dataset_classes
 from monai.utils import GridSampleMode, NumpyPadMode
 from umei.datamodule import CVDataModule
 from .args import AmosArgs
+from ...utils import DataKey
 
 DATASET_ROOT = Path(__file__).parent
 DATA_DIR = DATASET_ROOT / 'origin'
@@ -42,7 +43,7 @@ def load_cohort(task_id: int, merge: bool = False):
                     subject: {
                         'subject': subject,
                         'modality': modality,
-                        'img': DATA_DIR / img_path,
+                        DataKey.IMG: DATA_DIR / img_path,
                         **({} if seg_path is None else {'seg': DATA_DIR / seg_path if seg_path else None})
                     }
                 })
@@ -50,7 +51,7 @@ def load_cohort(task_id: int, merge: bool = False):
         cohort[split] = list(cohort[split].values())
     if merge:
         return [
-            {'img': x['img']}
+            {DataKey.IMG: x['img']}
             for x in itertools.chain(cohort['training'], cohort['test'])
         ]
     else:
