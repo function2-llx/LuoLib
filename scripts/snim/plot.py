@@ -78,6 +78,8 @@ def main():
         if tuple(args.mask_block_shape) not in mask:
             mask[tuple(args.mask_block_shape)] = model.gen_patch_mask(img.shape[0], img.shape[2:])
         _, _, _, _, img_mask, pred = model.forward(img, mask[tuple(args.mask_block_shape)])
+        img_mask.clamp_(min=0, max=1)
+        pred.clamp_(min=0, max=1)
         for i in range(img.shape[0]):
             for slice_idx in slice_idxes:
                 save_slice(img_mask[i], slice_idx, plot_dir / img_paths[i][0] / pt_setting / f'mask-{slice_idx}.png')
