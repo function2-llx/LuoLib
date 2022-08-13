@@ -94,7 +94,11 @@ def main():
             UMeIParser.save_args_as_conf(args, conf_save_path)
         trainer.fit(model, datamodule=datamodule, ckpt_path=last_ckpt_path)
     if args.do_eval:
-        trainer.test(model, ckpt_path=last_ckpt_path, datamodule=datamodule)
+        results = trainer.test(model, ckpt_path=last_ckpt_path, datamodule=datamodule)
+        # print(results)
+        with open(log_dir / 'results.txt', 'w') as f:
+            for k in ['test/dice-post/avg', 'test/sd-post/avg', 'test/hd95-post/avg']:
+                print(results[0][k], file=f, end='\n' if k == 'test/hd95-post/avg' else '\t')
 
     wandb.finish()
 
