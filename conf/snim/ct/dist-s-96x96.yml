@@ -11,7 +11,7 @@ visible_factor: 0.1
 train_batch_size: 4
 learning_rate: 2e-4
 weight_decay: 1e-5
-max_steps: 100000
+max_steps: 60000
 warmup_steps: 1000
 spacing: [1.5, 1.5, 2]
 norm_intensity: false
