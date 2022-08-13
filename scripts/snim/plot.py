@@ -1,15 +1,14 @@
 from pathlib import Path
 
 from PIL import Image
-from matplotlib import pyplot as plt
 import numpy as np
 import torch
 
 import monai
 from monai.utils import GridSampleMode, NumpyPadMode
+from umei.datasets.act1k import ACT1K_DATA_DIR
 from umei.datasets.amos import AMOS_DATA_DIR
 from umei.datasets.btcv import BTCV_DATA_DIR
-from umei.datasets.act1k import ACT1K_DATA_DIR
 from umei.snim import SnimArgs, SnimModel
 from umei.utils import DataKey
 
