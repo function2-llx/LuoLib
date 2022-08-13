@@ -157,6 +157,10 @@ class SnimDecoder(nn.Module):
             )
         )
 
+        # for compatibility
+        self.lateral_convs = self.lateral_projects
+        self.convs = self.projects
+
     def forward(self, hidden_states: list[torch.Tensor]):
         x = self.lateral_projects[-1](hidden_states[-1])
         for z, lateral_proj, up_proj, proj in zip(
@@ -245,10 +249,11 @@ class SnimModel(pl.LightningModule):
 
         return mask
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None):
         # p_xxx: patchified xxx
         p_x = patchify(x, self.args.vit_patch_shape)
-        mask = self.gen_patch_mask(x.shape[0], x.shape[2:])
+        if mask is None:
+            mask = self.gen_patch_mask(x.shape[0], x.shape[2:])
         x_mask, hidden_states = self.encoder.forward(x, mask)
         pred = self.decoder.forward(hidden_states)
         p_pred = patchify(pred, self.args.vit_patch_shape)
