@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-import numpy as np
 from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities.types import STEP_OUTPUT
@@ -11,10 +10,9 @@ from torch import nn
 from torch.nn import functional as torch_f
 from torch.optim import AdamW, Optimizer
 
-import monai
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss
-from monai.metrics import DiceMetric
+from monai.metrics import DiceMetric, HausdorffDistanceMetric, SurfaceDistanceMetric
 from monai.networks import one_hot
 from monai.umei import UDecoderBase, UEncoderBase, UEncoderOutput
 from monai.utils import MetricReduction
@@ -268,12 +266,21 @@ class SegModel(UMeI):
             smooth_nr=self.args.dice_nr,
             smooth_dr=self.args.dice_dr,
         )
-        self.post_transform = monai.transforms.Compose([
-            monai.transforms.KeepLargestConnectedComponent(is_onehot=False, applied_labels=args.post_labels),
-        ])
-        self.dice_pre = DiceMetric()
-        self.dice_post = DiceMetric()
-        self.resampler = monai.transforms.SpatialResample()
+        # self.post_transform = monai.transforms.Compose([
+        #     monai.transforms.KeepLargestConnectedComponent(is_onehot=False, applied_labels=args.post_labels),
+        # ])
+
+        # metric for val
+        self.dice = DiceMetric()
+
+        # metrics for test
+        # self.dice_pre = DiceMetric(include_background=False)
+        self.dice_post = DiceMetric(include_background=False)
+        # self.sd_pre = SurfaceDistanceMetric(include_background=False, symmetric=True)
+        self.sd_post = SurfaceDistanceMetric(include_background=False, symmetric=True)
+        # self.hd95_pre = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
+        self.hd95_post = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
+        # self.resampler = monai.transforms.SpatialResample()
 
     def sw_infer(self, img: torch.Tensor):
         return sliding_window_inference(
@@ -289,7 +296,7 @@ class SegModel(UMeI):
     def on_validation_epoch_start(self):
         if self.args.val_empty_cuda_cache:
             torch.cuda.empty_cache()
-        self.dice_post.reset()
+        self.dice.reset()
 
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
         batch = batch[DataSplit.VAL]
@@ -297,7 +304,7 @@ class SegModel(UMeI):
         pred_logit = self.sw_infer(batch[DataKey.IMG])
         pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
         pred = pred_logit.argmax(dim=1, keepdim=True)
-        self.dice_post(
+        self.dice(
             one_hot(pred, self.args.num_seg_classes),
             one_hot(seg, self.args.num_seg_classes),
         )
@@ -305,48 +312,51 @@ class SegModel(UMeI):
     def validation_epoch_end(self, *args) -> None:
         if self.args.val_empty_cuda_cache:
             torch.cuda.empty_cache()
-        dice = self.dice_post.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
+        dice = self.dice.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
         for i in range(dice.shape[0]):
             self.log(f'val/dice/{i}', dice[i], sync_dist=True)
         self.log('val/dice/avg', dice[1:].mean(), sync_dist=True)
 
     def on_test_epoch_start(self) -> None:
-        self.dice_pre.reset()
+        # self.dice_pre.reset()
         self.dice_post.reset()
+        # self.sd_pre.reset()
+        self.sd_post.reset()
+        # self.hd95_pre.reset()
+        self.hd95_post.reset()
 
-    def test_step(self, batch, *args, **kwargs):
+    def test_step(self, batch, batch_idx, *args, **kwargs):
         seg = batch[DataKey.SEG]
+        seg_oh = one_hot(seg, self.args.num_seg_classes)
         pred_logit = self.sw_infer(batch[DataKey.IMG])
 
-        pred = pred_logit.argmax(dim=1, keepdim=True).to(torch.uint8)
-        from swin_unetr.BTCV.utils import resample_3d
-        pred = resample_3d(pred[0, 0].cpu().numpy(), seg.shape[2:])
-        pred = torch.from_numpy(pred)[None].to(seg.device)
-        # pred = torch_f.interpolate(pred, seg.shape[2:], mode='nearest')
-        pred = self.post_transform(pred)
-        result = self.dice_pre(
-            # add dummy batch dim
-            one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
-            one_hot(seg, self.args.num_seg_classes),
-        ).array
-        print('argmax pre:', result, np.nanmean(result[0, 1:]))
-
+        # pred = pred_logit.argmax(dim=1, keepdim=True).to(torch.uint8)
+        # from swin_unetr.BTCV.utils import resample_3d
+        # pred = resample_3d(pred[0, 0].cpu().numpy(), seg.shape[2:])
+        # pred = torch.from_numpy(pred)[None].to(seg.device)
+        # # pred = torch_f.interpolate(pred, seg.shape[2:], mode='nearest')
+        # pred = self.post_transform(pred)
+        # # add dummy batch dim
+        # pred_oh = one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes)
+        # print('argmax-interpolate', end=' ')
+        # for metric in [self.dice_pre, self.sd_pre, self.hd95_pre]:
+        #     print(metric(pred_oh, seg_oh).nanmean().item(), end='\n' if metric is self.hd95_pre else ' ')
         pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
         pred = pred_logit.argmax(dim=1, keepdim=True)
-        pred = self.post_transform(pred[0])
-        result = self.dice_post(
-            # add dummy batch dim
-            one_hot(pred.view(1, *pred.shape), self.args.num_seg_classes),
-            one_hot(batch[DataKey.SEG], self.args.num_seg_classes),
-        ).array
-        print('argmax post:', result, np.nanmean(result[0, 1:]))
+        # pred = self.post_transform(pred[0])
+        pred_oh = one_hot(pred, self.args.num_seg_classes)
+        print('interpolate-argmax:', end=' ')
+        for metric in [self.dice_post, self.sd_post, self.hd95_post]:
+            print(metric(pred_oh, seg_oh).nanmean().item(), end='\n' if metric is self.hd95_post else ' ')
 
     def test_epoch_end(self, *args):
-        for phase, dice_metric in [
-            ('pre', self.dice_pre),
-            ('post', self.dice_post),
+        for phase, dice_metric, sd_metric, hd95_metric in [
+            # ('pre', self.dice_pre, self.hd95_pre, self.sd_pre),
+            ('post', self.dice_post, self.sd_post, self.hd95_post),
         ]:
             dice = dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
-            for i in range(dice.shape[0]):
-                self.log(f'test/dice-{phase}/{i}', dice[i], sync_dist=True)
-            self.log(f'test/dice-{phase}/avg', dice[1:].mean(), sync_dist=True)
+            sd = sd_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
+            hd95 = hd95_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
+            self.log(f'test/dice-{phase}/avg', dice.nanmean(), sync_dist=True)
+            self.log(f'test/sd-{phase}/avg', sd.nanmean(), sync_dist=True)
+            self.log(f'test/hd95-{phase}/avg', hd95.nanmean(), sync_dist=True)
