@@ -90,7 +90,7 @@ class SnimDecoder(nn.Module):
         super().__init__()
         self.args = args
         assert tuple(args.vit_patch_shape) == (2, 2, 2)
-        self.lateral_convs = nn.ModuleList([
+        self.lateral_projects = nn.ModuleList([
             ResidualUnit(
                 spatial_dims=3,
                 in_channels=args.base_feature_size << i,
@@ -125,7 +125,7 @@ class SnimDecoder(nn.Module):
             )
             for i in range(args.vit_stages - 1)
         ])
-        self.convs = nn.ModuleList([
+        self.projects = nn.ModuleList([
             ResidualUnit(
                 spatial_dims=3,
                 in_channels=args.base_feature_size << i,
@@ -158,17 +158,17 @@ class SnimDecoder(nn.Module):
         )
 
     def forward(self, hidden_states: list[torch.Tensor]):
-        x = self.lateral_convs[-1](hidden_states[-1])
-        for z, lateral_conv, up_proj, conv in zip(
+        x = self.lateral_projects[-1](hidden_states[-1])
+        for z, lateral_proj, up_proj, proj in zip(
             hidden_states[-2::-1],
-            self.lateral_convs[-2::-1],
+            self.lateral_projects[-2::-1],
             self.up_projects[::-1],
-            self.convs[::-1],
+            self.projects[::-1],
         ):
-            z = lateral_conv(z)
+            z = lateral_proj(z)
             x = up_proj(x)
             x = x + z
-            x = conv(x)
+            x = proj(x)
         pred = self.pred(x)
         return pred
 
