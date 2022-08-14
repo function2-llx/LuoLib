@@ -13,7 +13,7 @@ import os
 import torch
 import numpy as np
 from monai.inferers import sliding_window_inference
-from monai.metrics import DiceMetric
+from monai.metrics import DiceMetric, HausdorffDistanceMetric, SurfaceDistanceMetric
 from monai.networks import one_hot
 from monai.networks.nets import SwinUNETR
 from monai.utils import MetricReduction
@@ -78,7 +78,9 @@ def main():
     model.eval()
     model.to(device)
 
-    dice_metric = DiceMetric()
+    dice_metric = DiceMetric(include_background=False)
+    sd_metric = SurfaceDistanceMetric(include_background=False, symmetric=True)
+    hd95_metric = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
 
     with torch.no_grad():
         dice_list_case = []
@@ -100,7 +102,15 @@ def main():
             val_outputs = torch.softmax(val_outputs, 1).cpu().numpy()
             val_outputs = np.argmax(val_outputs, axis=1).astype(np.uint8)[0]
             val_outputs = resample_3d(val_outputs, target_shape)
-            result = dice_metric(
+            dice_result = dice_metric(
+                one_hot(torch.from_numpy(val_outputs).to(val_labels.device)[None, None], num_classes=14),
+                one_hot(val_labels, num_classes=14),
+            )
+            hd95_result = hd95_metric(
+                one_hot(torch.from_numpy(val_outputs).to(val_labels.device)[None, None], num_classes=14),
+                one_hot(val_labels, num_classes=14),
+            )
+            sd_result = sd_metric(
                 one_hot(torch.from_numpy(val_outputs).to(val_labels.device)[None, None], num_classes=14),
                 one_hot(val_labels, num_classes=14),
             )
@@ -111,7 +121,10 @@ def main():
                 dice_list_sub.append(organ_Dice)
             mean_dice = np.mean(dice_list_sub)
             print("Mean Organ Dice: {}".format(mean_dice))
-            print('MONAI:', result[:, 1:].nanmean().item())
+            print('MONAI metric:')
+            print('\tDice:', dice_result.nanmean().item())
+            print('\tSD:', sd_result.nanmean().item())
+            print('\tHD95:', hd95_result.nanmean().item())
             dice_list_case.append(mean_dice)
             nib.save(nib.Nifti1Image(val_outputs.astype(np.uint8), original_affine),
                      os.path.join(output_directory, img_name))
@@ -119,7 +132,10 @@ def main():
         print("Overall Mean Dice: {}".format(np.mean(dice_list_case)))
 
     mean_dice = dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
-    print('MONAI dice: ', mean_dice.cpu().numpy(), mean_dice[1:].mean().item())
+    mean_sd = sd_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
+    mean_hd95 = hd95_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
+    print(mean_dice.nanmean().item() * 100, mean_sd.nanmean().item(), mean_hd95.nanmean().item(), sep='\t')
+    # print('MONAI dice: ', mean_dice.cpu().numpy(), mean_dice[1:].mean().item())
 
 if __name__ == '__main__':
     main()
