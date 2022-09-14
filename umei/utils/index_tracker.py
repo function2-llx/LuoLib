@@ -1,6 +1,7 @@
 from typing import Optional
 
 from matplotlib import pyplot as plt
+from matplotlib.colors import ListedColormap
 import numpy as np
 
 class IndexTracker:
@@ -14,20 +15,25 @@ class IndexTracker:
         self.img = img
         self.seg = seg
         rows, cols, self.slices = img.shape
-        self.ind = self.slices//2
+        self.ind = self.slices // 2
 
         self.ax_img = ax.imshow(np.rot90(self.img[:, :, self.ind]), cmap='gray')
         if self.seg is None:
             self.ax_seg = None
         else:
-            self.ax_seg = ax.imshow(np.rot90(self.seg[:, :, self.ind]), cmap='gray')
+            self.ind = self.seg.sum(axis=(0, 1)).argmax()
+            self.ax_seg = ax.imshow(
+                np.rot90(self.seg[:, :, self.ind]),
+                cmap=ListedColormap(['none', 'green']),
+                alpha=0.5,
+            )
 
         self.update()
         fig.canvas.mpl_connect('scroll_event', self.on_scroll)
         plt.show()
 
     def on_scroll(self, event):
-        print("%s %s" % (event.button, event.step))
+        # print("%s %s" % (event.button, event.step))
         if event.button == 'up':
             self.ind = min(self.img.shape[-1] - 1, self.ind + 1)
         else:

@@ -40,6 +40,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     vit_conv_stem: bool = field(default=False)
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
+    feature_channels: list[int] = field(default=None)
     encode_skip: bool = field(default=False)
     umei_sunetr_decode_use_in: bool = field(default=True)
     umei_impl: bool = field(default=True)
@@ -131,6 +132,9 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
             for size, patch_size in zip(self.sample_shape, self.vit_patch_shape):
                 assert size % patch_size == 0
                 assert patch_size >= 2
+
+        if self.base_feature_size is not None and self.feature_channels is None:
+            pass
 
     @classmethod
     def from_yaml_file(cls, yaml_path: PathLike):
