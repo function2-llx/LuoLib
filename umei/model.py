@@ -290,7 +290,7 @@ class SegModel(UMeI):
         self.dice_metric.reset()
 
     def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
-        batch = batch[DataSplit.VAL]
+        # batch = batch[DataSplit.VAL]
         seg = batch[DataKey.SEG]
         pred_logit = self.sw_infer(batch[DataKey.IMG])
         pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')

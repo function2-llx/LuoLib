@@ -84,7 +84,7 @@ class SwinUnetrDecoder(UDecoderBase):
         for z, lateral_conv, up in zip(hidden_states[-2::-1], self.lateral_convs[::-1], self.ups[::-1]):
             up: UnetrUpBlock
             z = lateral_conv(z)
-            x = up.forward(x, z if up.use_skip else None)
+            x = up.forward(x, z)
             feature_maps.append(x)
         if self.last_lateral is not None:
             x = self.last_up(x, self.last_lateral(x_in))

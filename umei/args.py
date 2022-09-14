@@ -148,7 +148,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
 @dataclass
 class CVArgs(UMeIArgsBase):
     num_folds: int = field(default=5)
-    use_test_fold: bool = field(default=False)
+    # use_test_fold: bool = field(default=False)
     fold_ids: list[int] = field(default=None)
 
     def __post_init__(self):
