@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from copy import deepcopy
 from pathlib import Path
 from typing import Any, Optional
 
-from ruamel.yaml import YAML
 from transformers import HfArgumentParser
 
-yaml = YAML()
+from .yaml import yaml
 
 class UMeIParser(HfArgumentParser):
     def __init__(self, *args, use_conf: bool, infer_output: bool = True, allow_abbrev=False, **kwargs):
@@ -23,12 +21,23 @@ class UMeIParser(HfArgumentParser):
     @staticmethod
     def save_args_as_conf(args, save_path: Path):
         save_path.parent.mkdir(parents=True, exist_ok=True)
-        args_dict = deepcopy(vars(args))
-        for k, v in args_dict.items():
-            # if isinstance(v, Path):
-            if type(v) not in [int, float, str, list, bool, type(None)]:
-                args_dict[k] = str(v)
-        yaml.dump(args_dict, save_path)
+
+        def convert(data):
+            if isinstance(data, dict):
+                return {
+                    k: convert(v)
+                    for k, v in data.items()
+                }
+            if isinstance(data, list):
+                return [
+                    convert(v)
+                    for v in data
+                ]
+            if not isinstance(data, (int, float, bool, type(None))):
+                data = str(data)
+            return data
+
+        yaml.dump(convert(vars(args)), save_path)
 
     @staticmethod
     def to_cli_options(conf: dict[str, Any]) -> list[str]:

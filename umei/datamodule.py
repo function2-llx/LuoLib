@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Hashable, Sequence
-from typing import Callable
+from typing import Callable, Union
 
 import numpy as np
 from pytorch_lightning import LightningDataModule
@@ -10,9 +10,9 @@ from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
 import monai
 from monai.config import PathLike
-from monai.data import CacheDataset, DataLoader, Dataset, MetaTensor, partition_dataset, select_cross_validation_folds
+from monai.data import CacheDataset, DataLoader, Dataset, MetaTensor, partition_dataset_classes, select_cross_validation_folds
 from monai.utils import GridSampleMode, NumpyPadMode
-from .args import AugArgs, SegArgs, UMeIArgs
+from .args import AugArgs, CVArgs, SegArgs, UMeIArgs
 from .utils import DataKey, DataSplit
 
 class UMeIDataModule(LightningDataModule):
@@ -104,19 +104,25 @@ class UMeIDataModule(LightningDataModule):
         )
 
 class CVDataModule(UMeIDataModule):
-    def __init__(self, args: UMeIArgs):
+    args: CVArgs | UMeIArgs
+
+    def __init__(self, args: CVArgs | UMeIArgs):
         super().__init__(args)
         self.val_id = 0
 
-        self.partitions = partition_dataset(
-            self.fit_data(),
+        fit_data, classes = self.fit_data()
+        if classes is None:
+            classes = [0] * len(fit_data)
+        self.partitions = partition_dataset_classes(
+            fit_data,
+            classes,
             num_partitions=args.num_folds,
             shuffle=True,
             seed=args.seed,
         )
 
     # all data for fit (including train & val)
-    def fit_data(self) -> Sequence:
+    def fit_data(self) -> tuple[Sequence, Sequence]:
         raise NotImplementedError
 
     @property

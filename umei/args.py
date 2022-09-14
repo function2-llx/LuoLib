@@ -5,23 +5,26 @@ import multiprocessing
 from pathlib import Path
 from typing import Optional
 
-from ruamel.yaml import YAML
 import torch
 from transformers import TrainingArguments
 
 from monai.utils import BlendMode
 from umei.utils import PathLike, UMeIParser
-
-yaml = YAML()
+from umei.utils.argparse import yaml
 
 @dataclass
-class UMeIArgs(TrainingArguments):
+class UMeIArgsBase:
+    def __post_init__(self):
+        pass
+
+@dataclass
+class UMeIArgs(UMeIArgsBase, TrainingArguments):
     exp_name: str = field(default=None)
     num_nodes: int = field(default=1)
     output_dir: Path = field(default=None)
     patience: int = field(default=5)
-    sample_size: int = field(default=144)
-    sample_slices: int = field(default=160)
+    sample_size: int = field(default=None)
+    sample_slices: int = field(default=None)
     spacing: list[float] = field(default=None)
     norm_intensity: bool = field(default=False)
     a_min: float = field(default=-175)
@@ -44,11 +47,11 @@ class UMeIArgs(TrainingArguments):
     num_seg_heads: int = field(default=1)
     cls_loss_factor: float = field(default=1)
     seg_loss_factor: float = field(default=1)
-    img_key: str = field(default='img')
-    mask_key: str = field(default='mask')
-    seg_key: str = field(default='seg')
-    cls_key: str = field(default='cls')
-    clinical_key: str = field(default='clinical')
+    # img_key: str = field(default='img')
+    # mask_key: str = field(default='mask')
+    # seg_key: str = field(default='seg')
+    # cls_key: str = field(default='cls')
+    # clinical_key: str = field(default='clinical')
     conf_root: Path = field(default=Path('conf'))
     output_root: Path = field(default=Path('output'))
     amp: bool = field(default=True)
@@ -57,8 +60,6 @@ class UMeIArgs(TrainingArguments):
     monitor_mode: str = field(default=None)
     lr_reduce_factor: float = field(default=0.2)
     warmup_epochs: int = field(default=50)
-    num_folds: int = field(default=5)
-    use_test_fold: bool = field(default=False)
     num_runs: int = field(default=3)
     encoder: str = field(default=None, metadata={'choices': ['resnet', 'vit', 'swt']})
     decoder: str = field(default=None, metadata={'choices': ['cnn', 'sunetr']})
@@ -69,7 +70,6 @@ class UMeIArgs(TrainingArguments):
     resnet_conv1_size: int = field(default=7)
     resnet_conv1_stride: int = field(default=2)
     resnet_layer1_stride: int = field(default=1)
-    fold_ids: list[int] = field(default=None)
     ddp_find_unused_parameters: bool = field(default=False)
     on_submit: bool = field(default=False)
     log_offline: bool = field(default=False)
@@ -83,6 +83,7 @@ class UMeIArgs(TrainingArguments):
     ckpt_path: Path = field(default=None, metadata={'help': 'checkpoint path to resume'})
     resume_log: bool = field(default=True)
     train_batch_size: int = field(default=2, metadata={'help': 'effective train batch size'})
+    gradient_checkpointing: bool = field(default=True)
 
     @TrainingArguments.n_gpu.getter
     def n_gpu(self):
@@ -126,15 +127,10 @@ class UMeIArgs(TrainingArguments):
         assert self.train_batch_size % torch.cuda.device_count() == 0
         self.per_device_train_batch_size = self.train_batch_size // torch.cuda.device_count()
 
-        for size, patch_size in zip(self.sample_shape, self.vit_patch_shape):
-            assert size % patch_size == 0
-            assert patch_size >= 2
-
-        if self.fold_ids is None:
-            self.fold_ids = list(range(self.num_folds))
-        else:
-            for i in self.fold_ids:
-                assert 0 <= i < self.num_folds
+        if self.vit_patch_shape is not None:
+            for size, patch_size in zip(self.sample_shape, self.vit_patch_shape):
+                assert size % patch_size == 0
+                assert patch_size >= 2
 
     @classmethod
     def from_yaml_file(cls, yaml_path: PathLike):
@@ -146,9 +142,23 @@ class UMeIArgs(TrainingArguments):
         return parser.parse_dict(vars(args))[0]
 
 @dataclass
-class AugArgs:
-    flip_p: float = field(default=0.2)
-    rotate_p: float = field(default=0.2)
+class CVArgs(UMeIArgsBase):
+    num_folds: int = field(default=5)
+    use_test_fold: bool = field(default=False)
+    fold_ids: list[int] = field(default=None)
+
+    def __post_init__(self):
+        if self.fold_ids is None:
+            self.fold_ids = list(range(self.num_folds))
+        else:
+            for i in self.fold_ids:
+                assert 0 <= i < self.num_folds
+        super().__post_init__()
+
+@dataclass
+class AugArgs(UMeIArgsBase):
+    flip_p: float = field(default=0.5)
+    rotate_p: float = field(default=0.5)
     scale_p: float = field(default=0.1)
     shift_p: float = field(default=0.1)
     scale_factor: float = field(default=0.1)
@@ -157,8 +167,11 @@ class AugArgs:
 @dataclass
 class SegArgs(UMeIArgs):
     crop: str = field(default='cls', metadata={'choices': ['cls', 'pn'], 'help': 'patch cropping strategy'})
+    crop_pos: int = field(default=1)
+    crop_neg: int = field(default=1)
     dice_dr: float = field(default=1e-5)
     dice_nr: float = field(default=1e-5)
+    mc_seg: bool = field(default=False)
     dice_include_background: bool = field(default=False)
     squared_dice: bool = field(default=False)
     post_labels: list[int] = field(default_factory=list)
@@ -168,6 +181,8 @@ class SegArgs(UMeIArgs):
     num_crop_samples: int = field(default=4)
     per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
     spline_seg: bool = field(default=False)
+    monitor: str = field(default='val/dice/avg')
+    monitor_mode: str = field(default='max')
 
     def __post_init__(self):
         super().__post_init__()
