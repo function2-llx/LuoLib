@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Type
 
 from einops import rearrange
 import numpy as np
@@ -18,8 +17,9 @@ from monai.networks.blocks import Convolution, ResidualUnit
 from monai.networks.layers import Act, Norm
 from monai.utils import ImageMetaKey
 from umei.models.swin import SwinTransformer
+from ..models.layernorm import LayerNormNd
 from .args import MaskValue, SnimArgs
-from .utils import ChannelFirst, ChannelLast, channel_first, channel_last, patchify, unpatchify
+from .utils import channel_first, channel_last, patchify, unpatchify
 
 class SnimEncoder(SwinTransformer):
     def __init__(self, args: SnimArgs):
@@ -73,18 +73,6 @@ class SnimEncoder(SwinTransformer):
         hidden_states = self.forward_layers(x)
         return x_mask, hidden_states
 
-class LayerNorm3d(nn.Sequential):
-    def __init__(self, dim: int):
-        super().__init__(
-            ChannelLast(),
-            nn.LayerNorm(dim),
-            ChannelFirst(),
-        )
-
-@Norm.factory_function("layer3d")
-def layer_factory(_dim) -> Type[LayerNorm3d]:
-    return LayerNorm3d
-
 class SnimDecoder(nn.Module):
     def __init__(self, args: SnimArgs):
         super().__init__()
@@ -111,7 +99,7 @@ class SnimDecoder(nn.Module):
                     kernel_size=2,
                     stride=2,
                 ),
-                LayerNorm3d(args.base_feature_size << i),
+                LayerNormNd(args.base_feature_size << i),
                 nn.PReLU(args.base_feature_size << i),
                 Convolution(
                     spatial_dims=3,
@@ -145,7 +133,7 @@ class SnimDecoder(nn.Module):
                 kernel_size=2,
                 stride=2,
             ),
-            LayerNorm3d(args.base_feature_size),
+            LayerNormNd(args.base_feature_size),
             nn.PReLU(args.base_feature_size),
             Convolution(
                 spatial_dims=3,

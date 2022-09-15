@@ -15,61 +15,6 @@ from monai.umei import UEncoderBase, UEncoderOutput
 
 __all__ = ['SwinTransformer']
 
-# class SwinStem(nn.Module):
-#     """
-#         hMLP_stem: https://arxiv.org/pdf/2203.09795.pdf
-#     """
-#
-#     def __init__(
-#         self,
-#         patch_size: int = 4,
-#         in_chans: int = 1,
-#         embed_dim: int = 48,
-#         norm_layer: Type[nn.Module] = nn.LayerNorm,
-#     ):
-#         # PatchEmbed(
-#         #     patch_size=self.patch_size,
-#         #     in_chans=in_chans,
-#         #     embed_dim=embed_dim,
-#         #     norm_layer=norm_layer if self.patch_norm else None,  # type: ignore
-#         #     spatial_dims=spatial_dims,
-#         # )
-#         super().__init__()
-#         num_layers = (patch_size & -patch_size).bit_length() - 1
-#         assert patch_size == 1 << self.num_layers + 1
-#         self.layers = nn.ModuleList()
-#         for i in range(num_layers):
-#             layer = nn.Sequential(
-#                 nn.Conv3d(
-#                     in_chans if i == 0 else embed_dim >> num_layers - i,
-#                     embed_dim >> num_layers - i + 1,
-#                     kernel_size=2,
-#                     stride=2,
-#
-#                 )
-#             )
-#
-#         # img_size = to_2tuple(img_size)
-#         # patch_size = to_2tuple(patch_size)
-#         num_patches = (img_size[1] // patch_size[1]) * (img_size[0] // patch_size[0])
-#         self.img_size = img_size
-#         self.patch_size = patch_size
-#         self.num_patches = num_patches
-#         self.proj = torch.nn.Sequential(*[nn.Conv2d(in_chans, embed_dim // 4, kernel_size=4, stride=4),
-#                                           norm_layer(embed_dim // 4),
-#                                           nn.GELU(),
-#                                           nn.Conv2d(embed_dim // 4, embed_dim // 4, kernel_size=2, stride=2),
-#                                           norm_layer(embed_dim // 4),
-#                                           nn.GELU(),
-#                                           nn.Conv2d(embed_dim // 4, embed_dim, kernel_size=2, stride=2),
-#                                           norm_layer(embed_dim),
-#                                           ])
-#
-#     # def forward(self, x):
-#     #     B, C, H, W = x.shape
-#     #     x = self.proj(x).flatten(2).transpose(1, 2)
-#     #     return
-
 class PatchEmbed(PatchEmbedBase):
     def __init__(
         self,
