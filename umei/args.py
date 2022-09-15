@@ -191,6 +191,7 @@ class SegArgs(UMeIArgs):
     spline_seg: bool = field(default=False)
     monitor: str = field(default='val/dice/avg')
     monitor_mode: str = field(default='max')
+    tta: bool = field(default=False)
 
     def __post_init__(self):
         super().__post_init__()

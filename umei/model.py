@@ -269,7 +269,7 @@ class SegModel(UMeI):
             smooth_nr=self.args.dice_nr,
             smooth_dr=self.args.dice_dr,
         )
-
+        self.tta_flips = [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
         # metric for val
         self.dice_metric = DiceMetric()
 
@@ -284,12 +284,25 @@ class SegModel(UMeI):
             progress=self.trainer.testing if self._trainer is not None else True,
         )
 
+    def tta_infer(self, img: torch.Tensor):
+        pred_logit = self.sw_infer(img)
+        for flip_idx in self.tta_flips:
+            pred_logit += torch.flip(self.sw_infer(torch.flip(img, flip_idx)), flip_idx)
+        pred_logit /= len(self.tta_flips) + 1
+        return pred_logit
+
+    def infer(self, img: torch.Tensor):
+        if self.args.tta:
+            return self.tta_infer(img)
+        else:
+            return self.sw_infer(img)
+
     def on_validation_epoch_start(self):
         if self.args.val_empty_cuda_cache:
             torch.cuda.empty_cache()
         self.dice_metric.reset()
 
-    def validation_step(self, batch: dict[str, dict[str, torch.Tensor]], *args, **kwargs):
+    def validation_step(self, batch: dict[str, torch.Tensor], *args, **kwargs):
         # batch = batch[DataSplit.VAL]
         seg = batch[DataKey.SEG]
         pred_logit = self.sw_infer(batch[DataKey.IMG])
