@@ -25,6 +25,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     patience: int = field(default=5)
     sample_size: int = field(default=None)
     sample_slices: int = field(default=None)
+    num_stages: int = field(default=None)
     spacing: list[float] = field(default=None)
     norm_intensity: bool = field(default=False)
     a_min: float = field(default=-175)
@@ -134,7 +135,10 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
                 assert patch_size >= 2
 
         if self.base_feature_size is not None and self.feature_channels is None:
-            pass
+            self.feature_channels = [
+                self.base_feature_size << i
+                for i in range(self.num_stages)
+            ]
 
     @classmethod
     def from_yaml_file(cls, yaml_path: PathLike):
