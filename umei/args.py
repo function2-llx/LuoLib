@@ -191,8 +191,10 @@ class SegArgs(UMeIArgs):
     spline_seg: bool = field(default=False)
     monitor: str = field(default='val/dice/avg')
     monitor_mode: str = field(default='max')
-    tta: bool = field(default=False)
+    do_tta: bool = field(default=False)
 
     def __post_init__(self):
         super().__post_init__()
-        assert self.per_device_eval_batch_size == 1
+        # assert self.per_device_eval_batch_size == 1
+        if self.mc_seg:
+            assert self.dice_include_background

@@ -271,7 +271,7 @@ class SegModel(UMeI):
         )
         self.tta_flips = [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
         # metric for val
-        self.dice_metric = DiceMetric()
+        self.dice_metric = DiceMetric(include_background=True)
 
     def sw_infer(self, img: torch.Tensor):
         return sliding_window_inference(
@@ -292,7 +292,7 @@ class SegModel(UMeI):
         return pred_logit
 
     def infer(self, img: torch.Tensor):
-        if self.args.tta:
+        if self.args.do_tta:
             return self.tta_infer(img)
         else:
             return self.sw_infer(img)
