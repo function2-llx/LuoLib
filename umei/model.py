@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Optional
 
 from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
@@ -291,7 +292,7 @@ class SegModel(UMeI):
         pred_logit /= len(self.tta_flips) + 1
         return pred_logit
 
-    def infer(self, img: torch.Tensor):
+    def infer_logit(self, img: torch.Tensor):
         if self.args.do_tta:
             return self.tta_infer(img)
         else:
