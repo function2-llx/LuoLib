@@ -7,5 +7,6 @@ class DataSplit(StrEnum):
 
 class DataKey(StrEnum):
     IMG = 'img'
-    SEG = 'seg'
     CLS = 'cls'
+    SEG = 'seg'
+    CLINICAL = 'clinical'

@@ -202,8 +202,11 @@ class UMeI(LightningModule):
         encoder_out: UEncoderOutput = self.encoder(img)
         ret = {'loss': torch.tensor(0., device=self.device)}
         if DataKey.CLS in batch:
-            cls_out = self.cls_head(torch.cat((encoder_out.cls_feature, batch[self.args.clinical_key]), dim=1))
-            cls_loss = self.cls_loss_fn(cls_out, batch[self.args.cls_key])
+            cls_feature = encoder_out.cls_feature
+            if DataKey.CLINICAL in batch:
+                cls_feature = torch.cat((cls_feature, batch[DataKey.CLINICAL]), dim=1)
+            cls_out = self.cls_head(cls_feature)
+            cls_loss = self.cls_loss_fn(cls_out, batch[DataKey.CLS])
             # self.log('cls_loss', cls_loss, prog_bar=True)
             ret['loss'] += cls_loss * self.args.cls_loss_factor
             ret['cls_loss'] = cls_loss
