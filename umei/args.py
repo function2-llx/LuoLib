@@ -84,6 +84,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     self_ensemble: bool = field(default=False)
     ckpt_path: Path = field(default=None, metadata={'help': 'checkpoint path to resume'})
     resume_log: bool = field(default=True)
+    no_resume: bool = field(default=False)
     train_batch_size: int = field(default=2, metadata={'help': 'effective train batch size'})
     gradient_checkpointing: bool = field(default=True)
 

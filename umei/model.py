@@ -10,6 +10,7 @@ import torch
 from torch import nn
 from torch.nn import functional as torch_f
 from torch.optim import AdamW, Optimizer
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceFocalLoss
@@ -61,6 +62,7 @@ class UMeI(LightningModule):
                 )
                 for i in range(args.num_seg_heads)
             ])
+        self.tta_flips = [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
 
     def build_encoder(self) -> UEncoderBase:
         if self.args.encoder == 'resnet':
@@ -244,6 +246,19 @@ class UMeI(LightningModule):
                 ret = torch_f.interpolate(ret, x.shape[2:], mode='trilinear')
             return ret
 
+    def forward_cls(self, img: torch.Tensor, clinical: Optional[torch.Tensor] = None, tta: bool = False):
+        if tta:
+            logit = self.forward_cls(img, clinical, False)
+            for flip_idx in self.tta_flips:
+                logit += self.forward_cls(torch.flip(img, flip_idx), clinical, False)
+            logit /= len(self.tta_flips) + 1
+        else:
+            cls_feature = self.encoder.forward(img).cls_feature
+            if clinical is not None:
+                cls_feature = torch.cat((cls_feature, clinical), dim=1)
+            logit = self.cls_head(cls_feature)
+        return logit
+
     def configure_optimizers(self):
         optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
         return {
@@ -252,6 +267,9 @@ class UMeI(LightningModule):
                 optimizer,
                 warmup_epochs=self.args.warmup_epochs,
                 max_epochs=int(self.args.num_train_epochs),
+            ) if self.args.warmup_epochs else CosineAnnealingLR(
+                optimizer,
+                T_max=int(self.args.num_train_epochs),
             ),
         }
 
@@ -273,7 +291,6 @@ class SegModel(UMeI):
             smooth_nr=self.args.dice_nr,
             smooth_dr=self.args.dice_dr,
         )
-        self.tta_flips = [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
         # metric for val
         self.dice_metric = DiceMetric(include_background=True)
 
