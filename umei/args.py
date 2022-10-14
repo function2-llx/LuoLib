@@ -181,7 +181,7 @@ class SegArgs(UMeIArgs):
     dice_dr: float = field(default=1e-5)
     dice_nr: float = field(default=1e-5)
     mc_seg: bool = field(default=False)
-    dice_include_background: bool = field(default=False)
+    include_background: bool = field(default=False)
     squared_dice: bool = field(default=False)
     post_labels: list[int] = field(default_factory=list)
     sw_batch_size: int = field(default=4)
@@ -198,4 +198,4 @@ class SegArgs(UMeIArgs):
         super().__post_init__()
         # assert self.per_device_eval_batch_size == 1
         if self.mc_seg:
-            assert self.dice_include_background
+            assert self.include_background

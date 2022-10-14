@@ -18,7 +18,7 @@ class AmosModel(UMeI):
     def __init__(self, args: AmosArgs):
         super().__init__(args, has_decoder=True)
         self.seg_loss_fn = DiceCELoss(
-            include_background=self.args.dice_include_background,
+            include_background=self.args.include_background,
             to_onehot_y=True,
             softmax=True,
             squared_pred=self.args.squared_dice,

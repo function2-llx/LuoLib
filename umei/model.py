@@ -283,7 +283,7 @@ class SegModel(UMeI):
         super().__init__(args, has_decoder=True)
         self.args = args
         self.seg_loss_fn = DiceFocalLoss(
-            include_background=self.args.dice_include_background,
+            include_background=self.args.include_background,
             to_onehot_y=not args.mc_seg,
             sigmoid=args.mc_seg,
             softmax=not args.mc_seg,
