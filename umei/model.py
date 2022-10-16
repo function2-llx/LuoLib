@@ -259,8 +259,23 @@ class UMeI(LightningModule):
             logit = self.cls_head(cls_feature)
         return logit
 
+    def get_grouped_parameters(self) -> list[dict]:
+        return [{
+            'params': self.parameters(),
+            'lr': self.args.learning_rate,
+            'weight_decay': self.args.weight_decay,
+        }]
+
+    def get_optimizer(self):
+        optimizer = AdamW(
+            self.get_grouped_parameters(),
+            lr=self.args.learning_rate,
+            weight_decay=self.args.weight_decay,
+        )
+        return optimizer
+
     def configure_optimizers(self):
-        optimizer = AdamW(self.parameters(), lr=self.args.learning_rate, weight_decay=self.args.weight_decay)
+        optimizer = self.get_optimizer()
         return {
             'optimizer': optimizer,
             'lr_scheduler': LinearWarmupCosineAnnealingLR(
