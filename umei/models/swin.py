@@ -15,6 +15,8 @@ from monai.umei import UEncoderBase, UEncoderOutput
 
 __all__ = ['SwinTransformer']
 
+from umei.utils import ChannelFirst, channel_first, channel_last
+
 class PatchEmbed(PatchEmbedBase):
     def __init__(
         self,
@@ -143,9 +145,9 @@ class SwinTransformer(UEncoderBase):
         hidden_states = []
         for layer, norm in zip(self.layers, self.norms):
             z, z_ds = layer(x)
-            z = rearrange(z, "n c d h w -> n d h w c")
+            z = channel_last(z)
             z = norm(z)
-            z = rearrange(z, "n d h w c -> n c d h w")
+            z = channel_first(z)
             hidden_states.append(z)
             x = z_ds
 

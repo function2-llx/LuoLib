@@ -56,13 +56,16 @@ class UMeI(LightningModule):
             # i-th seg head for the last i-th output from decoder
             self.seg_heads = nn.ModuleList([
                 UnetOutBlock(
-                    spatial_dims=3,
+                    spatial_dims=self.args.spatial_dims,
                     in_channels=decoder_feature_sizes[-i - 1],
                     out_channels=args.num_seg_classes,
                 )
                 for i in range(args.num_seg_heads)
             ])
-        self.tta_flips = [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
+        if self.args.spatial_dims == 2:
+            self.tta_flips = [[2], [3], [2, 3]]
+        else:
+            self.tta_flips = [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
 
     def build_encoder(self) -> UEncoderBase:
         if self.args.encoder == 'resnet':
@@ -218,7 +221,7 @@ class UMeI(LightningModule):
             feature_maps = self.decoder.forward(encoder_out.hidden_states, img).feature_maps
             seg_loss = torch.stack([
                 self.seg_loss_fn(
-                    torch_f.interpolate(seg_head(fm), seg_label.shape[2:], mode='trilinear'),
+                    torch_f.interpolate(seg_head(fm), seg_label.shape[2:], mode=self.args.interpolate),
                     seg_label
                 ) / 2 ** i
                 for i, (fm, seg_head) in enumerate(zip(reversed(feature_maps), self.seg_heads))
@@ -274,18 +277,24 @@ class UMeI(LightningModule):
         )
         return optimizer
 
+    def get_lr_scheduler(self, optimizer):
+        if self.args.warmup_epochs:
+            return LinearWarmupCosineAnnealingLR(
+                optimizer,
+                warmup_epochs=self.args.warmup_epochs,
+                max_epochs=int(self.args.num_train_epochs),
+            )
+        else:
+            return CosineAnnealingLR(
+                optimizer,
+                T_max=int(self.args.num_train_epochs),
+            )
+
     def configure_optimizers(self):
         optimizer = self.get_optimizer()
         return {
             'optimizer': optimizer,
-            'lr_scheduler': LinearWarmupCosineAnnealingLR(
-                optimizer,
-                warmup_epochs=self.args.warmup_epochs,
-                max_epochs=int(self.args.num_train_epochs),
-            ) if self.args.warmup_epochs else CosineAnnealingLR(
-                optimizer,
-                T_max=int(self.args.num_train_epochs),
-            ),
+            'lr_scheduler': self.get_lr_scheduler(optimizer),
         }
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
@@ -342,7 +351,11 @@ class SegModel(UMeI):
         # batch = batch[DataSplit.VAL]
         seg = batch[DataKey.SEG]
         pred_logit = self.sw_infer(batch[DataKey.IMG])
-        pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
+        pred_logit = torch_f.interpolate(
+            pred_logit,
+            seg.shape[2:],
+            mode=self.args.interpolate,
+        )
 
         if self.args.mc_seg:
             pred = (pred_logit.sigmoid() > 0.5).long()

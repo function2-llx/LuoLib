@@ -23,6 +23,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     num_nodes: int = field(default=1)
     output_dir: Path = field(default=None)
     patience: int = field(default=5)
+    spatial_dims: int = field(default=3)
     sample_size: int = field(default=None)
     sample_slices: int = field(default=None)
     num_stages: int = field(default=None)
@@ -93,8 +94,15 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
         return torch.cuda.device_count()
 
     @property
-    def sample_shape(self) -> tuple[int, int, int]:
-        return self.sample_size, self.sample_size, self.sample_slices
+    def interpolate(self) -> str:
+        return {2: 'bilinear', 3: 'trilinear'}[self.spatial_dims]
+
+    @property
+    def sample_shape(self) -> tuple[int, ...]:
+        if self.spatial_dims == 3:
+            return self.sample_size, self.sample_size, self.sample_slices
+        else:
+            return self.sample_size, self.sample_size
 
     @property
     def precision(self):
