@@ -201,6 +201,7 @@ class SegArgs(UMeIArgs):
     monitor: str = field(default='val/dice/avg')
     monitor_mode: str = field(default='max')
     do_tta: bool = field(default=False)
+    test_output_dir: Path = field(default=None)
 
     def __post_init__(self):
         super().__post_init__()
