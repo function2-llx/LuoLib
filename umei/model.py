@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Type
 
 from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
 from pytorch_lightning import LightningModule
@@ -9,7 +9,7 @@ from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 from torch import nn
 from torch.nn import functional as torch_f
-from torch.optim import AdamW, Optimizer
+from torch.optim import AdamW, Optimizer, RAdam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from monai.inferers import sliding_window_inference
@@ -270,7 +270,11 @@ class UMeI(LightningModule):
         }]
 
     def get_optimizer(self):
-        optimizer = AdamW(
+        optimizer_cls = {
+            'adamw': AdamW,
+            'radam': RAdam,
+        }[self.args.optim]
+        optimizer = optimizer_cls(
             self.get_grouped_parameters(),
             lr=self.args.learning_rate,
             weight_decay=self.args.weight_decay,
