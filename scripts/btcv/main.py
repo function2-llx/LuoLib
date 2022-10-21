@@ -4,6 +4,8 @@ from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
 
+from nnunet.run import run_training
+
 from umei.datasets.btcv import BTCVArgs, BTCVDataModule
 from umei import SegModel
 from umei.utils import MyWandbLogger, UMeIParser
@@ -23,6 +25,7 @@ def main():
     if args.spline_seg:
         ft_suffix += '-sps'
     ft_suffix += f'-{int(args.num_train_epochs)}ep-{int(args.warmup_epochs)}wu'
+    ft_suffix += f'/data{args.data_ratio}'
     args.output_dir /= ft_suffix
     print(args)
     datamodule = BTCVDataModule(args)

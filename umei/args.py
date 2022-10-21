@@ -144,12 +144,6 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
                 assert size % patch_size == 0
                 assert patch_size >= 2
 
-        if self.base_feature_size is not None and self.feature_channels is None:
-            self.feature_channels = [
-                self.base_feature_size << i
-                for i in range(self.num_stages)
-            ]
-
     @classmethod
     def from_yaml_file(cls, yaml_path: PathLike):
         parser = UMeIParser(cls, use_conf=False)

@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 # from monai.data import load_decathlon_datalist
+import numpy as np
+
 from umei.datamodule import SegDataModule, load_decathlon_datalist
 from umei.utils import DataKey, DataSplit
 from .args import BTCVArgs
@@ -51,14 +53,17 @@ class BTCVDataModule(SegDataModule):
                 (DataSplit.VAL, 'validation'),
             ]
         }
+        self.data[DataSplit.TRAIN] = np.random.choice(
+            self.data[DataSplit.TRAIN],
+            int(self.args.data_ratio * len(self.data[DataSplit.TRAIN])),
+            replace=False,
+        ).tolist()
 
     def train_data(self) -> Sequence:
         return self.data[DataSplit.TRAIN]
 
-    def val_data(self) -> dict[DataSplit, Sequence]:
-        return {
-            DataSplit.VAL: self.data[DataSplit.VAL]
-        }
+    def val_data(self) -> Sequence:
+        return self.data[DataSplit.VAL]
 
     def test_data(self) -> Sequence:
         return self.data[DataSplit.VAL]
