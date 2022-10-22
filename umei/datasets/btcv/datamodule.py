@@ -5,6 +5,7 @@ from pathlib import Path
 
 # from monai.data import load_decathlon_datalist
 import numpy as np
+from numpy.random import default_rng
 
 from umei.datamodule import SegDataModule, load_decathlon_datalist
 from umei.utils import DataKey, DataSplit
@@ -58,6 +59,7 @@ class BTCVDataModule(SegDataModule):
             int(self.args.data_ratio * len(self.data[DataSplit.TRAIN])),
             replace=False,
         ).tolist()
+        print(self.data[DataSplit.TRAIN])
 
     def train_data(self) -> Sequence:
         return self.data[DataSplit.TRAIN]

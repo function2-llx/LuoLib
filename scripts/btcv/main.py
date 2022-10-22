@@ -28,8 +28,8 @@ def main():
     ft_suffix += f'/data{args.data_ratio}'
     args.output_dir /= ft_suffix
     print(args)
-    datamodule = BTCVDataModule(args)
     pl.seed_everything(args.seed)
+    datamodule = BTCVDataModule(args)
     output_dir = args.output_dir / f'run-{args.seed}'
     output_dir.mkdir(exist_ok=True, parents=True)
     log_dir = output_dir
