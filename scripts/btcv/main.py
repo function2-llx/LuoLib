@@ -8,6 +8,7 @@ from nnunet.run import run_training
 
 from umei.datasets.btcv import BTCVArgs, BTCVDataModule
 from umei import SegModel
+from umei.datasets.btcv.model import BTCVModel
 from umei.utils import MyWandbLogger, UMeIParser
 
 task_name = 'btcv'
@@ -83,7 +84,7 @@ def main():
         # limit_train_batches=0.1,
         # limit_val_batches=0.2,
     )
-    model = SegModel(args)
+    model = BTCVModel(args)
     last_ckpt_path = args.ckpt_path
     if last_ckpt_path is None:
         last_ckpt_path = output_dir / 'last.ckpt'
@@ -97,11 +98,13 @@ def main():
             UMeIParser.save_args_as_conf(args, conf_save_path)
         trainer.fit(model, datamodule=datamodule, ckpt_path=last_ckpt_path)
     if args.do_eval:
-        results = trainer.test(model, ckpt_path=last_ckpt_path, datamodule=datamodule)
+        trainer.test(model, ckpt_path=last_ckpt_path, datamodule=datamodule)
         # print(results)
         with open(log_dir / 'results.txt', 'w') as f:
-            for k in ['test/dice-post/avg', 'test/sd-post/avg', 'test/hd95-post/avg']:
-                print(results[0][k], file=f, end='\n' if k == 'test/hd95-post/avg' else '\t')
+            print('\t'.join(model.results.keys()), file=f)
+            print('\t'.join(map(str, model.results.values())), file=f)
+            # for k in ['test/dice-post/avg', 'test/sd-post/avg', 'test/hd95-post/avg']:
+            #     print(results[0][k], file=f, end='\n' if k == 'test/hd95-post/avg' else '\t')
 
     wandb.finish()
 

@@ -13,20 +13,27 @@ class BTCVModel(SegModel):
 
         # metrics for test
         # self.dice_pre = DiceMetric(include_background=False)
-        self.dice_post = DiceMetric(include_background=False)
-        # self.sd_pre = SurfaceDistanceMetric(include_background=False, symmetric=True)
-        self.sd_post = SurfaceDistanceMetric(include_background=False, symmetric=True)
-        # self.hd95_pre = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
-        self.hd95_post = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
-        # self.resampler = monai.transforms.SpatialResample()
+        # self.dice_post = DiceMetric(include_background=False)
+        # # self.sd_pre = SurfaceDistanceMetric(include_background=False, symmetric=True)
+        # self.sd_post = SurfaceDistanceMetric(include_background=False, symmetric=True)
+        # # self.hd95_pre = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
+        # self.hd95_post = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
+        # # self.resampler = monai.transforms.SpatialResample()
+        self.metrics = {
+            'dice': DiceMetric(include_background=False),
+        }
+        self.results = {}
 
     def on_test_epoch_start(self) -> None:
-        # self.dice_pre.reset()
-        self.dice_post.reset()
-        # self.sd_pre.reset()
-        self.sd_post.reset()
-        # self.hd95_pre.reset()
-        self.hd95_post.reset()
+        for metric in self.metrics.values():
+            metric.reset()
+        self.results = {}
+        # # self.dice_pre.reset()
+        # self.dice_post.reset()
+        # # self.sd_pre.reset()
+        # self.sd_post.reset()
+        # # self.hd95_pre.reset()
+        # self.hd95_post.reset()
 
     def test_step(self, batch, batch_idx, *args, **kwargs):
         seg = batch[DataKey.SEG]
@@ -48,18 +55,24 @@ class BTCVModel(SegModel):
         pred = pred_logit.argmax(dim=1, keepdim=True)
         # pred = self.post_transform(pred[0])
         pred_oh = one_hot(pred, self.args.num_seg_classes)
-        print('interpolate-argmax:', end=' ')
-        for metric in [self.dice_post, self.sd_post, self.hd95_post]:
-            print(metric(pred_oh, seg_oh).nanmean().item(), end='\n' if metric is self.hd95_post else ' ')
+        for k, metric in self.metrics.items():
+            m = metric(pred_oh, seg_oh)
+            print(m.nanmean().item())
 
     def test_epoch_end(self, *args):
-        for phase, dice_metric, sd_metric, hd95_metric in [
-            # ('pre', self.dice_pre, self.hd95_pre, self.sd_pre),
-            ('post', self.dice_post, self.sd_post, self.hd95_post),
-        ]:
-            dice = dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
-            sd = sd_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
-            hd95 = hd95_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
-            self.log(f'test/dice-{phase}/avg', dice.nanmean(), sync_dist=True)
-            self.log(f'test/sd-{phase}/avg', sd.nanmean(), sync_dist=True)
-            self.log(f'test/hd95-{phase}/avg', hd95.nanmean(), sync_dist=True)
+        for k, metric in self.metrics.items():
+            m = metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
+            m = m.nanmean()
+            self.log(f'test/{k}/avg', m, sync_dist=True)
+            self.results[k] = m.item()
+
+        # for phase, dice_metric, sd_metric, hd95_metric in [
+        #     # ('pre', self.dice_pre, self.hd95_pre, self.sd_pre),
+        #     ('post', self.dice_post, self.sd_post, self.hd95_post),
+        # ]:
+        #     dice = dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
+        #     sd = sd_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
+        #     hd95 = hd95_metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
+        #     self.log(f'test/dice-{phase}/avg', dice.nanmean(), sync_dist=True)
+        #     self.log(f'test/sd-{phase}/avg', sd.nanmean(), sync_dist=True)
+        #     self.log(f'test/hd95-{phase}/avg', hd95.nanmean(), sync_dist=True)
