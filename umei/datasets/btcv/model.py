@@ -1,5 +1,6 @@
 from torch.nn import functional as torch_f
 
+from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric, HausdorffDistanceMetric, SurfaceDistanceMetric
 from monai.networks import one_hot
 from monai.utils import MetricReduction
@@ -10,6 +11,14 @@ from umei.utils import DataKey
 class BTCVModel(SegModel):
     def __init__(self, args: BTCVArgs):
         super().__init__(args)
+        self.seg_loss_fn = DiceCELoss(
+            include_background=self.args.include_background,
+            to_onehot_y=True,
+            softmax=True,
+            squared_pred=self.args.squared_dice,
+            smooth_nr=self.args.dice_nr,
+            smooth_dr=self.args.dice_dr,
+        )
 
         # metrics for test
         # self.dice_pre = DiceMetric(include_background=False)
