@@ -322,7 +322,10 @@ class SegModel(UMeI):
         # metric for val
         self.dice_metric = DiceMetric(include_background=True)
 
-    def sw_infer(self, img: torch.Tensor):
+    def sw_infer(self, img: torch.Tensor, progress: bool = None):
+        if progress is None:
+            progress = self.trainer.testing if self._trainer is not None else True
+
         return sliding_window_inference(
             img,
             roi_size=self.args.sample_shape,
@@ -330,7 +333,7 @@ class SegModel(UMeI):
             predictor=self.forward,
             overlap=self.args.sw_overlap,
             mode=self.args.sw_blend_mode,
-            progress=self.trainer.testing if self._trainer is not None else True,
+            progress=progress,
         )
 
     def tta_infer(self, img: torch.Tensor):

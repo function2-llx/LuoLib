@@ -136,7 +136,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
         # so make sure UMeIArgs is inherited last
         # super().__post_init__()
         # self.output_dir = Path(self.output_dir)
-        assert self.train_batch_size % torch.cuda.device_count() == 0
+        assert not self.do_train or self.train_batch_size % torch.cuda.device_count() == 0
         self.per_device_train_batch_size = self.train_batch_size // torch.cuda.device_count()
 
         if self.vit_patch_shape is not None:
