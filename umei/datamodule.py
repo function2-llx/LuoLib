@@ -151,7 +151,7 @@ class CVDataModule(UMeIDataModule):
     def train_data(self):
         return select_cross_validation_folds(
             self.partitions,
-            folds=np.delete(range(self.args.num_folds), self.val_id),
+            folds=np.delete(range(len(self.partitions)), self.val_id),
         )
         # return select_cross_validation_folds(
         #     self.partitions,
