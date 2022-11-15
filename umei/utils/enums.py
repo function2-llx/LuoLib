@@ -6,6 +6,7 @@ class DataSplit(StrEnum):
     TEST = 'test'
 
 class DataKey(StrEnum):
+    CASE = 'case'
     IMG = 'img'
     CLS = 'cls'
     SEG = 'seg'

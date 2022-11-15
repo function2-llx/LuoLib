@@ -88,6 +88,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     resume_log: bool = field(default=True)
     no_resume: bool = field(default=False)
     train_batch_size: int = field(default=2, metadata={'help': 'effective train batch size'})
+    eval_batch_size: int = field(default=1, metadata={'help': 'effective eval batch size'})
     gradient_checkpointing: bool = field(default=True)
 
     @TrainingArguments.n_gpu.getter
@@ -137,7 +138,9 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
         # super().__post_init__()
         # self.output_dir = Path(self.output_dir)
         assert not self.do_train or self.train_batch_size % torch.cuda.device_count() == 0
+        assert not self.do_eval or self.eval_batch_size % torch.cuda.device_count() == 0
         self.per_device_train_batch_size = self.train_batch_size // torch.cuda.device_count()
+        self.per_device_eval_batch_size = self.eval_batch_size // torch.cuda.device_count()
 
         if self.vit_patch_shape is not None:
             for size, patch_size in zip(self.sample_shape, self.vit_patch_shape):
