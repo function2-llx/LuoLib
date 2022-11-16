@@ -336,18 +336,18 @@ class SegModel(UMeI):
             progress=progress,
         )
 
-    def tta_infer(self, img: torch.Tensor):
-        pred_logit = self.sw_infer(img)
+    def tta_infer(self, img: torch.Tensor, progress: bool = None):
+        pred_logit = self.sw_infer(img, progress)
         for flip_idx in self.tta_flips:
             pred_logit += torch.flip(self.sw_infer(torch.flip(img, flip_idx)), flip_idx)
         pred_logit /= len(self.tta_flips) + 1
         return pred_logit
 
-    def infer_logit(self, img: torch.Tensor):
+    def infer_logit(self, img: torch.Tensor, progress: bool = None):
         if self.args.do_tta:
-            return self.tta_infer(img)
+            return self.tta_infer(img, progress)
         else:
-            return self.sw_infer(img)
+            return self.sw_infer(img, progress)
 
     def on_validation_epoch_start(self):
         if self.args.val_empty_cuda_cache:
