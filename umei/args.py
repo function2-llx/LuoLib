@@ -24,8 +24,9 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     output_dir: Path = field(default=None)
     patience: int = field(default=5)
     spatial_dims: int = field(default=3)
-    sample_size: int = field(default=None)
-    sample_slices: int = field(default=None)
+    # sample_size: int = field(default=None)
+    # sample_slices: int = field(default=None)
+    sample_shape: list[int] = field(default=None)
     num_stages: int = field(default=None)
     spacing: list[float] = field(default=None)
     norm_intensity: bool = field(default=False)
@@ -98,13 +99,6 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     @property
     def interpolate(self) -> str:
         return {2: 'bilinear', 3: 'trilinear'}[self.spatial_dims]
-
-    @property
-    def sample_shape(self) -> tuple[int, ...]:
-        if self.spatial_dims == 3:
-            return self.sample_size, self.sample_size, self.sample_slices
-        else:
-            return self.sample_size, self.sample_size
 
     @property
     def precision(self):

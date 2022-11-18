@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Hashable, Sequence
+from functools import cached_property
 from typing import Callable
 
 import numpy as np
@@ -108,7 +109,6 @@ class CVDataModule(UMeIDataModule):
     def __init__(self, args: CVArgs | UMeIArgs):
         super().__init__(args)
         self.val_id = 0
-        self.partitions = self.get_cv_partitions()
 
     # all data for fit (including train & val)
     def fit_data(self) -> tuple[Sequence, Sequence]:
@@ -118,7 +118,8 @@ class CVDataModule(UMeIDataModule):
     def val_id(self) -> int:
         return self._val_id
 
-    def get_cv_partitions(self) -> list[Sequence]:
+    @cached_property
+    def partitions(self):
         fit_data, classes = self.fit_data()
         if classes is None:
             classes = [0] * len(fit_data)
