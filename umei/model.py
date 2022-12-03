@@ -1,7 +1,4 @@
-from __future__ import annotations
-
-from pathlib import Path
-from typing import Optional, Type
+from typing import Optional
 
 from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
 from pytorch_lightning import LightningModule
@@ -19,7 +16,7 @@ from monai.networks import one_hot
 from monai.umei import UDecoderBase, UEncoderBase, UEncoderOutput
 from monai.utils import MetricReduction
 from umei.args import SegArgs, UMeIArgs
-from umei.utils import DataKey, DataSplit
+from umei.utils import DataKey
 
 def filter_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict:
     return {
@@ -32,7 +29,7 @@ class UMeI(LightningModule):
     cls_loss_fn: nn.Module
     seg_loss_fn: nn.Module
 
-    def __init__(self, args: UMeIArgs, *, has_decoder: bool):
+    def __init__(self, args: UMeIArgs, **kwargs):
         super().__init__()
         self.args = args
         self.encoder = self.build_encoder()
@@ -40,15 +37,11 @@ class UMeI(LightningModule):
             self.encoder.eval()
             dummy_input = torch.zeros(1, args.num_input_channels, *args.sample_shape)
             dummy_encoder_output = self.encoder.forward(dummy_input)
-            encoder_feature_sizes = [feature.shape[1] for feature in dummy_encoder_output.hidden_states]
         if self.args.num_cls_classes is not None:
-            encoder_cls_feature_size = dummy_encoder_output.cls_feature.shape[1]
-            self.cls_head = nn.Linear(encoder_cls_feature_size + args.clinical_feature_size, args.num_cls_classes)
-            nn.init.constant_(torch.as_tensor(self.cls_head.bias), 0)
+            self.cls_head = self.build_cls_head(dummy_encoder_output)
 
-        self.decoder = None
-        if has_decoder:
-            self.decoder = self.build_decoder(encoder_feature_sizes)
+        self.decoder = self.build_decoder()
+        if self.decoder is not None:
             with torch.no_grad():
                 dummy_decoder_output = self.decoder.forward(dummy_encoder_output.hidden_states, dummy_input)
                 decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
@@ -66,6 +59,12 @@ class UMeI(LightningModule):
             self.tta_flips = [[2], [3], [2, 3]]
         else:
             self.tta_flips = [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
+
+    def build_cls_head(self, dummy_encoder_output: UEncoderOutput):
+        encoder_cls_feature_size = dummy_encoder_output.cls_feature.shape[1]
+        cls_head = nn.Linear(encoder_cls_feature_size + self.args.clinical_feature_size, self.args.num_cls_classes)
+        nn.init.constant_(torch.as_tensor(cls_head.bias), 0)
+        return cls_head
 
     def build_encoder(self) -> UEncoderBase:
         if self.args.encoder == 'resnet':
@@ -160,7 +159,7 @@ class UMeI(LightningModule):
         else:
             raise ValueError(f'not supported encoder: {self.args.encoder}')
 
-    def build_decoder(self, _) -> UDecoderBase:
+    def build_decoder(self, *args) -> Optional[UDecoderBase]:
         if self.args.decoder == 'sunetr':
             if self.args.umei_impl:
                 from umei.models.swin_unetr_decoder import SwinUnetrDecoder
