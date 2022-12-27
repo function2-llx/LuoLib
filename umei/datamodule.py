@@ -1,10 +1,9 @@
-from __future__ import annotations
-
 from collections.abc import Hashable, Sequence
 from functools import cached_property
 from typing import Callable
 
 import numpy as np
+from torch.utils.data import Dataset as TorchDataset
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
@@ -56,52 +55,28 @@ class UMeIDataModule(LightningDataModule):
             persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
         )
 
-    def val_dataloader(self):
-        val_data = self.val_data()
-        # if isinstance(val_data, dict):
-        #     return CombinedLoader(
-        #         loaders={
-        #             split: DataLoader(
-        #                 dataset=CacheDataset(
-        #                     data,
-        #                     transform=self.val_transform,
-        #                     cache_num=self.args.val_cache_num,
-        #                     num_workers=self.args.dataloader_num_workers,
-        #                 ),
-        #                 num_workers=self.args.dataloader_num_workers,
-        #                 batch_size=self.args.per_device_eval_batch_size,
-        #                 pin_memory=True,
-        #                 persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
-        #             )
-        #             for split, data in self.val_data().items()
-        #         },
-        #         mode='max_size_cycle',
-        #     )
-        # else:
+    def build_eval_dataloader(self, dataset: TorchDataset):
         return DataLoader(
-            dataset=CacheDataset(
-                val_data,
-                transform=self.val_transform,
-                cache_num=self.args.val_cache_num,
-                num_workers=self.args.dataloader_num_workers,
-            ),
+            dataset,
             num_workers=self.args.dataloader_num_workers,
             batch_size=self.args.per_device_eval_batch_size,
             pin_memory=True,
             persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
         )
 
-    def test_dataloader(self):
-        return DataLoader(
-            dataset=Dataset(
-                self.test_data(),
-                transform=self.test_transform,
-            ),
+    def val_dataloader(self):
+        return self.build_eval_dataloader(CacheDataset(
+            self.val_data(),
+            transform=self.val_transform,
+            cache_num=self.args.val_cache_num,
             num_workers=self.args.dataloader_num_workers,
-            batch_size=self.args.per_device_eval_batch_size,
-            pin_memory=True,
-            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
-        )
+        ))
+
+    def test_dataloader(self):
+        return self.build_eval_dataloader(Dataset(
+            self.test_data(),
+            transform=self.test_transform,
+        ))
 
 class CVDataModule(UMeIDataModule):
     args: CVArgs | UMeIArgs
@@ -118,6 +93,11 @@ class CVDataModule(UMeIDataModule):
     def val_id(self) -> int:
         return self._val_id
 
+    @val_id.setter
+    def val_id(self, x: int):
+        assert x in range(self.args.num_folds)
+        self._val_id = x
+
     @cached_property
     def partitions(self):
         fit_data, classes = self.fit_data()
@@ -131,51 +111,14 @@ class CVDataModule(UMeIDataModule):
             seed=self.args.seed,
         )
 
-    @val_id.setter
-    def val_id(self, x: int):
-        assert x in range(self.args.num_folds)
-        self._val_id = x
-        # assert x in range(self.num_cv_folds)
-        # self._val_id = x
-
-    # @property
-    # def num_cv_folds(self) -> int:
-    #     return self.args.num_folds - self.args.use_test_fold
-
-    # @property
-    # def val_parts(self) -> dict[str, int]:
-    #     ret = {DataSplit.VAL: self.val_id}
-    #     if self.args.use_test_fold:
-    #         ret[DataSplit.TEST] = self.args.num_folds - 1
-    #     return ret
-
     def train_data(self):
         return select_cross_validation_folds(
             self.partitions,
             folds=np.delete(range(len(self.partitions)), self.val_id),
         )
-        # return select_cross_validation_folds(
-        #     self.partitions,
-        #     folds=np.delete(range(self.num_cv_folds), self.val_id),
-        # )
 
     def val_data(self):
         return select_cross_validation_folds(self.partitions, folds=self.val_id)
-        # val_ids = list(self.val_parts.values())
-        # if not all(
-        #     len(self.partitions[val_ids[0]]) == len(self.partitions[val_ids[i]])
-        #     for i in range(1, len(val_ids))
-        # ):
-        #     import warnings
-        #     warnings.warn(f'length of val{self.val_id} and test folds are not equal')
-        #
-        # return {
-        #     split: select_cross_validation_folds(
-        #         self.partitions,
-        #         folds=part_id,
-        #     )
-        #     for split, part_id in self.val_parts.items()
-        # }
 
 class SegDataModule(UMeIDataModule):
     args: UMeIArgs | SegArgs | AugArgs

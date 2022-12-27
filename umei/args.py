@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from dataclasses import dataclass, field
 import multiprocessing
 from pathlib import Path
@@ -132,8 +130,8 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
         # super().__post_init__()
         # self.output_dir = Path(self.output_dir)
         assert not self.do_train or self.train_batch_size % torch.cuda.device_count() == 0
-        assert not self.do_eval or self.eval_batch_size % torch.cuda.device_count() == 0
         self.per_device_train_batch_size = self.train_batch_size // torch.cuda.device_count()
+        assert not self.do_eval or self.eval_batch_size % torch.cuda.device_count() == 0
         self.per_device_eval_batch_size = self.eval_batch_size // torch.cuda.device_count()
 
         if self.vit_patch_shape is not None:

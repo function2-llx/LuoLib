@@ -298,6 +298,7 @@ class UMeI(LightningModule):
         return {
             'optimizer': optimizer,
             'lr_scheduler': self.get_lr_scheduler(optimizer),
+            'monitor': self.args.monitor,
         }
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
