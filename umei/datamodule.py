@@ -46,7 +46,7 @@ class UMeIDataModule(LightningDataModule):
                 self.train_data(),
                 transform=self.train_transform,
                 cache_num=self.args.train_cache_num,
-                num_workers=self.args.dataloader_num_workers,
+                num_workers=self.args.cache_dataset_workers,
             ),
             batch_size=self.args.per_device_train_batch_size,
             shuffle=True,
@@ -69,7 +69,7 @@ class UMeIDataModule(LightningDataModule):
             self.val_data(),
             transform=self.val_transform,
             cache_num=self.args.val_cache_num,
-            num_workers=self.args.dataloader_num_workers,
+            num_workers=self.args.cache_dataset_workers,
         ))
 
     def test_dataloader(self):
