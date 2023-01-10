@@ -1,6 +1,5 @@
 from typing import Optional
 
-from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
@@ -281,6 +280,8 @@ class UMeI(LightningModule):
         return optimizer
 
     def get_lr_scheduler(self, optimizer):
+        from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
+
         if self.args.warmup_epochs:
             return LinearWarmupCosineAnnealingLR(
                 optimizer,
