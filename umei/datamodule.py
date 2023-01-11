@@ -51,7 +51,7 @@ class UMeIDataModule(LightningDataModule):
             batch_size=self.args.per_device_train_batch_size,
             shuffle=True,
             num_workers=self.args.dataloader_num_workers,
-            pin_memory=True,
+            pin_memory=self.args.dataloader_pin_memory,
             persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
         )
 
@@ -60,7 +60,7 @@ class UMeIDataModule(LightningDataModule):
             dataset,
             num_workers=self.args.dataloader_num_workers,
             batch_size=self.args.per_device_eval_batch_size,
-            pin_memory=True,
+            pin_memory=self.args.dataloader_pin_memory,
             persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
         )
 

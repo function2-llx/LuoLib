@@ -59,6 +59,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     amp: bool = field(default=True)
     cache_dataset_workers: int = field(default=1)
     dataloader_num_workers: int = field(default=3)
+    # dataloader_pin_memory: bool = field(default=False)
     monitor: str = field(default=None)
     monitor_mode: str = field(default=None)
     lr_reduce_factor: float = field(default=0.2)
