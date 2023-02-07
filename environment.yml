@@ -1,31 +1,29 @@
 channels:
   - conda-forge
 dependencies:
-  - python=3.9.13
-  - ruamel.yaml=0.17.21
-  - numpy=1.23.1
-  - einops=0.4.1
-  - pytorch::pytorch=1.12.1
-  - cudatoolkit=11.6
-  - pytorch::torchvision=0.13.1
-  - pytorch-lightning=1.7.0
-  - lightning-bolts=0.5.0
-  - torchmetrics=0.9.3
-  - transformers=4.21.0
-  - wandb=0.13.1
-  - scikit-learn=1.1.1
-  - pandas=1.4.3
-  - openpyxl=3.0.9
-  - matplotlib=3.5.2
-  - nibabel=4.0.1
+  - python=3.10.8
+  - ruamel.yaml
+  - numpy
+  - einops
+  - pytorch::pytorch=1.13.1
+  - nvidia::cudatoolkit=11.7
+  - pytorch::torchvision=0.14.1
+  - wandb
+  - scikit-learn
+  - pandas
+  - openpyxl
+  - matplotlib
+  - nibabel
+  - simpleitk
 
-  # work around for: https://github.com/SimpleITK/SimpleITK/issues/1433, waiting for ITK 5.3
-  - SimpleITK::SimpleITK=2.0.2
-
-  - pip=22.2.2
+  - pip
   - pip:
-    - itk==5.2.1.post1
-    - evalutils==0.3.1
+    - itk
+    - evalutils
+    - pytorch-lightning
+    - torchmetrics
+    - lightning-bolts
+    - transformers
 #    - timm==0.6.7
 #    - git+https://github.com/JoHof/lungmask
     - -e third-party/MONAI

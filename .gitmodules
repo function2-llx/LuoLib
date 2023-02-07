@@ -1,15 +1,6 @@
 [submodule "third-party/MONAI"]
 	path = third-party/MONAI
 	url = git@github.com:function2-llx/MONAI.git
-[submodule "umei/datasets/picai/eval"]
-	path = umei/datasets/picai/eval
-	url = git@github.com:DIAGNijmegen/picai_eval.git
-[submodule "umei/datasets/picai/labels"]
-	path = umei/datasets/picai/labels
-	url = git@github.com:DIAGNijmegen/picai_labels.git
-[submodule "umei/datasets/picai/prep"]
-	path = umei/datasets/picai/prep
-	url = git@github.com:DIAGNijmegen/picai_prep.git
 [submodule "third-party/nnUNet"]
 	path = third-party/nnUNet
 	url = git@github.com:MIC-DKFZ/nnUNet.git
