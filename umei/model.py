@@ -12,7 +12,7 @@ from monai.inferers import sliding_window_inference
 from monai.losses import DiceFocalLoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
-from monai.umei import UDecoderBase, UEncoderBase, UEncoderOutput
+from monai.umei import UDecoderBase, UEncoderBase, BackboneOutput
 from monai.utils import MetricReduction
 from umei.args import SegArgs, UMeIArgs
 from umei.utils import DataKey
@@ -59,7 +59,7 @@ class UMeI(LightningModule):
         else:
             self.tta_flips = [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
 
-    def build_cls_head(self, dummy_encoder_output: UEncoderOutput):
+    def build_cls_head(self, dummy_encoder_output: BackboneOutput):
         encoder_cls_feature_size = dummy_encoder_output.cls_feature.shape[1]
         cls_head = nn.Linear(encoder_cls_feature_size + self.args.clinical_feature_size, self.args.num_cls_classes)
         nn.init.constant_(torch.as_tensor(cls_head.bias), 0)
@@ -111,7 +111,7 @@ class UMeI(LightningModule):
             )
         elif self.args.encoder == 'swt':
             if self.args.umei_impl:
-                from umei.models.swin import SwinTransformer
+                from umei.models.swin_monai import SwinTransformer
                 model = SwinTransformer(
                     in_chans=self.args.num_input_channels,
                     embed_dim=self.args.base_feature_size,
@@ -202,7 +202,7 @@ class UMeI(LightningModule):
 
     def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
         img = batch[DataKey.IMG]
-        encoder_out: UEncoderOutput = self.encoder(img)
+        encoder_out: BackboneOutput = self.encoder(img)
         ret = {'loss': torch.tensor(0., device=self.device)}
         if DataKey.CLS in batch:
             cls_feature = encoder_out.cls_feature

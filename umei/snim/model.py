@@ -16,7 +16,7 @@ from monai.data import MetaTensor
 from monai.networks.blocks import Convolution, ResidualUnit
 from monai.networks.layers import Act, Norm
 from monai.utils import ImageMetaKey
-from umei.models.swin import SwinTransformer
+from umei.models.swin_monai import SwinTransformer
 from ..models.layernorm import LayerNormNd
 from .args import MaskValue, SnimArgs
 from .utils import channel_first, channel_last, patchify, unpatchify

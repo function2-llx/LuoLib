@@ -1,1 +1,1 @@
-from .layernorm import LayerNormNd
+from .layers import LayerNormNd

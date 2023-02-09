@@ -7,7 +7,7 @@ import torchmetrics
 
 from umei import UMeI
 from .args import Stoic2021Args
-from monai.umei import UEncoderBase, UEncoderOutput
+from monai.umei import UEncoderBase, BackboneOutput
 
 class Stoic2021Model(UMeI):
     args: Stoic2021Args
@@ -66,7 +66,7 @@ class Stoic2021Model(UMeI):
         return splits_output
 
     def predict_step(self, batch: dict[str, torch.Tensor], *args, **kwargs):
-        encoder_out: UEncoderOutput = self.encoder(batch[self.args.img_key])
+        encoder_out: BackboneOutput = self.encoder(batch[self.args.img_key])
         cls_logit = self.cls_head(torch.cat((encoder_out.cls_feature, batch[self.args.clinical_key]), dim=1))
         pred = F.softmax(cls_logit, dim=1)
         return {

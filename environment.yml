@@ -1,13 +1,16 @@
 channels:
   - conda-forge
+  - pytorch
+  - nvidia
 dependencies:
-  - python=3.10.8
+  - python=3.10
   - ruamel.yaml
   - numpy
   - einops
   - pytorch::pytorch=1.13.1
-  - nvidia::cudatoolkit=11.7
   - pytorch::torchvision=0.14.1
+  - pytorch::pytorch-cuda=11.7
+  - timm
   - wandb
   - scikit-learn
   - pandas
@@ -24,7 +27,6 @@ dependencies:
     - torchmetrics
     - lightning-bolts
     - transformers
-#    - timm==0.6.7
 #    - git+https://github.com/JoHof/lungmask
     - -e third-party/MONAI
     - -e third-party/nnUNet
