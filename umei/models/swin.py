@@ -91,7 +91,7 @@ class WindowAttention(nn.Module):
         trunc_normal_(self.relative_position_bias_table, std=0.02)
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x: torch.Tensor, mask: torch.BoolTensor):
+    def forward(self, x: torch.Tensor, mask: torch.BoolTensor | None):
         qkv = rearrange(self.qkv(x), 'n l (qkv nh ch) -> qkv n nh l ch', qkv=3, nh=self.num_heads)
         q, k, v = qkv[0], qkv[1], qkv[2]
         q = q * self.scale
@@ -103,10 +103,11 @@ class WindowAttention(nn.Module):
         )
         attn = attn + relative_position_bias[None]
 
-        attn_view = rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])
-        assert attn.data_ptr() == attn_view.data_ptr()
-        attn_view[~mask] = -torch.inf
-        # rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])[mask] = -torch.inf
+        if mask is not None:
+            attn_view = rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])
+            assert attn.data_ptr() == attn_view.data_ptr()
+            attn_view[~mask] = -torch.inf
+            # rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])[mask] = -torch.inf
 
         attn = self.softmax(attn)
         attn = self.attn_drop(attn).to(v.dtype)
@@ -278,8 +279,11 @@ class SwinLayer(nn.Module):
         x = torch_f.pad(x, tuple(np.ravel([np.zeros_like(pad_size), np.flip(pad_size)], 'F')))
 
         img_mask = torch.zeros(x.shape[2:], dtype=torch.int32, device=x.device)
-        img_mask[tuple(map(slice, spatial_shape))] = 1
-        attn_mask = compute_attn_mask(img_mask, window_size)
+        if np.any(pad_size):
+            img_mask[tuple(map(slice, spatial_shape))] = 1
+            attn_mask = compute_attn_mask(img_mask, window_size)
+        else:
+            attn_mask = None
 
         shift_size = np.where(window_size < spatial_shape, self.shift_size, 0)    # type: ignore
         for i, slices in enumerate(
@@ -327,6 +331,10 @@ class SwinBackbone(Backbone):
         attn_drop_rate: float = 0.0,
         drop_path_rate: float = 0.0,
         use_checkpoint: bool = False,
+        *,
+        downsample_layers: int,
+        stem_kernel: int = 3,
+        stem_stride: int = 1,
     ) -> None:
         """
         Args:
@@ -350,9 +358,11 @@ class SwinBackbone(Backbone):
         self.stem = get_conv_layer(
             in_channels,
             layer_channels[0],
-            kernel_sizes[0],
-            stride=1,
+            stem_kernel,
+            stride=stem_stride,
+            act=None,
         )
+
         layer_drop_path_rates = np.split(
             np.linspace(0, drop_path_rate, sum(layer_depths)),
             np.cumsum(layer_depths[:-1]),
@@ -385,10 +395,30 @@ class SwinBackbone(Backbone):
             )
             for i in range(num_layers)
         ])
+        # self.downsamplings = nn.ModuleList([
+        #     AdaptiveDownsampling(
+        #         layer_channels[i],  # in
+        #         layer_channels[i + 1],  # out
+        #     )
+        #     for i in range(num_layers - 1)
+        # ])
+        dk = 2
         self.downsamplings = nn.ModuleList([
-            AdaptiveDownsampling(
-                layer_channels[i],  # in
-                layer_channels[i + 1],  # out
+            get_conv_layer(
+                layer_channels[i],
+                layer_channels[i + 1],
+                kernel_size=(dk, dk, 1),
+                stride=(2, 2, 1),
+                norm=None,
+                act=None,
+            ) if i < downsample_layers
+            else get_conv_layer(
+                layer_channels[i],
+                layer_channels[i + 1],
+                kernel_size=dk,
+                stride=2,
+                norm=None,
+                act=None,
             )
             for i in range(num_layers - 1)
         ])

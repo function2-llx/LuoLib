@@ -1,4 +1,4 @@
-#num_folds: 5
+num_folds: 5
 #sample_slices: 192
 #sample_size: 192
 sample_shape: [192, 192, 48]
@@ -18,7 +18,7 @@ decoder: conv
 num_seg_heads: 3
 train_batch_size: 2
 num_crop_samples: 2
-learning_rate: 2e-4
+learning_rate: 1e-2
 weight_decay: 1e-5
 num_train_epochs: 5000
 warmup_epochs: 0

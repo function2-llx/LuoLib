@@ -143,7 +143,9 @@ class SwinTransformer(Backbone):
     def forward_layers(self, x: torch.Tensor) -> list[torch.Tensor]:
         hidden_states = []
         for layer, norm in zip(self.layers, self.norms):
-            z, z_ds = layer(x)
+            z = layer(x)
+            if isinstance(z, tuple):
+                z, z_ds = z
             z = channel_last(z)
             z = norm(z)
             z = channel_first(z)
@@ -158,8 +160,8 @@ class SwinTransformer(Backbone):
     def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
         x = self.patch_embed(x)
         x = self.pos_drop(x)
-        hidden_states = self.forward_layers(x)
+        feature_maps = self.forward_layers(x)
         return BackboneOutput(
-            cls_feature=self.pool_hidden_states(hidden_states),
-            hidden_states=hidden_states,
+            cls_feature=self.pool_hidden_states(feature_maps),
+            feature_maps=feature_maps,
         )

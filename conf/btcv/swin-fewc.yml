@@ -1,18 +1,16 @@
-#num_folds: 5
-sample_size: 96
-sample_slices: 96
-encoder: swt
-base_feature_size: 12
-vit_depths: [2, 2, 6, 2]
-vit_num_heads: [3, 6, 12, 24]
-vit_patch_shape: [2, 2, 2]
-swin_window_size: [6, 6, 6]
-decoder: sunetr
+sample_shape: [96, 96, 96]
+backbone: swin
+num_conv_layers: 1
+layer_channels: [24, 48, 96, 192, 384]
+layer_depths: [1, 2, 2, 6, 2]
+num_heads: [1, 3, 6, 12, 24]
+kernel_sizes: [3, 6, 6, 6, 6]
+decoder: conv
 train_batch_size: 1
 num_crop_samples: 4
 learning_rate: 2e-4
 weight_decay: 1e-5
-num_train_epochs: 3000
+num_train_epochs: 5000
 warmup_epochs: 100
 num_seg_heads: 1
 spacing: [1.5, 1.5, 2]

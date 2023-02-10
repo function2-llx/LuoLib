@@ -1,5 +1,6 @@
 from typing import Optional
 
+import numpy as np
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
@@ -39,7 +40,6 @@ class UMeI(LightningModule):
             dummy_encoder_output = self.encoder.forward(dummy_input)
         if self.args.num_cls_classes is not None:
             self.cls_head = self.build_cls_head(dummy_encoder_output)
-
         self.decoder = self.build_decoder()
         if self.decoder is not None:
             with torch.no_grad():
@@ -170,6 +170,7 @@ class UMeI(LightningModule):
                     args.num_heads,
                     drop_path_rate=args.drop_path_rate,
                     use_checkpoint=args.gradient_checkpointing,
+                    downsample_layers=int(np.log2(args.sample_shape[0] // args.sample_shape[-1])),
                 )
                 return model
             case _:
@@ -217,7 +218,7 @@ class UMeI(LightningModule):
             case 'conv':
                 from umei.models.decoders.plain_conv_unet import PlainConvUNetDecoder
                 args = self.args
-                model = PlainConvUNetDecoder(args.layer_channels)
+                model = PlainConvUNetDecoder(args.layer_channels, upsample_layers=np.log2(args.sample_shape[0] // args.sample_shape[-1]))
                 return model
             case _:
                 raise ValueError(f'not supported decoder: {self.args.decoder}')

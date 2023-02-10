@@ -25,7 +25,7 @@ scale_p: 0
 shift_p: 0.5
 crop: pn
 squared_dice: false
-dice_include_background: true
+include_background: true
 dice_nr: 1e-5
 dice_dr: 1e-5
 vit_conv_stem: True

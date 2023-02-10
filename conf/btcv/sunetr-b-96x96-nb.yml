@@ -1,10 +1,11 @@
 #num_folds: 5
-sample_size: 96
-sample_slices: 96
-encoder: swt
-base_feature_size: 12
+# sample_size: 96
+# sample_slices: 96
+sample_shape: [96, 96, 96]
+backbone: swt
+base_feature_size: 48
 vit_depths: [2, 2, 6, 2]
-vit_num_heads: [3, 6, 12, 24]
+num_heads: [3, 6, 12, 24]
 vit_patch_shape: [2, 2, 2]
 swin_window_size: [6, 6, 6]
 decoder: sunetr
@@ -25,6 +26,6 @@ scale_p: 0
 shift_p: 0.5
 crop: pn
 squared_dice: false
-include_background: true
+include_background: false
 dice_nr: 1e-5
 dice_dr: 1e-5

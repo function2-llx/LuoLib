@@ -20,6 +20,6 @@ a_max: 250
 optimizer_set_to_none: true
 crop: cls
 squared_dice: true
-dice_include_background: false
+include_background: false
 dice_nr: 1e-5
 dice_dr: 1e-5

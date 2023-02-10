@@ -20,7 +20,7 @@ a_max: 250
 optimizer_set_to_none: true
 crop: cls
 squared_dice: false
-dice_include_background: true
+include_background: true
 dice_nr: 1e-5
 dice_dr: 1e-5
 pretrain_path: pretrained/Swin-UNETR/model_swinvit.pt
