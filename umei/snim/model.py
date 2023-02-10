@@ -29,7 +29,7 @@ class SnimEncoder(SwinTransformer):
             window_size=args.swin_window_size,
             patch_size=args.vit_patch_shape,
             depths=args.vit_depths,
-            num_heads=args.vit_num_heads,
+            num_heads=args.num_heads,
             use_checkpoint=True,
             conv_stem=args.vit_conv_stem,
         )

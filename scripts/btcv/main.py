@@ -4,10 +4,7 @@ from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
 
-from nnunet.run import run_training
-
 from umei.datasets.btcv import BTCVArgs, BTCVDataModule
-from umei import SegModel
 from umei.datasets.btcv.model import BTCVModel
 from umei.utils import MyWandbLogger, UMeIParser
 
@@ -16,6 +13,7 @@ task_name = 'btcv'
 def main():
     parser = UMeIParser((BTCVArgs, ), use_conf=True)
     args: BTCVArgs = parser.parse_args_into_dataclasses()[0]
+
     if args.pretrain_path is None:
         ft_suffix = 'scratch'
     else:
@@ -28,6 +26,7 @@ def main():
     ft_suffix += f'-{int(args.num_train_epochs)}ep-{int(args.warmup_epochs)}wu'
     ft_suffix += f'/data{args.data_ratio}'
     args.output_dir /= ft_suffix
+
     print(args)
     pl.seed_everything(args.seed)
     datamodule = BTCVDataModule(args)

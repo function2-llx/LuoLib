@@ -12,9 +12,9 @@ class AdaptiveDownsampling(nn.Conv3d):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: int = 3,
+        kernel_size: int = 2,
         groups: int = 1,
-        bias: bool = True,
+        bias: bool = False,
     ):
         super().__init__(
             in_channels,
@@ -26,10 +26,10 @@ class AdaptiveDownsampling(nn.Conv3d):
             bias=bias,
         )
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, bool]:
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         spatial_shape = x.shape[2:]
         if spatial_shape[-1] * 2 > spatial_shape[0]:
-            return super().forward(x), True
+            return super().forward(x)
         d = x.shape[-1]
         x = rearrange(x, 'n c h w d -> (n d) c h w')
         x = torch_f.conv2d(
@@ -40,7 +40,7 @@ class AdaptiveDownsampling(nn.Conv3d):
             self.padding[:-1],
             groups=self.groups,
         )
-        return rearrange(x, '(n d) c h w -> n c h w d', d=d), False
+        return rearrange(x, '(n d) c h w -> n c h w d', d=d)
 
 class AdaptiveUpsampling(nn.ConvTranspose3d):
     STRIDE = AdaptiveDownsampling.STRIDE
@@ -49,9 +49,9 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: int = 3,
+        kernel_size: int = 2,
         groups: int = 1,
-        bias: bool = True,
+        bias: bool = False,
     ):
         super().__init__(
             in_channels,
@@ -67,7 +67,7 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
     def forward(self, x: torch.Tensor, upsample_z: bool):   # noqa
         if upsample_z:
             return super().forward(x)
-        d = x.shape[-1]
+        batch_size = x.shape[0]
         x = rearrange(x, 'n c h w d -> (n d) c h w')
         x = torch_f.conv_transpose2d(
             x,
@@ -78,4 +78,4 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
             self.output_padding[:-1],
             self.groups,
         )
-        return rearrange(x, '(n d) c h w -> n c h w d', d=d)
+        return rearrange(x, '(n d) c h w -> n c h w d', n=batch_size)

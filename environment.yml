@@ -24,6 +24,7 @@ dependencies:
     - itk
     - evalutils
     - pytorch-lightning
+    - lightning-bolts
     - torchmetrics
     - lightning-bolts
     - transformers

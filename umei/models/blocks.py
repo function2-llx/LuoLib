@@ -45,7 +45,8 @@ def get_conv_layer(
 class ResBasicBlock(nn.Module):
     def __init__(
         self,
-        channels: int,
+        in_channels: int,
+        out_channels: int,
         kernel_size: Sequence[int] | int,
         dropout: tuple | str | float | None = None,
         norm: tuple | str = Norm.LAYERND,
@@ -54,26 +55,37 @@ class ResBasicBlock(nn.Module):
     ):
         super().__init__()
         self.conv1 = get_conv_layer(
-            channels,
-            channels,
+            in_channels,
+            out_channels,
             kernel_size,
             dropout=dropout,
             norm=norm,
             act=act,
         )
         self.conv2 = get_conv_layer(
-            channels,
-            channels,
+            out_channels,
+            out_channels,
             kernel_size,
             dropout=dropout,
             norm=norm,
             act=None,
         )
+        if in_channels != out_channels:
+            self.res = get_conv_layer(
+                in_channels,
+                out_channels,
+                kernel_size=1,
+                dropout=dropout,
+                norm=norm,
+                act=None,
+            )
+        else:
+            self.res = nn.Identity()
         self.act2 = get_act_layer(act)
         self.drop_path = DropPath(drop_path)
 
     def forward(self, x):
-        res = x
+        res = self.res(x)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.drop_path(x) + res
@@ -84,20 +96,25 @@ class ResLayer(nn.Module):
     def __init__(
         self,
         num_blocks: int,
-        channels: int,
+        in_channels: int,
+        out_channels: int,
         kernel_size: Sequence[int] | int,
         dropout: tuple | str | float | None = None,
         norm: tuple | str = Norm.LAYERND,
         act: tuple | str = Act.GELU,
-        drop_path: list[float] = None,
+        drop_paths: float | Sequence[float] = 0.
     ):
         super().__init__()
-        if drop_path is None:
-            drop_path = [0.] * num_blocks
-        self.blocks = nn.Sequential(*[
-            ResBasicBlock(channels, kernel_size, dropout, norm, act, drop_path=dp)
-            for dp in drop_path
-        ])
+        if isinstance(drop_paths, float):
+            drop_paths = [drop_paths] * num_blocks
+        assert len(drop_paths) == num_blocks
+        self.blocks = nn.Sequential(
+            ResBasicBlock(in_channels, out_channels, kernel_size, dropout, norm, act, drop_paths[0]),
+            *[
+                ResBasicBlock(out_channels, out_channels, kernel_size, dropout, norm, act, drop_path)
+                for drop_path in drop_paths[1:]
+            ],
+        )
 
     def forward(self, x: torch.Tensor):
         return self.blocks(x)

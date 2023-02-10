@@ -12,8 +12,9 @@ from monai.inferers import sliding_window_inference
 from monai.losses import DiceFocalLoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
-from monai.umei import UDecoderBase, UEncoderBase, BackboneOutput
+from monai.umei import Decoder, Backbone, BackboneOutput
 from monai.utils import MetricReduction
+
 from umei.args import SegArgs, UMeIArgs
 from umei.utils import DataKey
 
@@ -42,7 +43,7 @@ class UMeI(LightningModule):
         self.decoder = self.build_decoder()
         if self.decoder is not None:
             with torch.no_grad():
-                dummy_decoder_output = self.decoder.forward(dummy_encoder_output.hidden_states, dummy_input)
+                dummy_decoder_output = self.decoder.forward(dummy_encoder_output.feature_maps, dummy_input)
                 decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
             from monai.networks.blocks import UnetOutBlock
             # i-th seg head for the last i-th output from decoder
@@ -65,140 +66,161 @@ class UMeI(LightningModule):
         nn.init.constant_(torch.as_tensor(cls_head.bias), 0)
         return cls_head
 
-    def build_encoder(self) -> UEncoderBase:
-        if self.args.encoder == 'resnet':
-            from monai.networks import nets
-            resnet_builder = getattr(nets, f'resnet{self.args.model_depth}')
-            model: nn.Module = resnet_builder(
-                n_input_channels=self.args.num_input_channels,
-                feed_forward=False,
-                conv1_t_size=self.args.resnet_conv1_size,
-                conv1_t_stride=self.args.resnet_conv1_stride,
-                layer1_stride=self.args.resnet_layer1_stride,
-                shortcut_type=self.args.resnet_shortcut,
-            )
-
-            if self.args.pretrain_path is not None:
-                # assume pre-trained weights are from https://github.com/Tencent/MedicalNet
-                dp_model = nn.DataParallel(model)
-                state_dict = dp_model.state_dict()
-                pretrain_state_dict = torch.load(self.args.pretrain_path, map_location='cpu')['state_dict']
-                state_dict.update({
-                    k: v for k, v in pretrain_state_dict.items()
-                    if k in state_dict and k != 'module.conv1.weight'
-                })
-                dp_model.load_state_dict(state_dict)
-                model: nets.ResNet = dp_model.module  # type: ignore
-
-                # handle number of input channels that is possible different from the pre-trained model
-                for attr in ['weight', 'bias']:
-                    param: Optional[nn.Parameter] = getattr(model.conv1, attr, None)
-                    pretrain_param_data: Optional[torch.Tensor] = getattr(pretrain_state_dict,
-                                                                          f'module.conv1.{attr}',
-                                                                          None)
-                    if param is not None and pretrain_param_data is not None:
-                        param.data = pretrain_param_data.repeat(1, self.args.num_input_channels)
-                print(f'load pre-trained med-3d weights from {self.args.pretrain_path}')
-            return model
-        elif self.args.encoder == 'vit':
-            from monai.networks.nets import ViT
-            return ViT(
-                in_channels=self.args.num_input_channels,
-                img_size=self.args.sample_shape,
-                patch_size=self.args.vit_patch_shape,
-                hidden_size=self.args.vit_hidden_size,
-                classification=False,
-            )
-        elif self.args.encoder == 'swt':
-            if self.args.umei_impl:
-                from umei.models.swin_monai import SwinTransformer
-                model = SwinTransformer(
-                    in_chans=self.args.num_input_channels,
-                    embed_dim=self.args.base_feature_size,
-                    window_size=self.args.swin_window_size,
-                    patch_size=self.args.vit_patch_shape,
-                    depths=self.args.vit_depths,
-                    num_heads=self.args.vit_num_heads,
-                    use_checkpoint=True,
-                    conv_stem=self.args.vit_conv_stem,
+    # TODO: refactor these following mmseg
+    def build_encoder(self) -> Backbone:
+        match self.args.backbone:
+            case 'resnet':
+                from monai.networks import nets
+                resnet_builder = getattr(nets, f'resnet{self.args.model_depth}')
+                model: nn.Module = resnet_builder(
+                    n_input_channels=self.args.num_input_channels,
+                    feed_forward=False,
+                    conv1_t_size=self.args.resnet_conv1_size,
+                    conv1_t_stride=self.args.resnet_conv1_stride,
+                    layer1_stride=self.args.resnet_layer1_stride,
+                    shortcut_type=self.args.resnet_shortcut,
                 )
+
                 if self.args.pretrain_path is not None:
-                    if not self.args.pretrain_path.exists():
-                        print(f'warning: {self.args.pretrain_path} not found')
-                    else:
-                        state_dict = filter_state_dict(torch.load(self.args.pretrain_path)["state_dict"], 'encoder')
+                    # assume pre-trained weights are from https://github.com/Tencent/MedicalNet
+                    dp_model = nn.DataParallel(model)
+                    state_dict = dp_model.state_dict()
+                    pretrain_state_dict = torch.load(self.args.pretrain_path, map_location='cpu')['state_dict']
+                    state_dict.update({
+                        k: v for k, v in pretrain_state_dict.items()
+                        if k in state_dict and k != 'module.conv1.weight'
+                    })
+                    dp_model.load_state_dict(state_dict)
+                    model: nets.ResNet = dp_model.module  # type: ignore
+
+                    # handle number of input channels that is possible different from the pre-trained model
+                    for attr in ['weight', 'bias']:
+                        param: Optional[nn.Parameter] = getattr(model.conv1, attr, None)
+                        pretrain_param_data: Optional[torch.Tensor] = getattr(pretrain_state_dict,
+                                                                              f'module.conv1.{attr}',
+                                                                              None)
+                        if param is not None and pretrain_param_data is not None:
+                            param.data = pretrain_param_data.repeat(1, self.args.num_input_channels)
+                    print(f'load pre-trained med-3d weights from {self.args.pretrain_path}')
+                return model
+            case 'vit':
+                from monai.networks.nets import ViT
+                return ViT(
+                    in_channels=self.args.num_input_channels,
+                    img_size=self.args.sample_shape,
+                    patch_size=self.args.vit_patch_shape,
+                    hidden_size=self.args.vit_hidden_size,
+                    classification=False,
+                )
+            case 'swt':
+                if self.args.umei_impl:
+                    from umei.models.swin_monai import SwinTransformer
+                    model = SwinTransformer(
+                        in_chans=self.args.num_input_channels,
+                        embed_dim=self.args.base_feature_size,
+                        window_size=self.args.swin_window_size,
+                        patch_size=self.args.vit_patch_shape,
+                        depths=self.args.vit_depths,
+                        num_heads=self.args.num_heads,
+                        use_checkpoint=True,
+                        conv_stem=self.args.vit_conv_stem,
+                    )
+                    if self.args.pretrain_path is not None:
+                        if not self.args.pretrain_path.exists():
+                            print(f'warning: {self.args.pretrain_path} not found')
+                        else:
+                            state_dict = filter_state_dict(torch.load(self.args.pretrain_path)["state_dict"], 'encoder')
+                            miss, unexpected = model.load_state_dict(state_dict, strict=False)
+                            assert len(miss) == 0
+                            print(f'load pre-trained encoder from {self.args.pretrain_path}')
+                            print('unexpected: ', len(unexpected))
+                            print(unexpected)
+                else:
+                    from monai.networks.nets.swin_unetr import SwinTransformer
+                    model = SwinTransformer(
+                        in_chans=self.args.num_input_channels,
+                        embed_dim=self.args.base_feature_size,
+                        window_size=self.args.swin_window_size,
+                        patch_size=self.args.vit_patch_shape,
+                        depths=self.args.vit_depths,
+                        num_heads=self.args.num_heads,
+                        use_checkpoint=True,
+                    )
+                    if self.args.pretrain_path is not None:
+                        # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
+                        state_dict = {
+                            k.split('.', 1)[1].replace('fc', 'linear'): v
+                            for k, v in torch.load(self.args.pretrain_path)["state_dict"].items()
+                            if k.startswith('swinViT.') or k.startswith('module.')
+                        }
                         miss, unexpected = model.load_state_dict(state_dict, strict=False)
                         assert len(miss) == 0
-                        print(f'load pre-trained encoder from {self.args.pretrain_path}')
+                        print(f'load pre-trained swin-unetr encoder from {self.args.pretrain_path}')
                         print('unexpected: ', len(unexpected))
-                        print(unexpected)
-            else:
-                from monai.networks.nets.swin_unetr import SwinTransformer
-                model = SwinTransformer(
-                    in_chans=self.args.num_input_channels,
-                    embed_dim=self.args.base_feature_size,
-                    window_size=self.args.swin_window_size,
-                    patch_size=self.args.vit_patch_shape,
-                    depths=self.args.vit_depths,
-                    num_heads=self.args.vit_num_heads,
-                    use_checkpoint=True,
+                return model
+            case 'swin':
+                from umei.models.swin import SwinBackbone
+                args = self.args
+                model = SwinBackbone(
+                    args.num_input_channels,
+                    args.layer_channels,
+                    args.kernel_sizes,
+                    args.layer_depths,
+                    args.num_conv_layers,
+                    args.num_heads,
+                    drop_path_rate=args.drop_path_rate,
+                    use_checkpoint=args.gradient_checkpointing,
                 )
-                if self.args.pretrain_path is not None:
-                    # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
-                    state_dict = {
-                        k.split('.', 1)[1].replace('fc', 'linear'): v
-                        for k, v in torch.load(self.args.pretrain_path)["state_dict"].items()
-                        if k.startswith('swinViT.') or k.startswith('module.')
-                    }
-                    miss, unexpected = model.load_state_dict(state_dict, strict=False)
-                    assert len(miss) == 0
-                    print(f'load pre-trained swin-unetr encoder from {self.args.pretrain_path}')
-                    print('unexpected: ', len(unexpected))
-            return model
-        else:
-            raise ValueError(f'not supported encoder: {self.args.encoder}')
+                return model
+            case _:
+                raise ValueError(f'not supported encoder: {self.args.backbone}')
 
-    def build_decoder(self, *args) -> Optional[UDecoderBase]:
-        if self.args.decoder == 'sunetr':
-            if self.args.umei_impl:
-                from umei.models.swin_unetr_decoder import SwinUnetrDecoder
-                input_stride = None
-                if self.args.umei_sunetr_decode_use_in:
-                    input_stride = [patch_size // 2 for patch_size in self.args.vit_patch_shape]
-                model = SwinUnetrDecoder(
-                    in_channels=self.args.num_input_channels,
-                    feature_size=self.args.base_feature_size,
-                    num_layers=len(self.args.vit_depths),
-                    input_stride=input_stride,
-                )
-                if self.args.decoder_pretrain_path is not None:
-                    state_dict = filter_state_dict(torch.load(self.args.decoder_pretrain_path)["state_dict"], 'decoder')
-                    miss, unexpected = model.load_state_dict(state_dict, strict=False)
-                    assert len(unexpected) == 0
-                    print('missing:', len(miss))
-                    print(miss)
-                    print(f'load pre-trained decoder from {self.args.pretrain_path}')
-            else:
-                from monai.networks.nets import SwinUnetrDecoder
-                model = SwinUnetrDecoder(
-                    in_channels=self.args.num_input_channels,
-                    feature_size=self.args.base_feature_size,
-                    use_encoder5=self.args.use_encoder5,
-                )
-                if self.args.decoder_pretrain_path is not None:
-                    # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
-                    state_dict = {
-                        k: v
-                        for k, v in torch.load(self.args.pretrain_path)["state_dict"].items()
-                        if not k.startswith('swinViT.') and not k.startswith('out.')
-                    }
-                    miss, unexpected = model.load_state_dict(state_dict, strict=False)
-                    assert len(miss) == 0 and len(unexpected) == 0
-                    print(f'load pre-trained swin-unetr decoder from {self.args.pretrain_path}')
-
-            return model
-        else:
-            raise ValueError(f'not supported decoder: {self.args.decoder}')
+    def build_decoder(self, *args) -> Optional[Decoder]:
+        match self.args.decoder:
+            case 'sunetr':
+                if self.args.umei_impl:
+                    from umei.models.swin_unetr_decoder import SwinUnetrDecoder
+                    input_stride = None
+                    if self.args.umei_sunetr_decode_use_in:
+                        input_stride = [patch_size // 2 for patch_size in self.args.vit_patch_shape]
+                    model = SwinUnetrDecoder(
+                        in_channels=self.args.num_input_channels,
+                        feature_size=self.args.base_feature_size,
+                        num_layers=len(self.args.vit_depths),
+                        input_stride=input_stride,
+                    )
+                    if self.args.decoder_pretrain_path is not None:
+                        state_dict = filter_state_dict(torch.load(self.args.decoder_pretrain_path)["state_dict"], 'decoder')
+                        miss, unexpected = model.load_state_dict(state_dict, strict=False)
+                        assert len(unexpected) == 0
+                        print('missing:', len(miss))
+                        print(miss)
+                        print(f'load pre-trained decoder from {self.args.pretrain_path}')
+                else:
+                    from monai.networks.nets import SwinUnetrDecoder
+                    model = SwinUnetrDecoder(
+                        in_channels=self.args.num_input_channels,
+                        feature_size=self.args.base_feature_size,
+                        use_encoder5=self.args.use_encoder5,
+                    )
+                    if self.args.decoder_pretrain_path is not None:
+                        # assume weights from https://github.com/Project-MONAI/research-contributions/tree/main/SwinUNETR/
+                        state_dict = {
+                            k: v
+                            for k, v in torch.load(self.args.pretrain_path)["state_dict"].items()
+                            if not k.startswith('swinViT.') and not k.startswith('out.')
+                        }
+                        miss, unexpected = model.load_state_dict(state_dict, strict=False)
+                        assert len(miss) == 0 and len(unexpected) == 0
+                        print(f'load pre-trained swin-unetr decoder from {self.args.pretrain_path}')
+                return model
+            case 'conv':
+                from umei.models.decoders.plain_conv_unet import PlainConvUNetDecoder
+                args = self.args
+                model = PlainConvUNetDecoder(args.layer_channels)
+                return model
+            case _:
+                raise ValueError(f'not supported decoder: {self.args.decoder}')
 
     def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
         img = batch[DataKey.IMG]
@@ -216,7 +238,14 @@ class UMeI(LightningModule):
             ret['cls_logit'] = cls_out
         if self.decoder is not None and DataKey.SEG in batch:
             seg_label: torch.IntTensor = batch[DataKey.SEG]
-            feature_maps = self.decoder.forward(encoder_out.hidden_states, img).feature_maps
+            from matplotlib import pyplot as plt
+            from matplotlib.colors import ListedColormap
+            import numpy as np
+            seg = seg_label
+            plt.imshow(np.rot90(img[0, 0, :, :, img.shape[-1] >> 1].cpu().numpy()), cmap='gray')
+            plt.imshow(np.rot90(seg[0, 0, :, :, img.shape[-1] >> 1].cpu().numpy()), cmap=ListedColormap(['none', 'green']))
+            plt.show()
+            feature_maps = self.decoder.forward(encoder_out.feature_maps, img).feature_maps
             seg_loss = torch.stack([
                 self.seg_loss_fn(
                     torch_f.interpolate(seg_head(fm), seg_label.shape[2:], mode=self.args.interpolate),
@@ -235,7 +264,7 @@ class UMeI(LightningModule):
         output = self.encoder.forward(x)
         if self.decoder is None:
             return output.cls_feature
-        feature_maps = self.decoder.forward(output.hidden_states, x).feature_maps
+        feature_maps = self.decoder.forward(output.feature_maps, x).feature_maps
         if self.args.self_ensemble:
             return torch.stack([
                 torch_f.interpolate(seg_head(fm), x.shape[2:], mode='trilinear')
@@ -280,7 +309,8 @@ class UMeI(LightningModule):
         return optimizer
 
     def get_lr_scheduler(self, optimizer):
-        from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
+        # from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR
+        from umei.scheduler import LinearWarmupCosineAnnealingLR
 
         if self.args.warmup_epochs:
             return LinearWarmupCosineAnnealingLR(

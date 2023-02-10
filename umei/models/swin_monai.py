@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Type
 
-from einops import rearrange
 import torch
 from torch import nn
 from torch.nn import LayerNorm
@@ -11,7 +10,7 @@ from torch.nn import LayerNorm
 from monai.networks.blocks import Convolution, PatchEmbed as PatchEmbedBase, ResidualUnit
 from monai.networks.layers import Act
 from monai.networks.nets.swin_unetr import BasicLayer, PatchMergingV2
-from monai.umei import UEncoderBase, BackboneOutput
+from monai.umei import Backbone, BackboneOutput
 
 __all__ = ['SwinTransformer']
 
@@ -53,7 +52,7 @@ class PatchEmbed(PatchEmbedBase):
             )
 
 
-class SwinTransformer(UEncoderBase):
+class SwinTransformer(Backbone):
     """
     Modify from MONAI implementation, support 3D only
     Swin Transformer based on: "Liu et al.,

@@ -59,7 +59,6 @@ class BTCVDataModule(SegDataModule):
             int(self.args.data_ratio * len(self.data[DataSplit.TRAIN])),
             replace=False,
         ).tolist()
-        print(self.data[DataSplit.TRAIN])
 
     def train_data(self) -> Sequence:
         return self.data[DataSplit.TRAIN]

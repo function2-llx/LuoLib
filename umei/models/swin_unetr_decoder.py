@@ -6,9 +6,9 @@ import torch
 from torch import nn
 
 from monai.networks.blocks import UnetResBlock, UnetrUpBlock
-from monai.umei import UDecoderBase, UDecoderOutput
+from monai.umei import Decoder, DecoderOutput
 
-class SwinUnetrDecoder(UDecoderBase):
+class SwinUnetrDecoder(Decoder):
     def __init__(
         self,
         in_channels: Optional[int] = None,
@@ -78,7 +78,7 @@ class SwinUnetrDecoder(UDecoderBase):
         else:
             self.last_lateral = None
 
-    def forward(self, hidden_states: list[torch.Tensor], x_in: torch.Tensor) -> UDecoderOutput:
+    def forward(self, hidden_states: list[torch.Tensor], x_in: torch.Tensor) -> DecoderOutput:
         x = self.bottleneck(hidden_states[-1])
         feature_maps = []
         for z, lateral_conv, up in zip(hidden_states[-2::-1], self.lateral_convs[::-1], self.ups[::-1]):
@@ -89,4 +89,4 @@ class SwinUnetrDecoder(UDecoderBase):
         if self.last_lateral is not None:
             x = self.last_up(x, self.last_lateral(x_in))
             feature_maps.append(x)
-        return UDecoderOutput(feature_maps)
+        return DecoderOutput(feature_maps)

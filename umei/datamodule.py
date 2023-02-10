@@ -143,6 +143,7 @@ class SegDataModule(UMeIDataModule):
             monai.transforms.OrientationD(load_keys, axcodes='RAS'),
         ])
 
+    # full seg: output segmentation at the original spacing & shape
     def normalize_transform(self, *, full_seg: bool) -> monai.transforms.Compose:
         transforms = [monai.transforms.SpacingD(DataKey.IMG, pixdim=self.args.spacing, mode=GridSampleMode.BILINEAR)]
 

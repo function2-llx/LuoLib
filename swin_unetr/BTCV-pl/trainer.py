@@ -97,7 +97,7 @@ class AmosModel(LightningModule):
     def forward(self, x: torch.Tensor):
         if self.args.split_model:
             e_out = self.encoder.forward(x)
-            fm = self.decoder.forward(x, e_out.hidden_states).feature_maps[-1]
+            fm = self.decoder.forward(x, e_out.feature_maps).feature_maps[-1]
             return self.seg_head(fm)
         else:
             return self.model(x)

@@ -9,6 +9,10 @@ from umei.utils import ChannelFirst, ChannelLast
 
 __all__ = ['LayerNormNd', 'Norm', 'Act']
 
+# make PyCharm come here
+Act = Act
+Norm = Norm
+
 # assume input shape is batch * channel * spatial...
 class LayerNormNd(nn.Sequential):
     def __init__(self, num_channels: int):

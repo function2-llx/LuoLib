@@ -13,7 +13,8 @@ from torch.nn import functional as torch_f
 
 from monai.networks.layers import DropPath, get_norm_layer
 from monai.networks.blocks import MLPBlock
-from monai.umei import UEncoderBase, BackboneOutput
+from monai.umei import Backbone, BackboneOutput
+from monai.utils import ensure_tuple_rep
 
 from umei.models.adaptive_resampling import AdaptiveDownsampling
 from umei.models.blocks import ResLayer, get_conv_layer
@@ -74,12 +75,13 @@ class WindowAttention(nn.Module):
         self.scale = np.power(head_dim, -0.5)
 
         self.relative_position_bias_table = nn.Parameter(
-            torch.zeros(
+            torch.empty(
                 np.product(2 * np.array(max_window_size) - 1),
                 num_heads,
             )
         )
         self.relative_position_index = relative_position_index.view(-1)
+        # self.register_buffer('relative_position_index', relative_position_index.view(-1))
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
@@ -100,12 +102,13 @@ class WindowAttention(nn.Module):
             l1=x.shape[1],
         )
         attn = attn + relative_position_bias[None]
-        # attn_view = rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])
-        # assert attn.data_ptr() == attn_view.data_ptr()
-        rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])[mask] = -torch.inf
+
+        attn_view = rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])
+        assert attn.data_ptr() == attn_view.data_ptr()
+        attn_view[~mask] = -torch.inf
+        # rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])[mask] = -torch.inf
 
         attn = self.softmax(attn)
-
         attn = self.attn_drop(attn).to(v.dtype)
         x = rearrange(attn @ v, 'n nh l d -> n l (nh d)')
         x = self.proj(x)
@@ -177,7 +180,7 @@ class SwinTransformerBlock(nn.Module):
         x = self.norm1(x)
 
         shift_size = np.array(shift_size)
-        shifted_x = x.roll(tuple(shift_size), dims=(1, 2, 3))
+        shifted_x = x.roll(tuple(shift_size), dims=(1, 2, 3))   # shift towards pad
         parted_x, num_windows = window_partition(shifted_x, window_size)
         attn_x = self.attn.forward(parted_x, mask=attn_mask)
         shifted_x = window_reverse(attn_x, window_size, num_windows)
@@ -190,16 +193,13 @@ class SwinTransformerBlock(nn.Module):
 # TODO: there are at most 4 kinds of attention mask
 def compute_attn_mask(img_mask: torch.Tensor, window_size: Sequence[int]) -> torch.BoolTensor:
     mask_windows, _ = window_partition(img_mask[None, ..., None], window_size)
-    mask_windows = mask_windows.squeeze(-1)
+    mask_windows = mask_windows.squeeze(-1)  # squeeze the dummy channel
     attn_mask = mask_windows[:, None, :] == mask_windows[:, :, None]
     return attn_mask    # type: ignore
 
 class SwinLayer(nn.Module):
     """
-    Basic Swin Transformer layer in one stage based on: "Liu et al.,
-    Swin Transformer: Hierarchical Vision Transformer using Shifted Windows
-    <https://arxiv.org/abs/2103.14030>"
-    https://github.com/microsoft/Swin-Transformer
+    better padding & more concise implementation
     """
 
     blocks: Sequence[SwinTransformerBlock] | nn.ModuleList
@@ -209,7 +209,7 @@ class SwinLayer(nn.Module):
         dim: int,
         depth: int,
         num_heads: int,
-        max_window_size: Sequence[int],
+        max_window_size: int | Sequence[int],
         drop_path_rates: list[float] | float = 0.,
         mlp_ratio: float = 4.0,
         qkv_bias: bool = False,
@@ -235,18 +235,18 @@ class SwinLayer(nn.Module):
 
         super().__init__()
         self.dim = dim
-        self.max_window_size = np.array(max_window_size)
+        self.max_window_size = np.array(ensure_tuple_rep(max_window_size, 3))
         # for tensor computation
-        max_window_size = torch.tensor(max_window_size)
+        max_window_size = torch.tensor(self.max_window_size)
         coords_flatten = torch.cartesian_prod(*[
             torch.arange(s)
             for s in max_window_size
         ])  # create coordinates of w0 * w1 * w2, 3
         # compute axis-wise relative distance & shift to start from 0
-        relative_coords = coords_flatten[None, :] - coords_flatten[:, None] + max_window_size - 1
+        relative_coords = coords_flatten[:, None] - coords_flatten[None, :] + max_window_size - 1
         # flatten 3D coordinates to 1D (which might be faster & more convenient for indexing)
         # PyTorch does not support negative stride yet: https://github.com/pytorch/pytorch/issues/59786
-        relative_coords[..., :-1] *= (2 * max_window_size[1:] - 1).flip(dims=(0, )).cumprod(dim=0)
+        relative_coords[..., :-1] *= (2 * max_window_size[1:] - 1).flip(dims=[0]).cumprod(dim=0).flip(dims=[0])
         relative_position_index = relative_coords.sum(dim=-1)
 
         self.shift_size = self.max_window_size // 2
@@ -281,7 +281,7 @@ class SwinLayer(nn.Module):
         img_mask[tuple(map(slice, spatial_shape))] = 1
         attn_mask = compute_attn_mask(img_mask, window_size)
 
-        shift_size = np.where(window_size > self.max_window_size, self.shift_size, 0)    # type: ignore
+        shift_size = np.where(window_size < spatial_shape, self.shift_size, 0)    # type: ignore
         for i, slices in enumerate(
             it.product(*[
                 [slice(s, None), slice(s)] if s else [slice(None)]
@@ -304,7 +304,7 @@ class SwinLayer(nn.Module):
         return channel_first(x)
 
 
-class SwinBackbone(UEncoderBase):
+class SwinBackbone(Backbone):
     """
     Modify from MONAI implementation, support 3D only
     Swin Transformer based on: "Liu et al.,
@@ -346,9 +346,7 @@ class SwinBackbone(UEncoderBase):
         num_layers = len(layer_depths)
         if isinstance(layer_channels, int):
             layer_channels = [layer_channels << i for i in range(num_layers)]
-        # number of channels for the last downsampled feature map
-        if len(layer_channels) == num_layers:
-            layer_channels.append(layer_channels[-1])
+
         self.stem = get_conv_layer(
             in_channels,
             layer_channels[0],
@@ -357,13 +355,14 @@ class SwinBackbone(UEncoderBase):
         )
         layer_drop_path_rates = np.split(
             np.linspace(0, drop_path_rate, sum(layer_depths)),
-            np.cumsum(layer_depths)[:-1],
+            np.cumsum(layer_depths[:-1]),
         )
 
         self.layers = nn.ModuleList([
             ResLayer(
                 layer_depths[i],
-                layer_channels[i],
+                _in_channels := layer_channels[i],
+                _out_channels := layer_channels[i],
                 kernel_sizes[i],
                 drop_rate,
                 Norm.LAYERND,
@@ -375,7 +374,7 @@ class SwinBackbone(UEncoderBase):
                 layer_channels[i],
                 layer_depths[i],
                 num_heads[i],
-                kernel_sizes[i],    # max_window_size
+                _max_window_size := kernel_sizes[i],
                 layer_drop_path_rates[i],
                 mlp_ratio,
                 qkv_bias,
@@ -390,10 +389,12 @@ class SwinBackbone(UEncoderBase):
             AdaptiveDownsampling(
                 layer_channels[i],  # in
                 layer_channels[i + 1],  # out
-                kernel_sizes[i],
             )
-            for i in range(num_layers)
+            for i in range(num_layers - 1)
         ])
+
+        # dummy, the last downsampling is not used for segmentation task
+        self.downsamplings.append(nn.Identity())
 
         self.norms = nn.ModuleList([
             LayerNormNd(layer_channels[i])
@@ -408,7 +409,8 @@ class SwinBackbone(UEncoderBase):
             x = layer(x)
             x = norm(x)
             feature_maps.append(x)
-            x, downsampled = downsampling(x)
+            x = downsampling(x)
+        feature_maps.append(x)
         return feature_maps
 
     def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
@@ -416,5 +418,5 @@ class SwinBackbone(UEncoderBase):
         feature_maps = self.forward_layers(x)
         return BackboneOutput(
             cls_feature=self.pool(feature_maps[-1]),
-            hidden_states=feature_maps[:-1],
+            feature_maps=feature_maps[:-1],
         )

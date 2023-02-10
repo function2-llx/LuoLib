@@ -7,7 +7,7 @@ import torchmetrics
 
 from umei import UMeI
 from .args import Stoic2021Args
-from monai.umei import UEncoderBase, BackboneOutput
+from monai.umei import Backbone, BackboneOutput
 
 class Stoic2021Model(UMeI):
     args: Stoic2021Args
