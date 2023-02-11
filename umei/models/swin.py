@@ -18,7 +18,7 @@ from monai.umei import Backbone, BackboneOutput
 from monai.utils import ensure_tuple_rep
 
 from umei.models.adaptive_resampling import AdaptiveDownsampling
-from umei.models.blocks import ResLayer, get_conv_layer
+from umei.models.blocks import get_conv_layer
 from umei.models.layers import Act, LayerNormNd, Norm
 
 from umei.utils import channel_first, channel_last
@@ -327,7 +327,6 @@ class SwinBackbone(Backbone):
         layer_channels: int | Sequence[int],
         kernel_sizes: Sequence[int | Sequence[int]],
         layer_depths: Sequence[int],
-        num_conv_layers: int,
         num_heads: Sequence[int],
         mlp_ratio: float = 4.0,
         qkv_bias: bool = True,
@@ -336,9 +335,8 @@ class SwinBackbone(Backbone):
         drop_path_rate: float = 0.0,
         use_checkpoint: bool = False,
         *,
-        downsample_layers: int,
-        stem_kernel: int = 3,
-        stem_stride: int = 1,
+        stem_stride: int = 4,
+        stem_channels: int | None = None,
     ) -> None:
         """
         Args:
@@ -359,13 +357,22 @@ class SwinBackbone(Backbone):
         if isinstance(layer_channels, int):
             layer_channels = [layer_channels << i for i in range(num_layers)]
 
-        self.stem = get_conv_layer(
-            in_channels,
-            layer_channels[0],
-            stem_kernel,
-            stride=stem_stride,
-            act=None,
+        assert stem_stride in [2, 4]
+        if stem_channels is None:
+            stem_channels = layer_channels[0]
+        self.stem = nn.Sequential(
+            AdaptiveDownsampling(
+                in_channels,
+                stem_channels,
+                kernel_size=3,
+            ),
         )
+
+        if stem_stride == 4:
+            self.stem_norm = get_norm_layer(Norm.LAYERND, 3, stem_channels)
+            self.stem_downsampling = AdaptiveDownsampling(stem_channels, layer_channels[0], kernel_size=3)
+
+        self.stem_stride = stem_stride
 
         layer_drop_path_rates = np.split(
             np.linspace(0, drop_path_rate, sum(layer_depths)),
@@ -373,18 +380,7 @@ class SwinBackbone(Backbone):
         )
 
         self.layers = nn.ModuleList([
-            ResLayer(
-                layer_depths[i],
-                _in_channels := layer_channels[i],
-                _out_channels := layer_channels[i],
-                kernel_sizes[i],
-                drop_rate,
-                Norm.LAYERND,
-                Act.GELU,
-                layer_drop_path_rates[i],
-            )
-            if i < num_conv_layers
-            else SwinLayer(
+            SwinLayer(
                 layer_channels[i],
                 layer_depths[i],
                 num_heads[i],
@@ -399,27 +395,12 @@ class SwinBackbone(Backbone):
             )
             for i in range(num_layers)
         ])
-        # self.downsamplings = nn.ModuleList([
-        #     AdaptiveDownsampling(
-        #         layer_channels[i],  # in
-        #         layer_channels[i + 1],  # out
-        #     )
-        #     for i in range(num_layers - 1)
-        # ])
-        dk = 2
+
         self.downsamplings = nn.ModuleList([
             get_conv_layer(
                 layer_channels[i],
                 layer_channels[i + 1],
-                kernel_size=(dk, dk, 1),
-                stride=(2, 2, 1),
-                norm=None,
-                act=None,
-            ) if i < downsample_layers
-            else get_conv_layer(
-                layer_channels[i],
-                layer_channels[i + 1],
-                kernel_size=dk,
+                kernel_size=2,
                 stride=2,
                 norm=None,
                 act=None,
@@ -447,21 +428,21 @@ class SwinBackbone(Backbone):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def forward_layers(self, x: torch.Tensor) -> list[torch.Tensor]:
+    def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
+        x = self.stem(x)
         feature_maps = []
+        if self.stem_stride == 4:
+            x = self.stem_norm(x)
+            feature_maps.append(x)
+            x = self.stem_downsampling(x)
+
         for layer, norm, downsampling in zip(self.layers, self.norms, self.downsamplings):
             x = layer(x)
             x = norm(x)
             feature_maps.append(x)
             x = downsampling(x)
-        feature_maps.append(x)
-        return feature_maps
 
-    def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
-        x = self.stem(x)
-        feature_maps = self.forward_layers(x)
         return BackboneOutput(
             cls_feature=self.pool(feature_maps[-1]),
-            feature_maps=feature_maps[:-1],
+            feature_maps=feature_maps,
         )
-

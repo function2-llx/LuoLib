@@ -15,8 +15,8 @@ def get_conv_layer(
     stride: Sequence[int] | int = 1,
     groups: int = 1,
     dropout: tuple | str | float | None = None,
-    norm: tuple | str | None = Norm.LAYERND,
-    act: tuple | str | None = Act.GELU,
+    norm: tuple | str | None = Norm.INSTANCE,
+    act: tuple | str | None = Act.LEAKYRELU,
     adn_ordering: str = "DNA",
     bias: bool = False,
     is_transposed: bool = False,
@@ -49,8 +49,8 @@ class ResBasicBlock(nn.Module):
         out_channels: int,
         kernel_size: Sequence[int] | int,
         dropout: tuple | str | float | None = None,
-        norm: tuple | str = Norm.LAYERND,
-        act: tuple | str = Act.GELU,
+        norm: tuple | str = Norm.INSTANCE,
+        act: tuple | str = Act.LEAKYRELU,
         drop_path: float = .0,
     ):
         super().__init__()

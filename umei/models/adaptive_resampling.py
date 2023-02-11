@@ -12,7 +12,7 @@ class AdaptiveDownsampling(nn.Conv3d):
         self,
         in_channels: int,
         out_channels: int,
-        kernel_size: int = 2,
+        kernel_size: int,
         groups: int = 1,
         bias: bool = False,
     ):
@@ -27,20 +27,19 @@ class AdaptiveDownsampling(nn.Conv3d):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch_size = x.shape[0]
         spatial_shape = x.shape[2:]
         if spatial_shape[-1] * 2 > spatial_shape[0]:
             return super().forward(x)
-        d = x.shape[-1]
-        x = rearrange(x, 'n c h w d -> (n d) c h w')
         x = torch_f.conv2d(
-            x,
+            rearrange(x, 'n c h w d -> (n d) c h w').contiguous(),
             self.weight[..., self.kernel_size[-1] >> 1],
             self.bias,
             self.stride[:-1],
             self.padding[:-1],
             groups=self.groups,
         )
-        return rearrange(x, '(n d) c h w -> n c h w d', d=d)
+        return rearrange(x, '(n d) c h w -> n c h w d', n=batch_size).contiguous()
 
 class AdaptiveUpsampling(nn.ConvTranspose3d):
     STRIDE = AdaptiveDownsampling.STRIDE
@@ -68,9 +67,8 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
         if upsample_z:
             return super().forward(x)
         batch_size = x.shape[0]
-        x = rearrange(x, 'n c h w d -> (n d) c h w')
         x = torch_f.conv_transpose2d(
-            x,
+            rearrange(x, 'n c h w d -> (n d) c h w').contiguous(),
             self.weight[..., self.kernel_size[-1] >> 1],
             self.bias,
             self.stride[:-1],
@@ -78,4 +76,4 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
             self.output_padding[:-1],
             self.groups,
         )
-        return rearrange(x, '(n d) c h w -> n c h w d', n=batch_size)
+        return rearrange(x, '(n d) c h w -> n c h w d', n=batch_size).contiguous()

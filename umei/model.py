@@ -170,7 +170,7 @@ class UMeI(LightningModule):
                     args.num_heads,
                     drop_path_rate=args.drop_path_rate,
                     use_checkpoint=args.gradient_checkpointing,
-                    downsample_layers=int(np.log2(args.sample_shape[0] // args.sample_shape[-1])),
+                    keep_z_layers=int(np.log2(args.sample_shape[0] // args.sample_shape[-1])),
                 )
                 return model
             case _:
