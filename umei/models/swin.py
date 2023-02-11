@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 import itertools as it
 
 from einops import rearrange
@@ -19,7 +20,6 @@ from monai.utils import ensure_tuple_rep
 from umei.models.adaptive_resampling import AdaptiveDownsampling
 from umei.models.blocks import ResLayer, get_conv_layer
 from umei.models.layers import Act, LayerNormNd, Norm
-
 
 from umei.utils import channel_first, channel_last
 
@@ -53,7 +53,6 @@ class WindowAttention(nn.Module):
         dim: int,
         num_heads: int,
         max_window_size: Sequence[int],
-        relative_position_index: torch.Tensor,
         qkv_bias: bool = False,
         attn_drop: float = 0.0,
         proj_drop: float = 0.0,
@@ -76,38 +75,33 @@ class WindowAttention(nn.Module):
 
         self.relative_position_bias_table = nn.Parameter(
             torch.empty(
-                np.product(2 * np.array(max_window_size) - 1),
                 num_heads,
+                np.product(2 * np.array(max_window_size) - 1),
             )
         )
-        self.relative_position_index = relative_position_index.view(-1)
-        # self.register_buffer('relative_position_index', relative_position_index.view(-1))
 
         self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
         self.attn_drop = nn.Dropout(attn_drop)
         self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
-
-        trunc_normal_(self.relative_position_bias_table, std=0.02)
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x: torch.Tensor, mask: torch.BoolTensor | None):
-        qkv = rearrange(self.qkv(x), 'n l (qkv nh ch) -> qkv n nh l ch', qkv=3, nh=self.num_heads)
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        trunc_normal_(self.relative_position_bias_table, std=0.02)
+
+    def forward(self, x: torch.Tensor, mask: torch.BoolTensor | None, relative_position_index: torch.LongTensor):
+        qkv = rearrange(self.qkv(x), 'n l (qkv nh ch) -> qkv n nh l ch', qkv=3, nh=self.num_heads).contiguous()
+        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
         q = q * self.scale
         attn = q @ k.transpose(-2, -1)
         relative_position_bias = rearrange(
-            self.relative_position_bias_table[self.relative_position_index],
-            '(l1 l2) nh -> nh l1 l2',
+            self.relative_position_bias_table[:, relative_position_index],
+            'nh (l1 l2) -> nh l1 l2',
             l1=x.shape[1],
         )
-        attn = attn + relative_position_bias[None]
+        attn = attn + relative_position_bias
 
         if mask is not None:
-            attn_view = rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])
-            assert attn.data_ptr() == attn_view.data_ptr()
-            attn_view[~mask] = -torch.inf
-            # rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])[mask] = -torch.inf
+            rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])[~mask] = -torch.inf
 
         attn = self.softmax(attn)
         attn = self.attn_drop(attn).to(v.dtype)
@@ -130,7 +124,6 @@ class SwinTransformerBlock(nn.Module):
         dim: int,
         num_heads: int,
         max_window_size: Sequence[int],
-        relative_position_index: torch.Tensor,
         mlp_ratio: float = 4.0,
         qkv_bias: bool = True,
         drop: float = 0.0,
@@ -160,7 +153,6 @@ class SwinTransformerBlock(nn.Module):
             dim,
             num_heads,
             max_window_size,
-            relative_position_index,
             qkv_bias,
             attn_drop,
             proj_drop=drop,
@@ -176,27 +168,49 @@ class SwinTransformerBlock(nn.Module):
             dropout_mode="swin",
         )
 
-    def forward(self, x: torch.Tensor, window_size: Sequence[int], shift_size: Sequence[int], attn_mask: torch.BoolTensor):
+    def forward(
+        self,
+        x: torch.Tensor,
+        window_size: Sequence[int],
+        shift_size: Sequence[int],
+        attn_mask: torch.BoolTensor,
+        relative_position_index: torch.LongTensor,
+    ):
         shortcut = x
         x = self.norm1(x)
 
         shift_size = np.array(shift_size)
-        shifted_x = x.roll(tuple(shift_size), dims=(1, 2, 3))   # shift towards pad
-        parted_x, num_windows = window_partition(shifted_x, window_size)
-        attn_x = self.attn.forward(parted_x, mask=attn_mask)
-        shifted_x = window_reverse(attn_x, window_size, num_windows)
-        x = shifted_x.roll(tuple(-shift_size), dims=(1, 2, 3))
+        if np.any(shift_size):  # a little faster
+            x = x.roll(tuple(shift_size), dims=(1, 2, 3))   # shift towards pad
+        parted_x, num_windows = window_partition(x, window_size)
+        attn_x = self.attn.forward(parted_x, attn_mask, relative_position_index)
+        x = window_reverse(attn_x, window_size, num_windows)
+        if np.any(shift_size):
+            x = x.roll(tuple(-shift_size), dims=(1, 2, 3))
         x = shortcut + self.drop_path(x)
         # FFN
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
 
-# TODO: there are at most 4 kinds of attention mask
+# TODO: there are at most 8 kinds of attention mask for 3D
 def compute_attn_mask(img_mask: torch.Tensor, window_size: Sequence[int]) -> torch.BoolTensor:
     mask_windows, _ = window_partition(img_mask[None, ..., None], window_size)
     mask_windows = mask_windows.squeeze(-1)  # squeeze the dummy channel
     attn_mask = mask_windows[:, None, :] == mask_windows[:, :, None]
     return attn_mask    # type: ignore
+
+@lru_cache(maxsize=128)
+def compute_relative_position_index(window_size: tuple[int, ...]) -> torch.LongTensor:
+    window_size = torch.tensor(window_size)
+    # create coordinates of w0 * w1 * w2, 3
+    coords_flatten = torch.cartesian_prod(*map(torch.arange, window_size))
+    # compute axis-wise relative distance & shift to start from 0
+    relative_coords = coords_flatten[:, None] - coords_flatten[None, :] + window_size - 1
+    # flatten 3D coordinates to 1D (which might be faster & more convenient for indexing)
+    # PyTorch does not support negative stride yet: https://github.com/pytorch/pytorch/issues/59786
+    relative_coords[..., :-1] *= (2 * window_size[1:] - 1).flip(dims=[0]).cumprod(dim=0).flip(dims=[0])
+    relative_position_index = relative_coords.sum(dim=-1)
+    return relative_position_index.view(-1)
 
 class SwinLayer(nn.Module):
     """
@@ -236,20 +250,7 @@ class SwinLayer(nn.Module):
 
         super().__init__()
         self.dim = dim
-        self.max_window_size = np.array(ensure_tuple_rep(max_window_size, 3))
-        # for tensor computation
-        max_window_size = torch.tensor(self.max_window_size)
-        coords_flatten = torch.cartesian_prod(*[
-            torch.arange(s)
-            for s in max_window_size
-        ])  # create coordinates of w0 * w1 * w2, 3
-        # compute axis-wise relative distance & shift to start from 0
-        relative_coords = coords_flatten[:, None] - coords_flatten[None, :] + max_window_size - 1
-        # flatten 3D coordinates to 1D (which might be faster & more convenient for indexing)
-        # PyTorch does not support negative stride yet: https://github.com/pytorch/pytorch/issues/59786
-        relative_coords[..., :-1] *= (2 * max_window_size[1:] - 1).flip(dims=[0]).cumprod(dim=0).flip(dims=[0])
-        relative_position_index = relative_coords.sum(dim=-1)
-
+        self.max_window_size = max_window_size = np.array(ensure_tuple_rep(max_window_size, 3))
         self.shift_size = self.max_window_size // 2
         self.use_checkpoint = use_checkpoint
         if isinstance(drop_path_rates, float):
@@ -260,7 +261,6 @@ class SwinLayer(nn.Module):
                     dim,
                     num_heads,
                     self.max_window_size,
-                    relative_position_index,
                     mlp_ratio,
                     qkv_bias,
                     drop,
@@ -275,10 +275,11 @@ class SwinLayer(nn.Module):
     def forward(self, x: torch.Tensor):
         spatial_shape = np.array(x.shape[2:])
         window_size = np.minimum(self.max_window_size, spatial_shape)
+        relative_position_index = compute_relative_position_index(tuple(window_size))
         pad_size = (window_size - spatial_shape % window_size) % window_size
         x = torch_f.pad(x, tuple(np.ravel([np.zeros_like(pad_size), np.flip(pad_size)], 'F')))
 
-        img_mask = torch.zeros(x.shape[2:], dtype=torch.int32, device=x.device)
+        img_mask = torch.zeros_like(x[0, 0], dtype=torch.int8)
         if np.any(pad_size):
             img_mask[tuple(map(slice, spatial_shape))] = 1
             attn_mask = compute_attn_mask(img_mask, window_size)
@@ -286,25 +287,28 @@ class SwinLayer(nn.Module):
             attn_mask = None
 
         shift_size = np.where(window_size < spatial_shape, self.shift_size, 0)    # type: ignore
-        for i, slices in enumerate(
-            it.product(*[
-                [slice(s, None), slice(s)] if s else [slice(None)]
-                for s in shift_size
-            ])
-        ):
-            img_mask[slices] = i + 1
-        shift_attn_mask = compute_attn_mask(img_mask, window_size)
+        if np.any(shift_size):
+            for i, slices in enumerate(
+                it.product(*[
+                    [slice(s, None), slice(s)] if s else [slice(None)]
+                    for s in shift_size
+                ])
+            ):
+                img_mask[slices] = i + 1
+            shift_attn_mask = compute_attn_mask(img_mask, window_size)
+        else:
+            shift_attn_mask = attn_mask
 
         x = channel_last(x)
-        for blk, shift_size, attn_mask in zip(
+        for block, block_shift_size, block_attn_mask in zip(
             self.blocks,
-            it.cycle([np.zeros_like(self.shift_size), self.shift_size]),
+            it.cycle([np.zeros_like(shift_size), shift_size]),
             it.cycle([attn_mask, shift_attn_mask]),
         ):
             if self.use_checkpoint:
-                x = checkpoint.checkpoint(blk, x, window_size, shift_size, attn_mask)
+                x = checkpoint.checkpoint(block, x, window_size, block_shift_size, block_attn_mask, relative_position_index)
             else:
-                x = blk.forward(x, window_size, shift_size, attn_mask)
+                x = block.forward(x, window_size, block_shift_size, block_attn_mask, relative_position_index)
         return channel_first(x)
 
 
@@ -432,6 +436,16 @@ class SwinBackbone(Backbone):
         ])
 
         self.pool = nn.AdaptiveAvgPool3d(1)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, m):
+        if isinstance(m, nn.Linear):
+            trunc_normal_(m.weight, std=.02)
+            if m.bias is not None:
+                nn.init.constant_(m.bias, 0)
+        elif isinstance(m, nn.LayerNorm):
+            nn.init.constant_(m.bias, 0)
+            nn.init.constant_(m.weight, 1.0)
 
     def forward_layers(self, x: torch.Tensor) -> list[torch.Tensor]:
         feature_maps = []
@@ -450,3 +464,4 @@ class SwinBackbone(Backbone):
             cls_feature=self.pool(feature_maps[-1]),
             feature_maps=feature_maps[:-1],
         )
+
