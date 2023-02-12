@@ -318,7 +318,7 @@ class SwinBackbone(Backbone):
     Swin Transformer based on: "Liu et al.,
     Swin Transformer: Hierarchical Vision Transformer using Shifted Windows
     <https://arxiv.org/abs/2103.14030>"
-    https://github.com/microsoft/Swin-Transformer
+    https://github.com/microssoft/Swin-Transformer
     """
 
     def __init__(
@@ -359,7 +359,10 @@ class SwinBackbone(Backbone):
 
         assert stem_stride in [2, 4]
         if stem_channels is None:
-            stem_channels = layer_channels[0]
+            if stem_stride == 2:
+                stem_channels = layer_channels[0]
+            else:
+                stem_channels = layer_channels[0] >> 1
         self.stem = nn.Sequential(
             AdaptiveDownsampling(
                 in_channels,

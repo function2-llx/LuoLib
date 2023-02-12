@@ -38,12 +38,19 @@ class UMeI(LightningModule):
             self.encoder.eval()
             dummy_input = torch.zeros(1, args.num_input_channels, *args.sample_shape)
             dummy_encoder_output = self.encoder.forward(dummy_input)
+            print('backbone output shapes:')
+            for x in dummy_encoder_output.feature_maps:
+                print(x.shape)
         if self.args.num_cls_classes is not None:
             self.cls_head = self.build_cls_head(dummy_encoder_output)
-        self.decoder = self.build_decoder()
+        self.decoder = self.build_decoder(dummy_encoder_output)
         if self.decoder is not None:
             with torch.no_grad():
+                self.decoder.eval()
                 dummy_decoder_output = self.decoder.forward(dummy_encoder_output.feature_maps, dummy_input)
+                print('decoder output shapes:')
+                for x in dummy_decoder_output.feature_maps:
+                    print(x.shape)
                 decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
             from monai.networks.blocks import UnetOutBlock
             # i-th seg head for the last i-th output from decoder
@@ -166,17 +173,16 @@ class UMeI(LightningModule):
                     args.layer_channels,
                     args.kernel_sizes,
                     args.layer_depths,
-                    args.num_conv_layers,
                     args.num_heads,
                     drop_path_rate=args.drop_path_rate,
                     use_checkpoint=args.gradient_checkpointing,
-                    keep_z_layers=int(np.log2(args.sample_shape[0] // args.sample_shape[-1])),
+                    stem_stride=args.stem_stride,
                 )
                 return model
             case _:
                 raise ValueError(f'not supported encoder: {self.args.backbone}')
 
-    def build_decoder(self, *args) -> Optional[Decoder]:
+    def build_decoder(self, dummy_backbone_output: BackboneOutput) -> Optional[Decoder]:
         match self.args.decoder:
             case 'sunetr':
                 if self.args.umei_impl:
@@ -218,7 +224,10 @@ class UMeI(LightningModule):
             case 'conv':
                 from umei.models.decoders.plain_conv_unet import PlainConvUNetDecoder
                 args = self.args
-                model = PlainConvUNetDecoder(args.layer_channels, upsample_layers=np.log2(args.sample_shape[0] // args.sample_shape[-1]))
+                model = PlainConvUNetDecoder(
+                    [x.shape[1] for x in dummy_backbone_output.feature_maps],
+                    num_post_upsampling_layers=args.num_post_upsampling_layers,
+                )
                 return model
             case _:
                 raise ValueError(f'not supported decoder: {self.args.decoder}')
@@ -238,14 +247,7 @@ class UMeI(LightningModule):
             ret['cls_loss'] = cls_loss
             ret['cls_logit'] = cls_out
         if self.decoder is not None and DataKey.SEG in batch:
-            seg_label: torch.IntTensor = batch[DataKey.SEG]
-            from matplotlib import pyplot as plt
-            from matplotlib.colors import ListedColormap
-            import numpy as np
-            seg = seg_label
-            plt.imshow(np.rot90(img[0, 0, :, :, img.shape[-1] >> 1].cpu().numpy()), cmap='gray')
-            plt.imshow(np.rot90(seg[0, 0, :, :, img.shape[-1] >> 1].cpu().numpy()), cmap=ListedColormap(['none', 'green']))
-            plt.show()
+            seg_label = batch[DataKey.SEG]
             feature_maps = self.decoder.forward(encoder_out.feature_maps, img).feature_maps
             seg_loss = torch.stack([
                 self.seg_loss_fn(

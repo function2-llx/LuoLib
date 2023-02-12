@@ -11,6 +11,8 @@ from umei.utils import MyWandbLogger, UMeIParser
 task_name = 'btcv'
 
 def main():
+    torch.set_float32_matmul_precision('high')
+
     parser = UMeIParser((BTCVArgs, ), use_conf=True)
     args: BTCVArgs = parser.parse_args_into_dataclasses()[0]
 

@@ -41,10 +41,11 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     vit_conv_stem: bool = field(default=False)
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
+    stem_stride: int = field(default=4)
     layer_channels: list[int] = field(default=None)
     kernel_sizes: list[int] = field(default=None)
     layer_depths: list[int] = field(default=None)
-    num_conv_layers: int = field(default=None)
+    num_post_upsampling_layers: int = field(default=None)
     drop_path_rate: float = field(default=0.)
     encode_skip: bool = field(default=False)
     umei_sunetr_decode_use_in: bool = field(default=True)
