@@ -165,7 +165,7 @@ class UMeI(LightningModule):
                         print('unexpected: ', len(unexpected))
                 return model
             case 'swin':
-                from umei.models.swin import SwinBackbone
+                from umei.models.backbones.swin import SwinBackbone
                 args = self.args
                 model = SwinBackbone(
                     args.num_input_channels,

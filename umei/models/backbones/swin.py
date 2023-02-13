@@ -7,6 +7,7 @@ import itertools as it
 from einops import rearrange
 import numpy as np
 from timm.models.layers import trunc_normal_
+from timm.models.mlp_mixer import _init_weights
 import torch
 from torch import nn
 from torch.utils import checkpoint
@@ -414,6 +415,7 @@ class SwinBackbone(Backbone):
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
+        _init_weights
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=.02)
             if m.bias is not None:
@@ -421,6 +423,13 @@ class SwinBackbone(Backbone):
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
+
+    def no_weight_decay(self):
+        nwd = set()
+        for name, _ in self.named_parameters():
+            if 'relative_position_bias_table' in name:
+                nwd.add(name)
+        return nwd
 
     def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
         x = self.stem(x)
