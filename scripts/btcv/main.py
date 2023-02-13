@@ -70,7 +70,7 @@ def main():
                 every_n_epochs=250,
             ),
             LearningRateMonitor(logging_interval='epoch'),
-            ModelSummary(max_depth=2),
+            ModelSummary(max_depth=3),
         ],
         num_nodes=args.num_nodes,
         accelerator='gpu',

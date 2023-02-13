@@ -26,7 +26,7 @@ def get_conv_layer(
     if is_transposed:
         output_padding = get_output_padding(kernel_size, stride, padding)
     return Convolution(
-        3,
+        _spatial_dims := 3,
         in_channels,
         out_channels,
         strides=stride,

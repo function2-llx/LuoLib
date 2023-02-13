@@ -20,8 +20,8 @@ spacing: [1.5, 1.5, 2]
 norm_intensity: false
 a_min: -175
 a_max: 250
-rotate_p: 0.1
-flip_p: 0.1
+rotate_p: 0.5
+flip_p: 0.5
 scale_p: 0
 shift_p: 0.5
 crop: pn

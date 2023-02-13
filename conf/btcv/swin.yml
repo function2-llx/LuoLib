@@ -16,11 +16,11 @@ kernel_sizes: [6, 6, 6, 6]
 decoder: conv
 num_post_upsampling_layers: 1
 num_seg_heads: 1
-train_batch_size: 2
-num_crop_samples: 2
+train_batch_size: 1
+num_crop_samples: 4
 learning_rate: 2e-4
 weight_decay: 1e-5
-num_train_epochs: 5000
+num_train_epochs: 3000
 warmup_epochs: 100
 crop: pn
 squared_dice: false

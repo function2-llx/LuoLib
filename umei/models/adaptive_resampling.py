@@ -63,7 +63,9 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
             bias,
         )
 
-    def forward(self, x: torch.Tensor, upsample_z: bool):   # noqa
+    # packed for sequential forwarding
+    def forward(self, input: tuple[torch.Tensor, bool]):   # noqa
+        x, upsample_z = input
         if upsample_z:
             return super().forward(x)
         batch_size = x.shape[0]

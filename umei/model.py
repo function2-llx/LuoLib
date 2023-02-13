@@ -13,6 +13,8 @@ from monai.inferers import sliding_window_inference
 from monai.losses import DiceFocalLoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
+from monai.networks.blocks.dynunet_block import get_conv_layer
+from monai.networks.layers import Conv
 from monai.umei import Decoder, Backbone, BackboneOutput
 from monai.utils import MetricReduction
 
@@ -55,11 +57,8 @@ class UMeI(LightningModule):
             from monai.networks.blocks import UnetOutBlock
             # i-th seg head for the last i-th output from decoder
             self.seg_heads = nn.ModuleList([
-                UnetOutBlock(
-                    spatial_dims=self.args.spatial_dims,
-                    in_channels=decoder_feature_sizes[-i - 1],
-                    out_channels=args.num_seg_classes,
-                )
+                Conv[Conv.CONV, self.args.spatial_dims](decoder_feature_sizes[-i - 1], args.num_seg_classes, kernel_size=1)
+                # UnetOutBlock(args.spatial_dims, decoder_feature_sizes[-i - 1], args.num_seg_classes)
                 for i in range(args.num_seg_heads)
             ])
         if self.args.spatial_dims == 2:
@@ -225,8 +224,9 @@ class UMeI(LightningModule):
                 from umei.models.decoders.plain_conv_unet import PlainConvUNetDecoder
                 args = self.args
                 model = PlainConvUNetDecoder(
+                    self.args.num_input_channels,
                     [x.shape[1] for x in dummy_backbone_output.feature_maps],
-                    num_post_upsampling_layers=args.num_post_upsampling_layers,
+                    num_post_upsamplings=args.num_post_upsamplings,
                 )
                 return model
             case _:

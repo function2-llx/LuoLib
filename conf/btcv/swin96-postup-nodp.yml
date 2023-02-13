@@ -11,11 +11,11 @@ backbone: swin
 stem_stride: 2
 layer_channels: [48, 96, 192, 384]
 num_heads: [3, 6, 12, 24]
-layer_depths: [3, 3, 9, 3]
+layer_depths: [2, 2, 6, 2]
 kernel_sizes: [6, 6, 6, 6]
 decoder: conv
-num_post_upsampling_layers: 1
-num_seg_heads: 1
+num_post_upsamplings: 1
+num_seg_heads: 3
 train_batch_size: 1
 num_crop_samples: 4
 learning_rate: 2e-4

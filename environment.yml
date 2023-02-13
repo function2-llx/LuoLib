@@ -28,6 +28,8 @@ dependencies:
     - torchmetrics
     - lightning-bolts
     - transformers
+    - mmcv-full
+    - mmsegmentation
 #    - git+https://github.com/JoHof/lungmask
     - -e third-party/MONAI
     - -e third-party/nnUNet

@@ -18,7 +18,7 @@ from monai.umei import Backbone, BackboneOutput
 from monai.utils import ensure_tuple_rep
 
 from umei.models.adaptive_resampling import AdaptiveDownsampling
-from umei.models.blocks import get_conv_layer
+from umei.models.blocks import get_conv_layer, ResLayer
 from umei.models.layers import Act, LayerNormNd, Norm
 
 from umei.utils import channel_first, channel_last
@@ -357,25 +357,16 @@ class SwinBackbone(Backbone):
         if isinstance(layer_channels, int):
             layer_channels = [layer_channels << i for i in range(num_layers)]
 
-        assert stem_stride in [2, 4]
         if stem_channels is None:
-            if stem_stride == 2:
-                stem_channels = layer_channels[0]
-            else:
-                stem_channels = layer_channels[0] >> 1
-        self.stem = nn.Sequential(
+            stem_channels = layer_channels[0] >> 1
+        self.stem = nn.Sequential(*[
             AdaptiveDownsampling(
-                in_channels,
-                stem_channels,
+                in_channels if i == 0 else stem_channels,
+                layer_channels[0] if i == stem_stride.bit_length() - 2 else stem_channels,
                 kernel_size=3,
-            ),
-        )
-
-        if stem_stride == 4:
-            self.stem_norm = get_norm_layer(Norm.LAYERND, 3, stem_channels)
-            self.stem_downsampling = AdaptiveDownsampling(stem_channels, layer_channels[0], kernel_size=3)
-
-        self.stem_stride = stem_stride
+            )
+            for i in range(stem_stride.bit_length() - 1)
+        ])
 
         layer_drop_path_rates = np.split(
             np.linspace(0, drop_path_rate, sum(layer_depths)),
@@ -434,10 +425,6 @@ class SwinBackbone(Backbone):
     def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
         x = self.stem(x)
         feature_maps = []
-        if self.stem_stride == 4:
-            x = self.stem_norm(x)
-            feature_maps.append(x)
-            x = self.stem_downsampling(x)
 
         for layer, norm, downsampling in zip(self.layers, self.norms, self.downsamplings):
             x = layer(x)
