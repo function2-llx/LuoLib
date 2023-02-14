@@ -293,6 +293,7 @@ class UMeI(LightningModule):
         return logit
 
     def get_grouped_parameters(self) -> list[dict]:
+        # TODO: handle no weight decay
         return [{
             'params': self.parameters(),
             'lr': self.args.learning_rate,

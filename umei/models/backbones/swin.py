@@ -7,7 +7,6 @@ import itertools as it
 from einops import rearrange
 import numpy as np
 from timm.models.layers import trunc_normal_
-from timm.models.mlp_mixer import _init_weights
 import torch
 from torch import nn
 from torch.utils import checkpoint
@@ -102,7 +101,7 @@ class WindowAttention(nn.Module):
         attn = attn + relative_position_bias
 
         if mask is not None:
-            rearrange(attn, '(n nw) nh l1 l2 -> nw l1 l2 n nh', nw=mask.shape[0])[~mask] = -torch.inf
+            rearrange(attn, '(n nw) nh l1 l2 -> n nh nw l1 l2', nw=mask.shape[0]).masked_fill_(~mask, -torch.inf)
 
         attn = self.softmax(attn)
         attn = self.attn_drop(attn).to(v.dtype)
@@ -392,13 +391,10 @@ class SwinBackbone(Backbone):
         ])
 
         self.downsamplings = nn.ModuleList([
-            get_conv_layer(
+            AdaptiveDownsampling(
                 layer_channels[i],
                 layer_channels[i + 1],
                 kernel_size=2,
-                stride=2,
-                norm=None,
-                act=None,
             )
             for i in range(num_layers - 1)
         ])
@@ -415,16 +411,18 @@ class SwinBackbone(Backbone):
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
-        _init_weights
-        if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
-            if m.bias is not None:
+        match type(m):
+            case nn.Linear | nn.Conv3d:
+                trunc_normal_(m.weight, std=.02)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            case nn.LayerNorm:
+                nn.init.constant_(m.weight, 1.0)
                 nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.LayerNorm):
-            nn.init.constant_(m.bias, 0)
-            nn.init.constant_(m.weight, 1.0)
 
     def no_weight_decay(self):
+        from torch.optim import RAdam
+        from timm.models import SwinTransformer
         nwd = set()
         for name, _ in self.named_parameters():
             if 'relative_position_bias_table' in name:

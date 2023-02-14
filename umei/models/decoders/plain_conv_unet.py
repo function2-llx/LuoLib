@@ -58,8 +58,15 @@ class PlainConvUNetDecoder(Decoder):
                     post_upsampling_channels,
                     kernel_size=3,
                 ),
-                get_norm_layer(norm, 3, post_upsampling_channels),
-                get_act_layer(act),
+                ResLayer(
+                    _num_blocks := 1,
+                    _in_channels := post_upsampling_channels,
+                    _out_channels := post_upsampling_channels,
+                    _kernel_size := 3,
+                    dropout,
+                    norm,
+                    act,
+                )
             )
             for i in range(num_post_upsamplings)
         ])

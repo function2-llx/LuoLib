@@ -8,7 +8,7 @@ from torch import nn as nn
 from torch.optim import Adam, Optimizer
 from torch.optim.lr_scheduler import LambdaLR, _LRScheduler
 
-__all__ = ["LinearLR", "ExponentialLR"]
+# __all__ = ["LinearLR", "ExponentialLR"]
 
 
 class _LRSchedulerMONAI(_LRScheduler):
