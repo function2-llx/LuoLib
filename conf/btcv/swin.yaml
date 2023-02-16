@@ -15,6 +15,7 @@ layer_channels: [24, 48, 96, 192, 384, 768]
 num_heads: [-1, -1, 3, 6, 12, 24]
 layer_depths: [1, 1, 2, 2, 6, 2]
 kernel_sizes: [3, 3, 6, 6, 6, 6]
+drop_path_rate: 0.2
 decoder: conv
 num_post_upsamplings: 0
 num_seg_heads: 3

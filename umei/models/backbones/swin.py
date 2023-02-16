@@ -12,7 +12,7 @@ from torch import nn
 from torch.utils import checkpoint
 from torch.nn import functional as torch_f
 
-from monai.networks.layers import DropPath, get_norm_layer
+from monai.networks.layers import DropPath, get_act_layer, get_norm_layer
 from monai.networks.blocks import MLPBlock
 from monai.umei import Backbone, BackboneOutput
 from monai.utils import ensure_tuple_rep
@@ -359,7 +359,21 @@ class SwinBackbone(Backbone):
         if isinstance(layer_channels, int):
             layer_channels = [layer_channels << i for i in range(num_layers)]
 
-        self.stem = get_conv_layer(in_channels, layer_channels[0], stem_kernel, stem_stride)
+        if stem_stride == 1:
+            self.stem = get_conv_layer(in_channels, layer_channels[0], stem_kernel, stem_stride)
+        else:
+            self.stem = nn.Sequential(
+                *[
+                    AdaptiveDownsampling(
+                        in_channels if i == 0 else layer_channels[0],
+                        layer_channels[0],
+                        kernel_size=stem_kernel,
+                    )
+                    for i in range(stem_stride.bit_length())
+                ],
+                get_norm_layer(Norm.INSTANCE, 3, layer_channels[0]),
+                get_act_layer(Act.LEAKYRELU),
+            )
 
         layer_drop_path_rates = np.split(
             np.linspace(0, drop_path_rate, sum(layer_depths)),

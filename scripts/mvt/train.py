@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import hydra
 import pytorch_lightning as pl
@@ -6,6 +7,7 @@ from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, Mo
 from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
+from omegaconf import DictConfig, OmegaConf
 
 from umei.datasets.btcv import BTCVArgs, BTCVDataModule
 from umei.datasets.btcv.model import BTCVModel
@@ -13,27 +15,12 @@ from umei.utils import MyWandbLogger, UMeIParser
 
 task_name = 'mvt'
 
-logger = logging.getLogger('test')
-print(logger.level)
-
-@hydra.main(config_path='conf/mvt', version_base=None)
-def main(args):
+@hydra.main(config_path='conf', config_name='patch8', version_base=None)
+def main(args: DictConfig):
     torch.set_float32_matmul_precision('high')
+    OmegaConf.structured()
     print(args)
 
-    # if args.pretrain_path is None:
-    #     ft_suffix = 'scratch'
-    # else:
-    #     # pre-train path: .../pt type/pt param/pt datasets/run seed/last.ckpt
-    #     # well, this is vulnerable
-    #     ft_suffix = '/'.join(args.pretrain_path.parts[-5:-2])
-    # ft_suffix += f'/{args.crop}-s{args.num_seg_heads}'
-    # if args.spline_seg:
-    #     ft_suffix += '-sps'
-    # ft_suffix += f'-{int(args.num_train_epochs)}ep-{int(args.warmup_epochs)}wu'
-    # ft_suffix += f'/data{args.data_ratio}'
-    # args.output_dir /= ft_suffix
-    #
     # print(args)
     # pl.seed_everything(args.seed)
     # datamodule = BTCVDataModule(args)
