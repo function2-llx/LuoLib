@@ -100,8 +100,8 @@ class ResLayer(nn.Module):
         out_channels: int,
         kernel_size: Sequence[int] | int,
         dropout: tuple | str | float | None = None,
-        norm: tuple | str = Norm.LAYERND,
-        act: tuple | str = Act.GELU,
+        norm: tuple | str = Norm.INSTANCE,
+        act: tuple | str = Act.LEAKYRELU,
         drop_paths: float | Sequence[float] = 0.
     ):
         super().__init__()

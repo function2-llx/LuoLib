@@ -41,7 +41,8 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     vit_conv_stem: bool = field(default=False)
     base_feature_size: int = field(default=None, metadata={'help': 'feature size for the first feature map'
                                                                    'assume feature size * 2 each layer'})
-    stem_stride: int = field(default=4)
+    stem_stride: int = field(default=1)
+    num_conv_layers: int = field(default=2)
     layer_channels: list[int] = field(default=None)
     kernel_sizes: list[int] = field(default=None)
     layer_depths: list[int] = field(default=None)
@@ -95,7 +96,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     no_resume: bool = field(default=False)
     train_batch_size: int = field(default=2, metadata={'help': 'effective train batch size'})
     eval_batch_size: int = field(default=1, metadata={'help': 'effective eval batch size'})
-    gradient_checkpointing: bool = field(default=True)
+    gradient_checkpointing: bool = field(default=False)
 
     @TrainingArguments.n_gpu.getter
     def n_gpu(self):

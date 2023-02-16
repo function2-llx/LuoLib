@@ -19,6 +19,7 @@ from monai.utils import ensure_tuple_rep
 
 from umei.models.adaptive_resampling import AdaptiveDownsampling
 from umei.models.blocks import get_conv_layer, ResLayer
+from umei.models.init import init_linear_conv
 from umei.models.layers import Act, LayerNormNd, Norm
 
 from umei.utils import channel_first, channel_last
@@ -299,7 +300,7 @@ class SwinLayer(nn.Module):
         else:
             shift_attn_mask = attn_mask
 
-        x = channel_last(x)
+        x = channel_last(x).contiguous()
         for block, block_shift_size, block_attn_mask in zip(
             self.blocks,
             it.cycle([np.zeros_like(shift_size), shift_size]),
@@ -324,6 +325,7 @@ class SwinBackbone(Backbone):
     def __init__(
         self,
         in_channels: int,
+        num_conv_layers: int,
         layer_channels: int | Sequence[int],
         kernel_sizes: Sequence[int | Sequence[int]],
         layer_depths: Sequence[int],
@@ -336,7 +338,7 @@ class SwinBackbone(Backbone):
         use_checkpoint: bool = False,
         *,
         stem_stride: int = 4,
-        stem_channels: int | None = None,
+        # stem_channels: int | None = None,
     ) -> None:
         """
         Args:
@@ -357,24 +359,21 @@ class SwinBackbone(Backbone):
         if isinstance(layer_channels, int):
             layer_channels = [layer_channels << i for i in range(num_layers)]
 
-        if stem_channels is None:
-            stem_channels = layer_channels[0] >> 1
-        self.stem = nn.Sequential(*[
-            AdaptiveDownsampling(
-                in_channels if i == 0 else stem_channels,
-                layer_channels[0] if i == stem_stride.bit_length() - 2 else stem_channels,
-                kernel_size=3,
-            )
-            for i in range(stem_stride.bit_length() - 1)
-        ])
-
         layer_drop_path_rates = np.split(
             np.linspace(0, drop_path_rate, sum(layer_depths)),
             np.cumsum(layer_depths[:-1]),
         )
 
         self.layers = nn.ModuleList([
-            SwinLayer(
+            ResLayer(
+                layer_depths[i],
+                layer_channels[i],
+                layer_channels[i],
+                kernel_sizes[i],
+                drop_rate,
+                drop_paths=layer_drop_path_rates[i],
+            ) if i < num_conv_layers
+            else SwinLayer(
                 layer_channels[i],
                 layer_depths[i],
                 num_heads[i],
@@ -402,27 +401,17 @@ class SwinBackbone(Backbone):
         # dummy, the last downsampling is not used for segmentation task
         self.downsamplings.append(nn.Identity())
 
+        # SwinLayer is pre-norm
         self.norms = nn.ModuleList([
-            LayerNormNd(layer_channels[i])
+            nn.Identity() if i < num_conv_layers
+            else LayerNormNd(layer_channels[i])
             for i in range(num_layers)
         ])
 
         self.pool = nn.AdaptiveAvgPool3d(1)
-        self.apply(self._init_weights)
-
-    def _init_weights(self, m):
-        match type(m):
-            case nn.Linear | nn.Conv3d:
-                trunc_normal_(m.weight, std=.02)
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-            case nn.LayerNorm:
-                nn.init.constant_(m.weight, 1.0)
-                nn.init.constant_(m.bias, 0)
+        self.apply(init_linear_conv)
 
     def no_weight_decay(self):
-        from torch.optim import RAdam
-        from timm.models import SwinTransformer
         nwd = set()
         for name, _ in self.named_parameters():
             if 'relative_position_bias_table' in name:
@@ -433,7 +422,7 @@ class SwinBackbone(Backbone):
         x = self.stem(x)
         feature_maps = []
 
-        for layer, norm, downsampling in zip(self.layers, self.norms, self.downsamplings):
+        for layer, norm, downsampling in zip(it.chain(self.layers), self.norms, self.downsamplings):
             x = layer(x)
             x = norm(x)
             feature_maps.append(x)

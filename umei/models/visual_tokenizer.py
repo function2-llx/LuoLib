@@ -8,10 +8,14 @@ from torch.nn import functional as torch_f
 
 from umei.models.adaptive_resampling import AdaptiveUpsampling
 from umei.models.backbones.swin import SwinBackbone, SwinLayer
+from umei.models.init import init_linear_conv
 from umei.models.layers import LayerNormNd, Norm
 from umei.utils import PathLike, channel_first, channel_last
 
 class SwinVQDecoder(nn.Module):
+    layers: Sequence[SwinLayer] | nn.ModuleList
+    upsamplings: Sequence[AdaptiveUpsampling] | nn.ModuleList
+
     def __init__(
         self,
         layer_channels: Sequence[int],
@@ -96,13 +100,6 @@ def sample_vectors(data: torch.Tensor, num: int):
 
     return data[indices]
 
-def init_linear_conv(m: nn.Module):
-    match type(m):
-        case nn.Linear | nn.Conv3d:
-            nn.init.trunc_normal_(m.weight, std=.02)
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
-
 # if use_cosine_sim, data must be l2-normalized
 def kmeans(
     data: torch.Tensor, num_clusters: int, num_iters: int = 10, use_cosine_sim: bool = True, init: str = 'random'
@@ -117,13 +114,13 @@ def kmeans(
 
     for _ in range(num_iters):
         if use_cosine_sim:
-            dists = data @ means.T
+            sim = data @ means.T
         else:
-            diffs = rearrange(data, 'n d -> n () d') - \
+            diff = rearrange(data, 'n d -> n () d') - \
                     rearrange(means, 'c d -> () c d')
-            dists = -(diffs ** 2).sum(dim=-1)
+            sim = -(diff ** 2).sum(dim=-1)
 
-        cluster_ids = dists.max(dim=-1).indices
+        cluster_ids = sim.max(dim=-1).indices
         cluster_sizes = torch.bincount(cluster_ids, minlength=num_clusters)
         means.scatter_reduce(
             dim=0,
@@ -143,7 +140,7 @@ class NormEMAVectorQuantizer(nn.Module):
         self,
         num_embeddings: int,
         embedding_dim: int,
-        beta: float,    # commitment loss factor
+        beta: float,
         decay: float = 0.99,
         track_code_usage: bool = True,
         kmeans_init: bool = False,
@@ -187,7 +184,7 @@ class NormEMAVectorQuantizer(nn.Module):
         self.code_usage.copy_(cluster_sizes)
         self.initialized.fill_(True)
 
-    def forward(self, z):
+    def forward(self, z: torch.Tensor):
         z = channel_last(z).contiguous()
         z = l2norm(z)
         if not self.initialized:
@@ -234,7 +231,7 @@ class VisualTokenizer(pl.LightningModule):
         num_tokens: int = 8192,
         embedding_dim: int = 32,
         decay: float = 0.99,
-        beta: float = 1.,
+        beta: float = 0.25,
         quantize_kmeans_init: bool = True,
         teacher_model_type: str | None = None,
         decoder_out_dim: int = 512,
@@ -296,9 +293,6 @@ class VisualTokenizer(pl.LightningModule):
         self.encode_task_layer.apply(init_linear_conv)
         self.decode_task_layer.apply(init_linear_conv)
 
-    def no_weight_decay(self):
-        return {'quantize.embedding'}
-
     def get_tokens(self, data, **kwargs):
         z_q, token_ids, loss = self.encode(data)
         output = {'token': token_ids.view(data.shape[0], -1), 'input_img': data}
@@ -327,11 +321,12 @@ class VisualTokenizer(pl.LightningModule):
                 return x
 
     def calculate_rec_loss(self, rec: torch.Tensor, target: torch.Tensor):
+        rec = rec.view(*target.shape)
         match self.rec_loss_type:
             case 'cosine':
                 rec = channel_last(rec).view(-1, rec.shape[1])
                 target = channel_last(target).view(-1, target.shape[1])
-                return torch.cosine_embedding_loss(rec, target, target=rec.new_ones(rec.shape[0]))
+                return 2 * torch.cosine_embedding_loss(rec, target, target=rec.new_ones(rec.shape[0]))
             case 'mse':
                 return torch_f.mse_loss(rec, target)
             case _:

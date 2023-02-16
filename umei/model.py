@@ -1,4 +1,5 @@
 from typing import Optional
+import logging
 
 import numpy as np
 from pytorch_lightning import LightningModule
@@ -61,6 +62,11 @@ class UMeI(LightningModule):
                 # UnetOutBlock(args.spatial_dims, decoder_feature_sizes[-i - 1], args.num_seg_classes)
                 for i in range(args.num_seg_heads)
             ])
+            for seg_head in self.seg_heads:
+                nn.init.trunc_normal_(seg_head.weight, std=0.02)
+                if seg_head.bias is not None:
+                    nn.init.zeros_(seg_head.bias)
+
         if self.args.spatial_dims == 2:
             self.tta_flips = [[2], [3], [2, 3]]
         else:
@@ -69,7 +75,8 @@ class UMeI(LightningModule):
     def build_cls_head(self, dummy_encoder_output: BackboneOutput):
         encoder_cls_feature_size = dummy_encoder_output.cls_feature.shape[1]
         cls_head = nn.Linear(encoder_cls_feature_size + self.args.clinical_feature_size, self.args.num_cls_classes)
-        nn.init.constant_(torch.as_tensor(cls_head.bias), 0)
+        nn.init.trunc_normal_(cls_head.weight, std=0.02)
+        nn.init.zeros_(cls_head.bias)
         return cls_head
 
     # TODO: refactor these following mmseg
@@ -169,6 +176,7 @@ class UMeI(LightningModule):
                 args = self.args
                 model = SwinBackbone(
                     args.num_input_channels,
+                    args.num_conv_layers,
                     args.layer_channels,
                     args.kernel_sizes,
                     args.layer_depths,

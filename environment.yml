@@ -5,11 +5,13 @@ channels:
 dependencies:
   - python=3.10
   - ruamel.yaml
+  - hydra-core
   - numpy
   - einops
   - pytorch::pytorch=1.13.1
   - pytorch::torchvision=0.14.1
   - pytorch::pytorch-cuda=11.7
+  - pytorch-lightning
   - timm
   - wandb
   - scikit-learn
@@ -23,7 +25,6 @@ dependencies:
   - pip:
     - itk
     - evalutils
-    - pytorch-lightning
     - lightning-bolts
     - torchmetrics
     - lightning-bolts
