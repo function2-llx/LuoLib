@@ -69,7 +69,7 @@ def main():
                 verbose=True,
                 save_on_train_epoch_end=False,
                 save_top_k=-1,
-                every_n_epochs=10,
+                every_n_epochs=200,
             ),
             LearningRateMonitor(logging_interval='epoch'),
             ModelSummary(max_depth=3),
@@ -88,8 +88,6 @@ def main():
         # limit_val_batches=0.2,
     )
     model = BTCVModel(args)
-    with open(Path(trainer.log_dir) / 'model-structure.txt') as f:
-        print(model, file=f)
     last_ckpt_path = args.ckpt_path
     if last_ckpt_path is None:
         last_ckpt_path = output_dir / 'last.ckpt'

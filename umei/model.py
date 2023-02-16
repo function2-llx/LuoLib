@@ -1,7 +1,6 @@
+from pathlib import Path
 from typing import Optional
-import logging
 
-import numpy as np
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
@@ -14,9 +13,8 @@ from monai.inferers import sliding_window_inference
 from monai.losses import DiceFocalLoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
-from monai.networks.blocks.dynunet_block import get_conv_layer
 from monai.networks.layers import Conv
-from monai.umei import Decoder, Backbone, BackboneOutput
+from monai.umei import Backbone, BackboneOutput, Decoder
 from monai.utils import MetricReduction
 
 from umei.args import SegArgs, UMeIArgs
@@ -55,7 +53,6 @@ class UMeI(LightningModule):
                 for x in dummy_decoder_output.feature_maps:
                     print(x.shape)
                 decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
-            from monai.networks.blocks import UnetOutBlock
             # i-th seg head for the last i-th output from decoder
             self.seg_heads = nn.ModuleList([
                 Conv[Conv.CONV, self.args.spatial_dims](decoder_feature_sizes[-i - 1], args.num_seg_classes, kernel_size=1)
@@ -239,6 +236,12 @@ class UMeI(LightningModule):
                 return model
             case _:
                 raise ValueError(f'not supported decoder: {self.args.decoder}')
+
+    def on_fit_start(self) -> None:
+        from pytorch_lightning.loggers import WandbLogger
+        logger: WandbLogger = self.trainer.logger   # type: ignore
+        with open(Path(logger.experiment.dir) / 'model-structure.txt', 'w') as f:
+            print(self, file=f)
 
     def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
         img = batch[DataKey.IMG]

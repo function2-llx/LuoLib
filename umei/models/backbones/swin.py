@@ -337,8 +337,8 @@ class SwinBackbone(Backbone):
         drop_path_rate: float = 0.0,
         use_checkpoint: bool = False,
         *,
-        stem_stride: int = 4,
-        # stem_channels: int | None = None,
+        stem_kernel: int = 3,
+        stem_stride: int = 1,
     ) -> None:
         """
         Args:
@@ -358,6 +358,8 @@ class SwinBackbone(Backbone):
         num_layers = len(layer_depths)
         if isinstance(layer_channels, int):
             layer_channels = [layer_channels << i for i in range(num_layers)]
+
+        self.stem = get_conv_layer(in_channels, layer_channels[0], stem_kernel, stem_stride)
 
         layer_drop_path_rates = np.split(
             np.linspace(0, drop_path_rate, sum(layer_depths)),
