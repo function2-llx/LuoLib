@@ -1,0 +1,33 @@
+sample_shape: [192, 192, 48]
+spacing: [0.75781244, 0.75781244, 3]
+norm_intensity: false
+a_min: -175
+a_max: 250
+rotate_p: 0.5
+flip_p: 0.5
+scale_p: 0
+shift_p: 0.5
+backbone: swin
+stem_stride: 4
+stem_kernel: 3
+num_conv_layers: 0
+layer_channels: [96, 192, 384, 768]
+num_heads: [3, 6, 12, 24]
+layer_depths: [2, 2, 6, 2]
+kernel_sizes: [6, 6, 6, 6]
+conv_in_channels: 48
+drop_path_rate: 0.2
+decoder: conv
+num_post_upsamplings: 0
+num_seg_heads: 3
+train_batch_size: 1
+num_crop_samples: 4
+learning_rate: 2e-4
+weight_decay: 1e-5
+num_train_epochs: 3000
+warmup_epochs: 100
+crop: pn
+squared_dice: false
+include_background: true
+dice_nr: 1e-5
+dice_dr: 1e-5

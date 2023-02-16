@@ -145,3 +145,6 @@ SimMIM
 *.pt
 
 nim-review/
+# hydra
+outputs/
+datasets

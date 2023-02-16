@@ -339,7 +339,10 @@ class SwinBackbone(Backbone):
         *,
         stem_kernel: int = 3,
         stem_stride: int = 1,
-    ) -> None:
+        stem_channels: int = None,
+        conv_in_channels: int | None = None,
+        **_kwargs,
+    ):
         """
         Args:
             in_channels: dimension of input channels.
@@ -362,18 +365,49 @@ class SwinBackbone(Backbone):
         if stem_stride == 1:
             self.stem = get_conv_layer(in_channels, layer_channels[0], stem_kernel, stem_stride)
         else:
+            if stem_channels is None:
+                stem_channels = layer_channels[0] >> 1
             self.stem = nn.Sequential(
                 *[
                     AdaptiveDownsampling(
-                        in_channels if i == 0 else layer_channels[0],
-                        layer_channels[0],
-                        kernel_size=stem_kernel,
+                        in_channels if i == 0 else stem_channels,
+                        stem_channels if i < stem_stride.bit_length() - 2 else layer_channels[0],
+                        stem_kernel,
                     )
-                    for i in range(stem_stride.bit_length())
+                    for i in range(stem_stride.bit_length() - 1)
                 ],
                 get_norm_layer(Norm.INSTANCE, 3, layer_channels[0]),
                 get_act_layer(Act.LEAKYRELU),
             )
+        if conv_in_channels is not None:
+            self.conv_in_layers = nn.ModuleList()
+            if stem_stride > 1:
+                self.conv_in_layers.append(ResLayer(
+                    _num_blocks := 1,
+                    in_channels,
+                    conv_in_channels,
+                    _kernel_size := 3,
+                    drop_rate,
+                    Norm.INSTANCE,
+                ))
+                for i in range(1, stem_stride.bit_length() - 1):
+                    self.conv_in_layers.append(nn.Sequential(
+                        AdaptiveDownsampling(
+                            conv_in_channels,
+                            conv_in_channels,
+                            kernel_size=3,
+                        ),
+                        ResLayer(
+                            _num_blocks := 1,
+                            conv_in_channels,
+                            conv_in_channels,
+                            _kernel_size := 3,
+                            drop_rate,
+                            Norm.INSTANCE,
+                        )
+                    ))
+        else:
+            self.conv_in_layers = None
 
         layer_drop_path_rates = np.split(
             np.linspace(0, drop_path_rate, sum(layer_depths)),
@@ -435,8 +469,14 @@ class SwinBackbone(Backbone):
         return nwd
 
     def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
-        x = self.stem(x)
         feature_maps = []
+        if self.conv_in_layers is not None:
+            y = x
+            for layer in self.conv_in_layers:
+                y = layer(y)
+                feature_maps.append(y)
+
+        x = self.stem(x)
 
         for layer, norm, downsampling in zip(it.chain(self.layers), self.norms, self.downsamplings):
             x = layer(x)

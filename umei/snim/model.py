@@ -144,6 +144,7 @@ class SnimDecoder(nn.Module):
                 conv_only=True,
             )
         )
+        from torch.nn import Upsample
 
         # for compatibility
         self.lateral_convs = self.lateral_projects

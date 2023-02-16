@@ -1,0 +1,34 @@
+defaults:
+  - MVTModelArgs
+  - _self_
+
+num_tokens: 4096
+embedding_dim: 192
+project_decode: false
+norm_pix_loss: false
+beta: 0.25
+teacher_model_type: null
+rec_loss_type: mse
+encoder:
+  stem_kernel: 3
+  stem_stride: 4
+  in_channels: 1
+  num_conv_layers: 0
+  layer_channels: [96, 192]
+  kernel_sizes: [6, 6]
+  layer_depths: [3, 9]
+  num_heads: [3, 6]
+  drop_path_rate: 0.2
+  out_channels: ${.layer_channels.1}
+quantizer:
+  kmeans_init: true
+  track_code_usage: true
+  decay: 0.99
+decoder:
+  layer_channels: [96, 192]
+  kernel_sizes: [6, 6]
+  layer_depths: [2, 2]
+  num_heads: [3, 6]
+  post_upsampling_channels:
+    - 48
+    - ${...encoder.in_channels}

@@ -1,0 +1,5 @@
+defaults:
+  - MVTDatasetsArgs
+  - _self_
+
+root: ${oc.env:PWD}/datasets

@@ -1,26 +1,24 @@
-import logging
-from pathlib import Path
-
 import hydra
-import pytorch_lightning as pl
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
-from pytorch_lightning.strategies import DDPStrategy
+from hydra.core.config_store import ConfigStore
+from omegaconf import OmegaConf
 import torch
-import wandb
-from omegaconf import DictConfig, OmegaConf
 
-from umei.datasets.btcv import BTCVArgs, BTCVDataModule
-from umei.datasets.btcv.model import BTCVModel
-from umei.utils import MyWandbLogger, UMeIParser
+from umei.mvt import VisualTokenizer, MVTModelArgs, MVTArgs, MVTDatasetsArgs
 
 task_name = 'mvt'
 
-@hydra.main(config_path='conf', config_name='patch8', version_base=None)
-def main(args: DictConfig):
-    torch.set_float32_matmul_precision('high')
-    OmegaConf.structured()
-    print(args)
+cs = ConfigStore.instance()
+cs.store('MVTArgs', MVTArgs)
+cs.store('MVTModelArgs', MVTModelArgs, 'model')
+cs.store('MVTDatasetsArgs', MVTDatasetsArgs, 'datasets')
 
+@hydra.main(config_path='conf', config_name='default', version_base=None)
+def main(conf: MVTArgs):
+    torch.set_float32_matmul_precision('high')
+    print(OmegaConf.to_yaml(conf))
+    model = VisualTokenizer(conf.model)
+    print(conf.datasets.root)
+    # print(model)
     # print(args)
     # pl.seed_everything(args.seed)
     # datamodule = BTCVDataModule(args)

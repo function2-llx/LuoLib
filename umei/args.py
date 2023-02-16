@@ -45,6 +45,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     num_conv_layers: int = field(default=2)
     layer_channels: list[int] = field(default=None)
     kernel_sizes: list[int] = field(default=None)
+    conv_in_channels: int = field(default=None)
     layer_depths: list[int] = field(default=None)
     num_post_upsamplings: int = field(default=0)
     drop_path_rate: float = field(default=0.)

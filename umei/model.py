@@ -181,6 +181,7 @@ class UMeI(LightningModule):
                     drop_path_rate=args.drop_path_rate,
                     use_checkpoint=args.gradient_checkpointing,
                     stem_stride=args.stem_stride,
+                    conv_in_channels=args.conv_in_channels,
                 )
                 return model
             case _:
@@ -332,6 +333,7 @@ class UMeI(LightningModule):
                 optimizer,
                 warmup_epochs=self.args.warmup_epochs,
                 max_epochs=int(self.args.num_train_epochs),
+                eta_min=1e-6,
             )
         else:
             return CosineAnnealingLR(

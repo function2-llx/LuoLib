@@ -66,12 +66,12 @@ class BTCVModel(SegModel):
         pred_oh = one_hot(pred, self.args.num_seg_classes)
         for k, metric in self.metrics.items():
             m = metric(pred_oh, seg_oh)
-            print(m.nanmean().item())
+            print(m.nanmean().item() * 100)
 
     def test_epoch_end(self, *args):
         for k, metric in self.metrics.items():
             m = metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
-            m = m.nanmean()
+            m = m.nanmean() * 100
             self.log(f'test/{k}/avg', m, sync_dist=True)
             self.results[k] = m.item()
 
