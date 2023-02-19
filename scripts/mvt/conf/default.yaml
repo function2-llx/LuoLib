@@ -2,3 +2,5 @@ defaults:
   - MVTArgs
   - datasets: default
   - _self_
+
+seed: 42

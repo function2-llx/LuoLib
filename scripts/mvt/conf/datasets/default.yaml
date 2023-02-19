@@ -2,4 +2,7 @@ defaults:
   - MVTDatasetsArgs
   - _self_
 
-root: ${oc.env:PWD}/datasets
+root: ${oc.env:PWD}/mvt-data
+paths:
+  - AMOS22/train+val
+  - AMOS22/test

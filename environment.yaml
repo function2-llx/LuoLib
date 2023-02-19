@@ -20,6 +20,7 @@ dependencies:
   - matplotlib
   - nibabel
   - simpleitk
+  - more-itertools
 
   - pip
   - pip:
@@ -31,6 +32,7 @@ dependencies:
     - transformers
     - mmcv-full
     - mmsegmentation
+    - cytoolz
 #    - git+https://github.com/JoHof/lungmask
     - -e third-party/MONAI
     - -e third-party/nnUNet
