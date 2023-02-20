@@ -363,7 +363,7 @@ class SwinBackbone(Backbone):
             layer_channels = [layer_channels << i for i in range(num_layers)]
 
         if stem_stride == 1:
-            self.stem = get_conv_layer(in_channels, layer_channels[0], stem_kernel, stem_stride)
+            self.stem = get_conv_layer(in_channels, layer_channels[0], stem_kernel, stem_stride, norm=Norm.LAYERND, act=Act.GELU)
         else:
             if stem_channels is None:
                 stem_channels = layer_channels[0] >> 1
@@ -379,6 +379,7 @@ class SwinBackbone(Backbone):
                 get_norm_layer(Norm.INSTANCE, 3, layer_channels[0]),
                 get_act_layer(Act.LEAKYRELU),
             )
+
         if conv_in_channels is not None:
             self.conv_in_layers = nn.ModuleList()
             if stem_stride > 1:
@@ -389,6 +390,7 @@ class SwinBackbone(Backbone):
                     _kernel_size := 3,
                     drop_rate,
                     Norm.INSTANCE,
+                    Act.LEAKYRELU,
                 ))
                 for i in range(1, stem_stride.bit_length() - 1):
                     self.conv_in_layers.append(nn.Sequential(
@@ -404,6 +406,7 @@ class SwinBackbone(Backbone):
                             _kernel_size := 3,
                             drop_rate,
                             Norm.INSTANCE,
+                            Act.LEAKYRELU,
                         )
                     ))
         else:
@@ -421,7 +424,9 @@ class SwinBackbone(Backbone):
                 layer_channels[i],
                 kernel_sizes[i],
                 drop_rate,
-                drop_paths=layer_drop_path_rates[i],
+                Norm.LAYERND,
+                Act.GELU,
+                layer_drop_path_rates[i],
             ) if i < num_conv_layers
             else SwinLayer(
                 layer_channels[i],

@@ -43,10 +43,6 @@ class PlainConvUNetDecoder(Decoder):
         ])
         self.upsamplings = nn.ModuleList([
             AdaptiveUpsampling(layer_channels[i + 1], layer_channels[i])
-            # nn.Sequential(
-            #     AdaptiveUpsampling(layer_channels[i + 1], layer_channels[i]),
-            #     get_norm_layer(norm, 3, layer_channels[i]),
-            # )
             for i in range(num_layers)
         ])
         if post_upsampling_channels is None:
@@ -61,18 +57,6 @@ class PlainConvUNetDecoder(Decoder):
                 ),
                 get_conv_layer(post_upsampling_channels, post_upsampling_channels, 3, dropout=dropout, norm=norm, act=act),
                 get_conv_layer(post_upsampling_channels, post_upsampling_channels, 3, dropout=dropout, norm=norm, act=act),
-                # this normalization is crucial if a ResLayer with the same in/out channels is followed (no 1-conv for
-                # residual so no normalization as well), or the residual term will become too large during training
-                # get_norm_layer(norm, 3, post_upsampling_channels),
-                # ResLayer(
-                #     _num_blocks := 1,
-                #     _in_channels := post_upsampling_channels,
-                #     _out_channels := post_upsampling_channels,
-                #     _kernel_size := 3,
-                #     dropout,
-                #     norm,
-                #     act,
-                # )
             )
             for i in range(num_post_upsamplings)
         ])

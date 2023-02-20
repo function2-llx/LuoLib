@@ -137,9 +137,8 @@ class SegDataModule(UMeIDataModule):
         #     return data
 
         return monai.transforms.Compose([
-            monai.transforms.LoadImageD(load_keys),
+            monai.transforms.LoadImageD(load_keys, ensure_channel_first=True),
             # monai.transforms.Lambda(fix_seg_affine),
-            monai.transforms.AddChannelD(load_keys),
             monai.transforms.OrientationD(load_keys, axcodes='RAS'),
         ])
 
