@@ -9,7 +9,6 @@ class BTCVArgs(AugArgs, SegArgs):
     monitor_mode: str = field(default='max')
     output_root: Path = field(default=Path('output/btcv'))
     conf_root: Path = field(default=Path('conf/btcv'))
-    eval_epochs: int = field(default=10)
     data_ratio: float = field(default=1)
     # val_post: bool = field(default=False, metadata={'help': 'whether to perform post-processing during validation'})
 

@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-import multiprocessing
 from pathlib import Path
 from typing import Optional
 
@@ -7,6 +6,7 @@ import torch
 from transformers import TrainingArguments
 
 from monai.utils import BlendMode
+
 from umei.utils import PathLike, UMeIParser
 from umei.utils.argparse import yaml
 
@@ -96,6 +96,7 @@ class UMeIArgs(UMeIArgsBase, TrainingArguments):
     eval_epochs: int = field(default=1)
     optim: str = field(default='AdamW')
     optimizer_set_to_none: bool = field(default=True)
+    num_epoch_batches: int = field(default=250)   # follow nnunet
     num_sanity_val_steps: int = field(default=5)
     self_ensemble: bool = field(default=False)
     ckpt_path: Path = field(default=None, metadata={'help': 'checkpoint path to resume'})
@@ -179,18 +180,21 @@ class CVArgs(UMeIArgsBase):
 
 @dataclass
 class AugArgs(UMeIArgsBase):
+    gaussian_noise_prob: float = field(default=0.1)
+    gaussian_noise_std: float = field(default=0.1)
     flip_p: float = field(default=0.5)
     rotate_p: float = field(default=0.5)
-    scale_p: float = field(default=0.1)
-    shift_p: float = field(default=0.1)
-    scale_factor: float = field(default=0.1)
-    shift_offset: float = field(default=0.1)
+    scale_intensity_factor: float = field(default=0.2)
+    scale_intensity_p: float = field(default=0.1)
+    shift_intensity_offset: float = field(default=0.1)
+    shift_intensity_p: float = field(default=0)
 
 @dataclass
 class SegArgs(UMeIArgs):
-    crop: str = field(default='cls', metadata={'choices': ['cls', 'pn'], 'help': 'patch cropping strategy'})
-    crop_pos: int = field(default=1)
-    crop_neg: int = field(default=1)
+    # crop: str = field(default='cls', metadata={'choices': ['cls', 'pn'], 'help': 'patch cropping strategy'})
+    # crop_pos: int = field(default=1)
+    # crop_neg: int = field(default=1)
+    fg_oversampling_ratio: tuple[int, int] = field(default=(2, 1))
     dice_dr: float = field(default=1e-5)
     dice_nr: float = field(default=1e-5)
     mc_seg: bool = field(default=False)
@@ -200,7 +204,6 @@ class SegArgs(UMeIArgs):
     sw_batch_size: int = field(default=4)
     sw_overlap: float = field(default=0.25)
     sw_blend_mode: BlendMode = field(default=BlendMode.GAUSSIAN, metadata={'choices': list(BlendMode)})
-    num_crop_samples: int = field(default=4)
     per_device_eval_batch_size: int = field(default=1)  # unable to batchify the whole image without resize
     spline_seg: bool = field(default=False)
     monitor: str = field(default='val/dice/avg')

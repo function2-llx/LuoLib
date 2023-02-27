@@ -203,8 +203,8 @@ class AmosDataModule(CVDataModule):
             monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=self.args.flip_p, spatial_axis=1),
             monai.transforms.RandFlipD([self.args.img_key, self.args.seg_key], prob=self.args.flip_p, spatial_axis=2),
             monai.transforms.RandRotate90D([self.args.img_key, self.args.seg_key], prob=self.args.rotate_p, max_k=3),
-            monai.transforms.RandScaleIntensityD(self.args.img_key, factors=0.1, prob=self.args.scale_p),
-            monai.transforms.RandShiftIntensityD(self.args.img_key, offsets=0.1, prob=self.args.shift_p),
+            monai.transforms.RandScaleIntensityD(self.args.img_key, factors=0.1, prob=self.args.scale_intensity_p),
+            monai.transforms.RandShiftIntensityD(self.args.img_key, offsets=0.1, prob=self.args.shift_intensity_p),
         ])
 
     @property

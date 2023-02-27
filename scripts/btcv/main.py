@@ -24,7 +24,7 @@ def main():
         # pre-train path: .../pt type/pt param/pt datasets/run seed/last.ckpt
         # well, this is vulnerable
         ft_suffix = '/'.join(args.pretrain_path.parts[-5:-2])
-    ft_suffix += f'/{args.crop}-s{args.num_seg_heads}'
+    ft_suffix += f'/s{args.num_seg_heads}'
     if args.spline_seg:
         ft_suffix += '-sps'
     ft_suffix += f'-{int(args.num_train_epochs)}ep-{int(args.warmup_epochs)}wu'
@@ -38,7 +38,7 @@ def main():
     output_dir.mkdir(exist_ok=True, parents=True)
     log_dir = output_dir
     if args.do_eval:
-        log_dir /= f'eval-sw{args.sw_overlap}-{args.sw_blend_mode}'
+        log_dir /= f'eval-sw{args.sw_overlap}-{args.sw_blend_mode}{"-tta" if args.do_tta else ""}'
     log_dir.mkdir(exist_ok=True, parents=True)
     print('real output dir:', output_dir)
     print('log dir:', log_dir)
@@ -69,7 +69,7 @@ def main():
                 verbose=True,
                 save_on_train_epoch_end=False,
                 save_top_k=-1,
-                every_n_epochs=200,
+                every_n_epochs=20,
             ),
             LearningRateMonitor(logging_interval='epoch'),
             ModelSummary(max_depth=3),
@@ -81,7 +81,6 @@ def main():
         benchmark=True,
         max_epochs=int(args.num_train_epochs),
         num_sanity_val_steps=args.num_sanity_val_steps,
-        log_every_n_steps=5,
         check_val_every_n_epoch=args.eval_epochs,
         strategy=DDPStrategy(find_unused_parameters=args.ddp_find_unused_parameters),
         # limit_train_batches=0.1,

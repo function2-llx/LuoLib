@@ -75,8 +75,8 @@ class SnimDataModule(UMeIDataModule):
             monai.transforms.RandFlipD(DataKey.IMG, prob=self.args.flip_p, spatial_axis=1),
             monai.transforms.RandFlipD(DataKey.IMG, prob=self.args.flip_p, spatial_axis=2),
             monai.transforms.RandRotate90D(DataKey.IMG, prob=self.args.rotate_p, max_k=1),
-            monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=self.args.scale_factor, prob=self.args.scale_p),
-            monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=self.args.shift_offset, prob=self.args.shift_p),
+            monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=self.args.scale_intensity_factor, prob=self.args.scale_intensity_p),
+            monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=self.args.shift_intensity_offset, prob=self.args.shift_intensity_p),
             monai.transforms.Lambda(lambda data: data[DataKey.IMG]),
         ])
 

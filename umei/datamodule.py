@@ -1,9 +1,10 @@
 from collections.abc import Hashable, Sequence
 from functools import cached_property
+import itertools as it
 from typing import Callable
 
 import numpy as np
-from torch.utils.data import Dataset as TorchDataset
+from torch.utils.data import Dataset as TorchDataset, RandomSampler
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
@@ -42,15 +43,20 @@ class UMeIDataModule(LightningDataModule):
         raise NotImplementedError
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
+        args = self.args
+        dataset = CacheDataset(
+            self.train_data(),
+            transform=self.train_transform,
+            cache_num=self.args.train_cache_num,
+            num_workers=self.args.cache_dataset_workers,
+        )
         return DataLoader(
-            dataset=CacheDataset(
-                self.train_data(),
-                transform=self.train_transform,
-                cache_num=self.args.train_cache_num,
-                num_workers=self.args.cache_dataset_workers,
-            ),
+            dataset,
             batch_size=self.args.per_device_train_batch_size,
-            shuffle=True,
+            sampler=RandomSampler(
+                dataset,
+                num_samples=args.per_device_train_batch_size * args.num_epoch_batches,
+            ),
             num_workers=self.args.dataloader_num_workers,
             pin_memory=self.args.dataloader_pin_memory,
             persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
@@ -146,7 +152,6 @@ class SegDataModule(UMeIDataModule):
             )))
         return transforms
 
-    # full seg: output segmentation at the original spacing & shape
     def normalize_transform(self) -> list[monai_t.Transform]:
         args = self.args
         transforms = []
@@ -167,14 +172,12 @@ class SegDataModule(UMeIDataModule):
                     cval=args.a_max,
                 ))
             transforms.extend([
-                monai_t.LambdaD(DataKey.IMG, lambda x: x - x.min()),
-                monai_t.CropForegroundD([DataKey.IMG, DataKey.SEG], DataKey.IMG),
+                monai_t.CropForegroundD([DataKey.IMG, DataKey.SEG], DataKey.IMG, 'min'),
                 monai.transforms.NormalizeIntensityD(
                     DataKey.IMG,
                     args.norm_mean,
                     args.norm_std,
-                    nonzero=True,
-                    set_zero_to_min=True,
+                    non_min=True,
                 ),
             ])
         else:
@@ -209,23 +212,6 @@ class SegDataModule(UMeIDataModule):
 
     def aug_transform(self) -> list[monai_t.Transform]:
         args = self.args
-        crop_transform = {
-            'cls': monai.transforms.RandCropByLabelClassesD(
-                [DataKey.IMG, DataKey.SEG],
-                label_key=DataKey.SEG,
-                spatial_size=args.sample_shape,
-                num_classes=args.num_seg_classes,
-                num_samples=args.num_crop_samples,
-            ),
-            'pn': monai.transforms.RandCropByPosNegLabeld(
-                keys=[DataKey.IMG, DataKey.SEG],
-                label_key=DataKey.SEG,
-                spatial_size=args.sample_shape,
-                pos=args.crop_pos,
-                neg=args.crop_neg,
-                num_samples=args.num_crop_samples,
-            )
-        }[args.crop]
         return [
             monai.transforms.SpatialPadD(
                 [DataKey.IMG, DataKey.SEG],
@@ -233,13 +219,42 @@ class SegDataModule(UMeIDataModule):
                 mode=PytorchPadMode.CONSTANT,
                 pad_min=True,
             ),
-            crop_transform,
+            monai_t.OneOf(
+                [
+                    monai_t.RandSpatialCropSamplesD(
+                        [DataKey.IMG, DataKey.SEG],
+                        args.sample_shape,
+                        num_samples=1,
+                        random_center=True,
+                        random_size=False,
+                    ),
+                    monai_t.RandCropByLabelClassesD(
+                        [DataKey.IMG, DataKey.SEG],
+                        label_key=DataKey.SEG,
+                        spatial_size=args.sample_shape,
+                        ratios=[0, *it.repeat(1, args.num_seg_classes - 1)],
+                        num_classes=args.num_seg_classes,
+                        num_samples=1,
+                    ),
+                ],
+                args.fg_oversampling_ratio,
+            ),
+            # spatial monai_t.RandAffineD
+            monai_t.RandGaussianNoiseD(
+                DataKey.IMG,
+                prob=args.gaussian_noise_prob,
+                std=args.gaussian_noise_std,
+            ),
+            # gaussian blur: monai_t.RandGaussianSmoothD(),
+            monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=args.scale_intensity_factor, prob=args.scale_intensity_p),
+            monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=args.shift_intensity_offset, prob=args.shift_intensity_p),
+            # contrast
+            # simulate low resolution
+            # gamma: monai_t.RandAdjustContrastD(),
             monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=args.flip_p, spatial_axis=0),
             monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=args.flip_p, spatial_axis=1),
             monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=args.flip_p, spatial_axis=2),
-            monai.transforms.RandRotate90D([DataKey.IMG, DataKey.SEG], prob=args.rotate_p, max_k=3),
-            monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=args.scale_factor, prob=args.scale_p),
-            monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=args.shift_offset, prob=args.shift_p),
+            monai.transforms.RandRotate90D([DataKey.IMG, DataKey.SEG], prob=args.rotate_p, max_k=1),
         ]
 
     @property
