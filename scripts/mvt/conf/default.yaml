@@ -1,6 +1,9 @@
 defaults:
   - MVTArgs
+  - model: ???
   - datasets: default
+  - train: MVTTrainArgs
+  - runtime: RuntimeArgs
   - _self_
 
 seed: 42

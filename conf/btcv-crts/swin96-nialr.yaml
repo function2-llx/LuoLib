@@ -5,8 +5,8 @@ a_min: -175
 a_max: 250
 rotate_p: 0.5
 flip_p: 0.5
-scale_p: 0.1
-shift_p: 0.1
+scale_p: 0
+shift_p: 0.5
 backbone: swin
 stem_stride: 1
 stem_kernel: 3
@@ -24,9 +24,8 @@ num_post_upsamplings: 0
 num_seg_heads: 3
 train_batch_size: 1
 num_crop_samples: 4
-optim: AdamW
 learning_rate: 2e-4
-weight_decay: 1e-2
+weight_decay: 1e-5
 num_train_epochs: 3000
 warmup_epochs: 100
 crop: pn

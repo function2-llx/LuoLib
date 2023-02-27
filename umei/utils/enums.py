@@ -10,4 +10,5 @@ class DataKey(StrEnum):
     IMG = 'img'
     CLS = 'cls'
     SEG = 'seg'
+    SEG_ORIGIN = 'seg-origin'
     CLINICAL = 'clinical'

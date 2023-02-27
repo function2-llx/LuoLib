@@ -19,7 +19,7 @@ from monai.utils import ensure_tuple_rep
 
 from umei.models.adaptive_resampling import AdaptiveDownsampling
 from umei.models.blocks import get_conv_layer, ResLayer
-from umei.models.init import init_linear_conv
+from umei.models.init import init_linear_conv3d
 from umei.models.layers import Act, LayerNormNd, Norm
 
 from umei.utils import channel_first, channel_last
@@ -251,7 +251,7 @@ class SwinLayer(nn.Module):
 
         super().__init__()
         self.dim = dim
-        self.max_window_size = max_window_size = np.array(ensure_tuple_rep(max_window_size, 3))
+        self.max_window_size = np.array(ensure_tuple_rep(max_window_size, 3))
         self.shift_size = self.max_window_size // 2
         self.use_checkpoint = use_checkpoint
         if isinstance(drop_path_rates, float):
@@ -312,6 +312,8 @@ class SwinLayer(nn.Module):
                 x = block.forward(x, window_size, block_shift_size, block_attn_mask, relative_position_index)
         return channel_first(x)
 
+    def extra_repr(self) -> str:
+        return f'max_window_size={self.max_window_size.tolist()}'
 
 class SwinBackbone(Backbone):
     """
@@ -341,6 +343,8 @@ class SwinBackbone(Backbone):
         stem_stride: int = 1,
         stem_channels: int = None,
         conv_in_channels: int | None = None,
+        conv_norm: str = 'instance',
+        conv_act: str = 'leakyrelu',
         **_kwargs,
     ):
         """
@@ -363,7 +367,7 @@ class SwinBackbone(Backbone):
             layer_channels = [layer_channels << i for i in range(num_layers)]
 
         if stem_stride == 1:
-            self.stem = get_conv_layer(in_channels, layer_channels[0], stem_kernel, stem_stride, norm=Norm.LAYERND, act=Act.GELU)
+            self.stem = get_conv_layer(in_channels, layer_channels[0], stem_kernel, stem_stride, norm=conv_norm, act=conv_act)
         else:
             if stem_channels is None:
                 stem_channels = layer_channels[0] >> 1
@@ -376,8 +380,8 @@ class SwinBackbone(Backbone):
                     )
                     for i in range(stem_stride.bit_length() - 1)
                 ],
-                get_norm_layer(Norm.INSTANCE, 3, layer_channels[0]),
-                get_act_layer(Act.LEAKYRELU),
+                get_norm_layer(conv_norm, 3, layer_channels[0]),
+                get_act_layer(conv_act),
             )
 
         if conv_in_channels is not None:
@@ -424,8 +428,8 @@ class SwinBackbone(Backbone):
                 layer_channels[i],
                 kernel_sizes[i],
                 drop_rate,
-                Norm.LAYERND,
-                Act.GELU,
+                conv_norm,
+                conv_act,
                 layer_drop_path_rates[i],
             ) if i < num_conv_layers
             else SwinLayer(
@@ -456,7 +460,7 @@ class SwinBackbone(Backbone):
         # dummy, the last downsampling is not used for segmentation task
         self.downsamplings.append(nn.Identity())
 
-        # SwinLayer is pre-norm
+        # SwinLayer is pre-norm, additional norm for their outputs
         self.norms = nn.ModuleList([
             nn.Identity() if i < num_conv_layers
             else LayerNormNd(layer_channels[i])
@@ -464,7 +468,7 @@ class SwinBackbone(Backbone):
         ])
 
         self.pool = nn.AdaptiveAvgPool3d(1)
-        self.apply(init_linear_conv)
+        self.apply(init_linear_conv3d)
 
     def no_weight_decay(self):
         nwd = set()

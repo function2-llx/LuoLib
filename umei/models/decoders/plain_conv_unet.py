@@ -5,12 +5,11 @@ from typing import Sequence
 import torch
 from torch import nn
 
-from monai.networks.layers import get_act_layer, get_norm_layer
 from monai.umei import Decoder, DecoderOutput
 
 from umei.models.adaptive_resampling import AdaptiveUpsampling
 from umei.models.blocks import ResLayer, get_conv_layer
-from umei.models.init import init_linear_conv
+from umei.models.init import init_linear_conv3d
 from umei.models.layers import Act, Norm
 
 class PlainConvUNetDecoder(Decoder):
@@ -25,10 +24,23 @@ class PlainConvUNetDecoder(Decoder):
         act: tuple | str | None = Act.LEAKYRELU,
         num_post_upsamplings: int = 0,
         post_upsampling_channels: int | None = None,
+        bottleneck: bool = False,
+        lateral: bool = True,
     ) -> None:
         super().__init__()
         num_layers = len(layer_channels) - 1
-        self.bottleneck = nn.Identity()
+        if bottleneck:
+            self.bottleneck = ResLayer(
+                _num_blocks := 1,
+                layer_channels[-1],
+                layer_channels[-1],
+                _kernel_size := 3,
+                dropout,
+                norm,
+                act,
+            )
+        else:
+            self.bottleneck = nn.Identity()
         self.layers = nn.ModuleList([
             nn.Sequential(
                 get_conv_layer(layer_channels[i] * 2, layer_channels[i], 3, dropout=dropout, norm=norm, act=act),
@@ -37,17 +49,17 @@ class PlainConvUNetDecoder(Decoder):
             for i in range(num_layers)
         ])
         self.laterals = nn.ModuleList([
-            # nn.Identity()
-            get_conv_layer(layer_channels[i], layer_channels[i], 1, dropout=dropout, norm=norm, act=act)
+            get_conv_layer(layer_channels[i], layer_channels[i], 1, dropout=dropout, norm=norm, act=act) if lateral
+            else nn.Identity()
             for i in range(num_layers)
         ])
         self.upsamplings = nn.ModuleList([
             AdaptiveUpsampling(layer_channels[i + 1], layer_channels[i])
             for i in range(num_layers)
         ])
+
         if post_upsampling_channels is None:
             post_upsampling_channels = layer_channels[0]
-
         self.post_upsamplings = nn.ModuleList([
             nn.Sequential(
                 AdaptiveUpsampling(
@@ -61,7 +73,7 @@ class PlainConvUNetDecoder(Decoder):
             for i in range(num_post_upsamplings)
         ])
 
-        self.apply(init_linear_conv)
+        self.apply(init_linear_conv3d)
 
     def forward(self, backbone_feature_maps: Sequence[torch.Tensor], x_in: torch.Tensor) -> DecoderOutput:
         feature_maps = []

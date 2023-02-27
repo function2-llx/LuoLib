@@ -2,7 +2,7 @@ import numpy as np
 from torch import nn
 from torch.nn.init import trunc_normal_
 
-def init_linear_conv(m: nn.Module):
+def init_linear_conv3d(m: nn.Module):
     match type(m):
         case nn.Linear:
             trunc_normal_(m.weight, std=.02)

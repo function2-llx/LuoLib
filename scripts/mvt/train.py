@@ -1,23 +1,37 @@
 import hydra
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
+import pytorch_lightning as pl
 import torch
 
-from umei.mvt import VisualTokenizer, MVTModelArgs, MVTArgs, MVTDatasetsArgs
+from mvt.args import MVTArgs, MVTDatasetsArgs, MVTModelArgs, MVTTrainArgs, RuntimeArgs
+from mvt.datamodule import MVTDataModule
 
 task_name = 'mvt'
 
 cs = ConfigStore.instance()
 cs.store('MVTArgs', MVTArgs)
+cs.store('RuntimeArgs', RuntimeArgs, 'runtime')
+cs.store('MVTTrainArgs', MVTTrainArgs, 'train')
 cs.store('MVTModelArgs', MVTModelArgs, 'model')
 cs.store('MVTDatasetsArgs', MVTDatasetsArgs, 'datasets')
 
 @hydra.main(config_path='conf', config_name='default', version_base=None)
-def main(conf: MVTArgs):
+def main(args: MVTArgs):
+    print(OmegaConf.to_yaml(args))
+    pl.seed_everything(42)
     torch.set_float32_matmul_precision('high')
-    print(OmegaConf.to_yaml(conf))
-    model = VisualTokenizer(conf.model)
-    print(conf.datasets.root)
+    datamodule = MVTDataModule(args)
+    transform = datamodule.train_transform()
+    # for data in datamodule.train_dataloader():
+    for data in datamodule.train_data:
+        data = transform(data)
+        # plt.imshow(np.rot90(data[0, 0, :, :, data.shape[-1] >> 1]), cmap='gray')
+        # plt.show()
+
+    # print(OmegaConf.to_yaml(conf))
+    # model = VisualTokenizer(conf.model)
+    # print(conf.datasets.root)
     # print(model)
     # print(args)
     # pl.seed_everything(args.seed)

@@ -8,7 +8,7 @@ from torch import nn
 from monai.networks.layers import get_norm_layer
 from umei.models.adaptive_resampling import AdaptiveUpsampling
 from umei.models.backbones.swin import SwinLayer
-from umei.models.init import init_linear_conv
+from umei.models.init import init_linear_conv3d
 from umei.models.layers import Norm
 
 class SwinVQDecoder(nn.Module):
@@ -74,7 +74,7 @@ class SwinVQDecoder(nn.Module):
             if i < len(post_upsampling_channels) - 1:
                 self.post_upsampling.append(get_norm_layer(Norm.INSTANCE, 3, post_upsampling_channels[i]))
 
-        self.apply(init_linear_conv)
+        self.apply(init_linear_conv3d)
 
     def no_weight_decay(self):
         ret = set()

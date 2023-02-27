@@ -1,3 +1,5 @@
+import json
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -54,11 +56,15 @@ class UMeI(LightningModule):
                     print(x.shape)
                 decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
             # i-th seg head for the last i-th output from decoder
-            self.seg_heads = nn.ModuleList([
-                Conv[Conv.CONV, self.args.spatial_dims](decoder_feature_sizes[-i - 1], args.num_seg_classes, kernel_size=1)
-                # UnetOutBlock(args.spatial_dims, decoder_feature_sizes[-i - 1], args.num_seg_classes)
-                for i in range(args.num_seg_heads)
-            ])
+            self.seg_heads = nn.ModuleList(
+                [
+                    Conv[Conv.CONV, self.args.spatial_dims](
+                        decoder_feature_sizes[-i - 1], args.num_seg_classes, kernel_size=1
+                    )
+                    # UnetOutBlock(args.spatial_dims, decoder_feature_sizes[-i - 1], args.num_seg_classes)
+                    for i in range(args.num_seg_heads)
+                ]
+            )
             for seg_head in self.seg_heads:
                 nn.init.trunc_normal_(seg_head.weight, std=0.02)
                 if seg_head.bias is not None:
@@ -96,19 +102,23 @@ class UMeI(LightningModule):
                     dp_model = nn.DataParallel(model)
                     state_dict = dp_model.state_dict()
                     pretrain_state_dict = torch.load(self.args.pretrain_path, map_location='cpu')['state_dict']
-                    state_dict.update({
-                        k: v for k, v in pretrain_state_dict.items()
-                        if k in state_dict and k != 'module.conv1.weight'
-                    })
+                    state_dict.update(
+                        {
+                            k: v for k, v in pretrain_state_dict.items()
+                            if k in state_dict and k != 'module.conv1.weight'
+                        }
+                    )
                     dp_model.load_state_dict(state_dict)
                     model: nets.ResNet = dp_model.module  # type: ignore
 
                     # handle number of input channels that is possible different from the pre-trained model
                     for attr in ['weight', 'bias']:
                         param: Optional[nn.Parameter] = getattr(model.conv1, attr, None)
-                        pretrain_param_data: Optional[torch.Tensor] = getattr(pretrain_state_dict,
-                                                                              f'module.conv1.{attr}',
-                                                                              None)
+                        pretrain_param_data: Optional[torch.Tensor] = getattr(
+                            pretrain_state_dict,
+                            f'module.conv1.{attr}',
+                            None
+                        )
                         if param is not None and pretrain_param_data is not None:
                             param.data = pretrain_param_data.repeat(1, self.args.num_input_channels)
                     print(f'load pre-trained med-3d weights from {self.args.pretrain_path}')
@@ -182,6 +192,8 @@ class UMeI(LightningModule):
                     use_checkpoint=args.gradient_checkpointing,
                     stem_stride=args.stem_stride,
                     conv_in_channels=args.conv_in_channels,
+                    conv_norm=args.conv_norm,
+                    conv_act=args.conv_act,
                 )
                 return model
             case _:
@@ -202,7 +214,9 @@ class UMeI(LightningModule):
                         input_stride=input_stride,
                     )
                     if self.args.decoder_pretrain_path is not None:
-                        state_dict = filter_state_dict(torch.load(self.args.decoder_pretrain_path)["state_dict"], 'decoder')
+                        state_dict = filter_state_dict(
+                            torch.load(self.args.decoder_pretrain_path)["state_dict"], 'decoder'
+                        )
                         miss, unexpected = model.load_state_dict(state_dict, strict=False)
                         assert len(unexpected) == 0
                         print('missing:', len(miss))
@@ -238,10 +252,14 @@ class UMeI(LightningModule):
             case _:
                 raise ValueError(f'not supported decoder: {self.args.decoder}')
 
-    def on_fit_start(self) -> None:
+    @property
+    def log_exp_dir(self) -> Path:
         from pytorch_lightning.loggers import WandbLogger
         logger: WandbLogger = self.trainer.logger   # type: ignore
-        with open(Path(logger.experiment.dir) / 'model-structure.txt', 'w') as f:
+        return Path(logger.experiment.dir)
+
+    def on_fit_start(self) -> None:
+        with open(self.log_exp_dir / 'model-structure.txt', 'w') as f:
             print(self, file=f)
 
     def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
@@ -305,24 +323,66 @@ class UMeI(LightningModule):
         return logit
 
     def get_grouped_parameters(self) -> list[dict]:
-        # TODO: handle no weight decay
-        return [{
-            'params': self.parameters(),
-            'lr': self.args.learning_rate,
-            'weight_decay': self.args.weight_decay,
-        }]
+        # modify from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py
+        decay = set()
+        no_decay = set()
+        from torch.nn.modules.instancenorm import _InstanceNorm
+        from torch.nn.modules.conv import _ConvNd
+        whitelist_weight_modules = (
+            nn.Linear,
+            _ConvNd,
+        )
+        blacklist_weight_modules = (
+            nn.LayerNorm,
+            _InstanceNorm,
+            nn.Embedding,
+        )
+        for mn, m in self.named_modules():
+            m: nn.Module
+            if hasattr(m, 'no_weight_decay'):
+                for pn in m.no_weight_decay():
+                    no_decay.add(f'{mn}.{pn}' if mn else pn)
+
+            for pn, p in m.named_parameters(prefix=mn, recurse=False):
+                if pn.endswith('bias'):
+                    # all biases will not be decayed
+                    no_decay.add(pn)
+                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                    # weights of whitelist modules will be weight decayed
+                    decay.add(pn)
+                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                    # weights of blacklist modules will NOT be weight decayed
+                    no_decay.add(pn)
+
+        # validate that we considered every parameter
+        params_dict = {pn: p for pn, p in self.named_parameters()}
+        inter_params = decay & no_decay
+        union_params = decay | no_decay
+        assert len(inter_params) == 0, f"parameters {inter_params} made it into both decay/no_decay sets!"
+        assert len(params_dict.keys() - union_params) == 0, \
+            f"parameters {params_dict.keys() - union_params} were not separated into either decay/no_decay set!"
+
+        with open(self.log_exp_dir / 'parameters.json', 'w') as f:
+            obj = {
+                'decay': list(decay),
+                'no decay': list(no_decay),
+            }
+            json.dump(obj, f, indent=4, ensure_ascii=False)
+
+        # create the pytorch optimizer object
+        return [
+            {"params": [params_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.args.weight_decay},
+            {"params": [params_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0},
+        ]
 
     def get_optimizer(self):
-        optimizer_cls = {
-            'adamw': AdamW,
-            'radam': RAdam,
-        }[self.args.optim]
-        optimizer = optimizer_cls(
-            self.get_grouped_parameters(),
-            lr=self.args.learning_rate,
-            weight_decay=self.args.weight_decay,
+        from timm.optim import create_optimizer_v2
+        return create_optimizer_v2(
+            self.get_grouped_parameters(),  # type: ignore
+            self.args.optim,
+            self.args.learning_rate,
+            self.args.weight_decay,
         )
-        return optimizer
 
     def get_lr_scheduler(self, optimizer):
         # from pl_bolts.optimizers import LinearWarmupCosineAnnealingLR

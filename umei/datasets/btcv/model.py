@@ -1,9 +1,15 @@
+from pathlib import Path
+
+import torch
 from torch.nn import functional as torch_f
 
+from monai.data import MetaTensor
 from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric, HausdorffDistanceMetric, SurfaceDistanceMetric
 from monai.networks import one_hot
-from monai.utils import MetricReduction
+from monai import transforms as monai_t
+from monai.utils import ImageMetaKey, MetaKeys, MetricReduction
+
 from umei import SegModel
 from umei.datasets.btcv import BTCVArgs
 from umei.utils import DataKey
@@ -45,9 +51,21 @@ class BTCVModel(SegModel):
         # self.hd95_post.reset()
 
     def test_step(self, batch, batch_idx, *args, **kwargs):
-        seg = batch[DataKey.SEG]
-        seg_oh = one_hot(seg, self.args.num_seg_classes)
-        pred_logit = self.sw_infer(batch[DataKey.IMG])
+        img: MetaTensor = batch[DataKey.IMG]
+        seg: MetaTensor = batch[DataKey.SEG]
+        seg_origin: MetaTensor = batch[DataKey.SEG_ORIGIN]
+        spatial_shape = img.shape[2:]
+        from monai.transforms import generate_spatial_bounding_box
+        bbox = generate_spatial_bounding_box(img[0], 'min')
+        bbox_slice = tuple(map(lambda x: slice(*x), zip(*bbox)))
+        bbox_slice = (slice(None), slice(None), *bbox_slice)
+        rev_bbox_mask = torch.ones_like(img, dtype=torch.bool)
+        rev_bbox_mask[bbox_slice] = False
+        img = img[bbox_slice]
+        # seg = seg[bbox_slice]
+        seg_oh = one_hot(seg_origin, self.args.num_seg_classes)
+        pred_logit = img.new_ones((1, self.args.num_seg_classes, *seg.shape[2:])) * 1000
+        pred_logit[bbox_slice] = self.infer_logit(img)
 
         # pred = pred_logit.argmax(dim=1, keepdim=True).to(torch.uint8)
         # from swin_unetr.BTCV.utils import resample_3d
@@ -60,13 +78,26 @@ class BTCVModel(SegModel):
         # print('argmax-interpolate', end=' ')
         # for metric in [self.dice_pre, self.sd_pre, self.hd95_pre]:
         #     print(metric(pred_oh, seg_oh).nanmean().item(), end='\n' if metric is self.hd95_pre else ' ')
-        pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode='trilinear')
-        pred = pred_logit.argmax(dim=1, keepdim=True)
+        pred_logit = torch_f.interpolate(pred_logit, seg_origin.shape[2:], mode='trilinear')
+        pred = pred_logit.argmax(dim=1, keepdim=True).int()
+
         # pred = self.post_transform(pred[0])
         pred_oh = one_hot(pred, self.args.num_seg_classes)
         for k, metric in self.metrics.items():
             m = metric(pred_oh, seg_oh)
             print(m.nanmean().item() * 100)
+
+        if self.args.export:
+            import nibabel as nib
+            pred_np = pred.cpu().numpy()
+            affine_np = seg_origin.affine.numpy()
+            for i in range(pred.shape[0]):
+                img_path = Path(img.meta[ImageMetaKey.FILENAME_OR_OBJ][i])
+                case = img_path.with_suffix('').stem[3:]
+                nib.save(
+                    nib.Nifti1Image(pred_np[i, 0], affine_np[i]),
+                    Path(self.trainer.log_dir) / f'seg{case}.nii.gz',
+                )
 
     def test_epoch_end(self, *args):
         for k, metric in self.metrics.items():

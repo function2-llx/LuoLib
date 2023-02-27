@@ -8,14 +8,16 @@ flip_p: 0.5
 scale_p: 0
 shift_p: 0.5
 backbone: swin
-stem_stride: 2
-stem_kernel: 2
-num_conv_layers: 0
-layer_channels: [48, 96, 192, 384]
-num_heads: [3, 6, 12, 24]
-layer_depths: [2, 2, 6, 2]
+stem_stride: 1
+stem_kernel: 3
+num_conv_layers: 1
+conv_norm: instance
+conv_act: gelu
+layer_channels: [24, 48, 96, 192, 384]
+num_heads: [-1, 3, 6, 12, 24]
+layer_depths: [1, 2, 2, 6, 2]
 kernel_sizes: [3, 6, 6, 6, 6]
-conv_in_channels: 48
+conv_in_channels: null
 drop_path_rate: 0
 decoder: conv
 num_post_upsamplings: 0
