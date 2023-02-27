@@ -1,5 +1,5 @@
 sample_shape: [96, 96, 96]
-spacing: [1.5, 1.5, 2]
+spacing: [1.5, 1.5, 3]
 norm_intensity: true
 a_min: null
 a_max: null
