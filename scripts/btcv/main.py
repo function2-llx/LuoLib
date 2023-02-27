@@ -108,6 +108,8 @@ def main():
             print('\t'.join(map(str, model.results.values())), file=f)
             # for k in ['test/dice-post/avg', 'test/sd-post/avg', 'test/hd95-post/avg']:
             #     print(results[0][k], file=f, end='\n' if k == 'test/hd95-post/avg' else '\t')
+        with open(log_dir / 'case-results.txt', 'w') as f:
+            print(*model.case_results, sep='\n', file=f)
 
     wandb.finish()
 

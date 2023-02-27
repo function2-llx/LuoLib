@@ -224,8 +224,6 @@ class SegDataModule(UMeIDataModule):
                 pos=args.crop_pos,
                 neg=args.crop_neg,
                 num_samples=args.num_crop_samples,
-                image_key=DataKey.IMG,
-                image_threshold=0,
             )
         }[args.crop]
         return [

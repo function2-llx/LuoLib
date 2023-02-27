@@ -35,14 +35,16 @@ class BTCVModel(SegModel):
         # self.hd95_post = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
         # # self.resampler = monai.transforms.SpatialResample()
         self.metrics = {
-            'dice': DiceMetric(include_background=False),
+            'dice': DiceMetric(include_background=True),
         }
         self.results = {}
+        self.case_results = []
 
     def on_test_epoch_start(self) -> None:
         for metric in self.metrics.values():
             metric.reset()
         self.results = {}
+        self.case_results.clear()
         # # self.dice_pre.reset()
         # self.dice_post.reset()
         # # self.sd_pre.reset()
@@ -56,6 +58,7 @@ class BTCVModel(SegModel):
         seg_origin: MetaTensor = batch[DataKey.SEG_ORIGIN]
         spatial_shape = img.shape[2:]
         from monai.transforms import generate_spatial_bounding_box
+        assert img.shape[0] == 1
         bbox = generate_spatial_bounding_box(img[0], 'min')
         bbox_slice = tuple(map(lambda x: slice(*x), zip(*bbox)))
         bbox_slice = (slice(None), slice(None), *bbox_slice)
@@ -85,7 +88,9 @@ class BTCVModel(SegModel):
         pred_oh = one_hot(pred, self.args.num_seg_classes)
         for k, metric in self.metrics.items():
             m = metric(pred_oh, seg_oh)
-            print(m.nanmean().item() * 100)
+            for i in range(m.shape[0]):
+                self.case_results.append('\t'.join(m[i].tolist()))
+            print(m[:, 1:].nanmean().item() * 100)
 
         if self.args.export:
             import nibabel as nib
