@@ -430,11 +430,8 @@ class SegModel(UMeI):
         # metric for val
         self.dice_metric = DiceMetric(include_background=True)
 
-    def sw_infer(self, img: torch.Tensor, progress: bool = None):
-        if progress is None:
-            progress = self.trainer.testing if self._trainer is not None else True
-
-        return sliding_window_inference(
+    def sw_infer(self, img: torch.Tensor, progress: bool = None, softmax: bool = False):
+        ret = sliding_window_inference(
             img,
             roi_size=self.args.sample_shape,
             sw_batch_size=self.args.sw_batch_size,
@@ -443,19 +440,25 @@ class SegModel(UMeI):
             mode=self.args.sw_blend_mode,
             progress=progress,
         )
+        if softmax:
+            ret = ret.softmax(dim=1)
+        return ret
 
-    def tta_infer(self, img: torch.Tensor, progress: bool = None):
-        pred_logit = self.sw_infer(img, progress)
+    def tta_infer(self, img: torch.Tensor, progress: bool = None, softmax: bool = False):
+        pred = self.sw_infer(img, progress, softmax)
         for flip_idx in self.tta_flips:
-            pred_logit += torch.flip(self.sw_infer(torch.flip(img, flip_idx)), flip_idx)
-        pred_logit /= len(self.tta_flips) + 1
-        return pred_logit
+            pred += torch.flip(self.sw_infer(torch.flip(img, flip_idx), progress, softmax), flip_idx)
+        pred /= len(self.tta_flips) + 1
+        return pred
 
-    def infer_logit(self, img: torch.Tensor, progress: bool = None):
+    def infer(self, img: torch.Tensor, progress: bool = None, softmax: bool = False):
+        if progress is None:
+            progress = self.trainer.testing if self._trainer is not None else True
+
         if self.args.do_tta:
-            return self.tta_infer(img, progress)
+            return self.tta_infer(img, progress, softmax)
         else:
-            return self.sw_infer(img, progress)
+            return self.sw_infer(img, progress, softmax)
 
     def on_validation_epoch_start(self):
         if self.args.val_empty_cuda_cache:

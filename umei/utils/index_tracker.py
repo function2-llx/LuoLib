@@ -5,7 +5,7 @@ from matplotlib.colors import ListedColormap
 import numpy as np
 
 class IndexTracker:
-    def __init__(self, img: np.ndarray, seg: Optional[np.ndarray] = None):
+    def __init__(self, img: np.ndarray, seg: Optional[np.ndarray] = None, block: bool = True):
         fig, ax = plt.subplots()
         fig: plt.Figure
         ax: plt.Axes
@@ -30,7 +30,7 @@ class IndexTracker:
 
         self.update()
         fig.canvas.mpl_connect('scroll_event', self.on_scroll)
-        plt.show()
+        plt.show(block=block)
 
     def on_scroll(self, event):
         # print("%s %s" % (event.button, event.step))

@@ -133,10 +133,8 @@ class SegDataModule(UMeIDataModule):
     def __init__(self, args: UMeIArgs | SegArgs):
         super().__init__(args)
 
-    def loader_transform(self, *, load_seg: bool, copy_seg: bool = False):
-        load_keys = [DataKey.IMG]
-        if load_seg:
-            load_keys.append(DataKey.SEG)
+    def loader_transform(self):
+        load_keys = [DataKey.IMG, DataKey.SEG]
 
         # def fix_seg_affine(data: dict):
         #     if load_seg:
@@ -145,16 +143,19 @@ class SegDataModule(UMeIDataModule):
         transforms = [
             monai_t.LoadImageD(load_keys, ensure_channel_first=True, image_only=True),
         ]
-        if copy_seg:
-            transforms.append(monai_t.append(monai_t.CopyItemsD(
-                DataKey.SEG,
-                names=DataKey.SEG_ORIGIN,
-            )))
+        # if copy_seg:
+        #     transforms.append(monai_t.CopyItemsD(
+        #         DataKey.SEG,
+        #         names=DataKey.SEG_ORIGIN,
+        #     ))
         return transforms
 
-    def normalize_transform(self) -> list[monai_t.Transform]:
+    def normalize_transform(self, *, transform_seg: bool = True) -> list[monai_t.Transform]:
         args = self.args
         transforms = []
+        all_keys = [DataKey.IMG]
+        if transform_seg:
+            all_keys.append(DataKey.SEG)
 
         if self.args.norm_intensity:
             if args.a_min is not None:
@@ -172,7 +173,7 @@ class SegDataModule(UMeIDataModule):
                     cval=args.a_max,
                 ))
             transforms.extend([
-                monai_t.CropForegroundD([DataKey.IMG, DataKey.SEG], DataKey.IMG, 'min'),
+                monai_t.CropForegroundD(all_keys, DataKey.IMG, 'min'),
                 monai.transforms.NormalizeIntensityD(
                     DataKey.IMG,
                     args.norm_mean,
@@ -199,14 +200,15 @@ class SegDataModule(UMeIDataModule):
             return data
 
         transforms.append(monai.transforms.SpacingD(DataKey.IMG, pixdim=args.spacing, mode=GridSampleMode.BILINEAR))
-        if self.args.spline_seg:
-            transforms.append(monai.transforms.Lambda(space_seg))
-        else:
-            transforms.append(monai.transforms.SpacingD(
-                DataKey.SEG,
-                pixdim=self.args.spacing,
-                mode=GridSampleMode.NEAREST,
-            ))
+        if transform_seg:
+            if self.args.spline_seg:
+                transforms.append(monai.transforms.Lambda(space_seg))
+            else:
+                transforms.append(monai.transforms.SpacingD(
+                    DataKey.SEG,
+                    pixdim=self.args.spacing,
+                    mode=GridSampleMode.NEAREST,
+                ))
 
         return transforms
 
@@ -239,7 +241,7 @@ class SegDataModule(UMeIDataModule):
                 ],
                 args.fg_oversampling_ratio,
             ),
-            # spatial monai_t.RandAffineD
+            # monai_t.RandAffineD()m
             monai_t.RandGaussianNoiseD(
                 DataKey.IMG,
                 prob=args.gaussian_noise_prob,
@@ -260,7 +262,7 @@ class SegDataModule(UMeIDataModule):
     @property
     def train_transform(self) -> Callable:
         return monai.transforms.Compose([
-            *self.loader_transform(load_seg=True),
+            *self.loader_transform(),
             *self.normalize_transform(),
             *self.aug_transform(),
             monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
@@ -269,7 +271,7 @@ class SegDataModule(UMeIDataModule):
     @property
     def val_transform(self) -> Callable:
         return monai.transforms.Compose([
-            *self.loader_transform(load_seg=True),
+            *self.loader_transform(),
             *self.normalize_transform(),
             monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
         ])
@@ -277,9 +279,9 @@ class SegDataModule(UMeIDataModule):
     @property
     def test_transform(self):
         return monai.transforms.Compose([
-            *self.loader_transform(load_seg=True, copy_seg=True),
-            *self.normalize_transform(),
-            monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG, DataKey.SEG_ORIGIN]),
+            *self.loader_transform(),
+            *self.normalize_transform(transform_seg=False),
+            monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
         ])
 
 def load_decathlon_datalist(
