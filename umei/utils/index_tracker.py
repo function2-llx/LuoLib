@@ -1,11 +1,12 @@
 from typing import Optional
 
+import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.colors import ListedColormap
 import numpy as np
 
 class IndexTracker:
-    def __init__(self, img: np.ndarray, seg: Optional[np.ndarray] = None, block: bool = True):
+    def __init__(self, img: np.ndarray, seg: Optional[np.ndarray] = None, block: bool = True, title: str = "", choose_max: bool = False):
         fig, ax = plt.subplots()
         fig: plt.Figure
         ax: plt.Axes
@@ -21,15 +22,23 @@ class IndexTracker:
         if self.seg is None:
             self.ax_seg = None
         else:
-            self.ind = self.seg.sum(axis=(0, 1)).argmax()
+            seg = np.array(seg).astype(np.int64)
+            num_classes = seg.max() + 1
+            if choose_max:
+                self.ind = (self.seg > 0).sum(axis=(0, 1)).argmax().item()
             self.ax_seg = ax.imshow(
                 np.rot90(self.seg[:, :, self.ind]),
-                cmap=ListedColormap(['none', 'green']),
+                vmax=num_classes,
+                cmap=ListedColormap(['none', *matplotlib.colormaps['tab20'].colors[:num_classes - 1]]),
                 alpha=0.5,
             )
+            from matplotlib.colorbar import Colorbar
+            cbar: matplotlib.colorbar.Colorbar = fig.colorbar(self.ax_seg)
+            cbar.set_ticks(np.arange(num_classes))
 
         self.update()
         fig.canvas.mpl_connect('scroll_event', self.on_scroll)
+        plt.title(title)
         plt.show(block=block)
 
     def on_scroll(self, event):

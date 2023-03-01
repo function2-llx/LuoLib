@@ -20,6 +20,7 @@ from monai.umei import Backbone, BackboneOutput, Decoder
 from monai.utils import MetricReduction
 
 from umei.args import SegArgs, UMeIArgs
+from umei.omega import ModelConf
 from umei.utils import DataKey
 
 def filter_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict:
@@ -244,7 +245,6 @@ class UMeI(LightningModule):
                 from umei.models.decoders.plain_conv_unet import PlainConvUNetDecoder
                 args = self.args
                 model = PlainConvUNetDecoder(
-                    self.args.num_input_channels,
                     [x.shape[1] for x in dummy_backbone_output.feature_maps],
                     num_post_upsamplings=args.num_post_upsamplings,
                 )
@@ -494,3 +494,17 @@ class SegModel(UMeI):
         else:
             avg = dice[1:].mean()
         self.log('val/dice/avg', avg, sync_dist=True)
+
+# TODO: refactor with some registry
+def create_model(conf: ModelConf, **kwargs) -> nn.Module:
+    match conf.name:
+        case 'swin':
+            from umei.models.backbones.swin import SwinBackbone
+            model = SwinBackbone(**conf.kwargs, **kwargs)
+        case _:
+            raise ValueError
+
+    if conf.ckpt_path is not None:
+        raise NotImplementedError
+
+    return model

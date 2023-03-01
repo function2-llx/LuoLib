@@ -10,10 +10,15 @@ from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 
 import monai
 from monai import transforms as monai_t
+from monai.transforms import AdjustContrast as GammaCorrection
 from monai.config import PathLike
 from monai.data import CacheDataset, DataLoader, Dataset, MetaTensor, partition_dataset_classes, select_cross_validation_folds
-from monai.utils import GridSampleMode, PytorchPadMode
+from monai.utils import GridSampleMode, GridSamplePadMode, PytorchPadMode
 from .args import AugArgs, CVArgs, SegArgs, UMeIArgs
+from .transforms import (
+    RandAffineCropD, RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD,
+    SpatialRangeGenerator,
+)
 from .utils import DataKey, DataSplit
 
 class UMeIDataModule(LightningDataModule):
@@ -134,20 +139,13 @@ class SegDataModule(UMeIDataModule):
         super().__init__(args)
 
     def loader_transform(self):
-        load_keys = [DataKey.IMG, DataKey.SEG]
-
         # def fix_seg_affine(data: dict):
         #     if load_seg:
         #         data[f'{DataKey.SEG}_meta_dict']['affine'] = data[f'{DataKey.IMG}_meta_dict']['affine']
         #     return data
         transforms = [
-            monai_t.LoadImageD(load_keys, ensure_channel_first=True, image_only=True),
+            monai_t.LoadImageD([DataKey.IMG, DataKey.SEG], ensure_channel_first=True, image_only=True),
         ]
-        # if copy_seg:
-        #     transforms.append(monai_t.CopyItemsD(
-        #         DataKey.SEG,
-        #         names=DataKey.SEG_ORIGIN,
-        #     ))
         return transforms
 
     def normalize_transform(self, *, transform_seg: bool = True) -> list[monai_t.Transform]:
@@ -191,60 +189,62 @@ class SegDataModule(UMeIDataModule):
                 clip=True,
             ))
 
-        def space_seg(data: dict[Hashable, MetaTensor]):
-            from batchgenerators.augmentations.utils import resize_segmentation
-            img = data[DataKey.IMG]
-            seg = data[DataKey.SEG]
-            seg.array = resize_segmentation(seg.array, data[DataKey.IMG].shape, order=1)
-            seg.affine = img.affine
-            return data
-
-        transforms.append(monai.transforms.SpacingD(DataKey.IMG, pixdim=args.spacing, mode=GridSampleMode.BILINEAR))
+        transforms.extend([
+            monai_t.SpacingD(DataKey.IMG, pixdim=args.spacing, mode=GridSampleMode.BILINEAR),
+            monai_t.SpatialPadD(
+                DataKey.IMG,
+                spatial_size=args.sample_shape,
+                mode=PytorchPadMode.CONSTANT,
+                pad_min=True,
+            )
+        ])
         if transform_seg:
-            if self.args.spline_seg:
-                transforms.append(monai.transforms.Lambda(space_seg))
-            else:
-                transforms.append(monai.transforms.SpacingD(
+            transforms.extend([
+                monai_t.SpacingD(
                     DataKey.SEG,
                     pixdim=self.args.spacing,
                     mode=GridSampleMode.NEAREST,
-                ))
-
+                ),
+                monai_t.SpatialPadD(
+                    DataKey.SEG,
+                    spatial_size=args.sample_shape,
+                    mode=PytorchPadMode.CONSTANT,
+                )
+            ])
         return transforms
 
     def aug_transform(self) -> list[monai_t.Transform]:
         args = self.args
         return [
-            monai.transforms.SpatialPadD(
+            RandAffineCropD(
                 [DataKey.IMG, DataKey.SEG],
-                spatial_size=args.sample_shape,
-                mode=PytorchPadMode.CONSTANT,
-                pad_min=True,
+                args.sample_shape,
+                [GridSampleMode.BILINEAR, GridSampleMode.NEAREST],
+                center_generator=monai_t.OneOf(
+                    [
+                        RandSpatialCenterGeneratorD(DataKey.IMG, args.sample_shape),
+                        RandCenterGeneratorByLabelClassesD(
+                            DataKey.SEG,
+                            args.sample_shape,
+                            [0, *it.repeat(1, args.num_seg_classes - 1)],
+                            args.num_seg_classes,
+                        )
+                    ],
+                    args.fg_oversampling_ratio,
+                ),
+                rotate_generator=SpatialRangeGenerator(
+                    ((0, 0), (0, 0), (-np.pi / 6, np.pi / 6)),
+                    prob=(0, 0, .5),
+                ),
+                scale_generator=SpatialRangeGenerator(
+                    (0.7, 1.4),
+                    prob=.5,
+                    repeat=3,
+                ),
             ),
-            monai_t.OneOf(
-                [
-                    monai_t.RandSpatialCropSamplesD(
-                        [DataKey.IMG, DataKey.SEG],
-                        args.sample_shape,
-                        num_samples=1,
-                        random_center=True,
-                        random_size=False,
-                    ),
-                    monai_t.RandCropByLabelClassesD(
-                        [DataKey.IMG, DataKey.SEG],
-                        label_key=DataKey.SEG,
-                        spatial_size=args.sample_shape,
-                        ratios=[0, *it.repeat(1, args.num_seg_classes - 1)],
-                        num_classes=args.num_seg_classes,
-                        num_samples=1,
-                    ),
-                ],
-                args.fg_oversampling_ratio,
-            ),
-            # monai_t.RandAffineD()m
             monai_t.RandGaussianNoiseD(
                 DataKey.IMG,
-                prob=args.gaussian_noise_prob,
+                prob=args.gaussian_noise_p,
                 std=args.gaussian_noise_std,
             ),
             # gaussian blur: monai_t.RandGaussianSmoothD(),

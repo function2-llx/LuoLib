@@ -26,9 +26,7 @@ dependencies:
   - pip:
     - itk
     - evalutils
-    - lightning-bolts
     - torchmetrics
-    - lightning-bolts
     - transformers
     - mmcv-full
     - mmsegmentation

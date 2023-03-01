@@ -180,7 +180,7 @@ class CVArgs(UMeIArgsBase):
 
 @dataclass
 class AugArgs(UMeIArgsBase):
-    gaussian_noise_prob: float = field(default=0.1)
+    gaussian_noise_p: float = field(default=0.1)
     gaussian_noise_std: float = field(default=0.1)
     flip_p: float = field(default=0.5)
     rotate_p: float = field(default=0.5)
@@ -217,3 +217,5 @@ class SegArgs(UMeIArgs):
         # assert self.per_device_eval_batch_size == 1
         if self.mc_seg:
             assert self.include_background
+
+

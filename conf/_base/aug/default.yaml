@@ -1,0 +1,15 @@
+rotate_range:
+  - [0., 0.]
+  - [0., 0.]
+  - [-0.5235987755982988, 0.5235987755982988] # pi/6
+rotate_p: 0.2
+scale_range: [0.7, 1.4]
+scale_p: 0.2
+gaussian_noise_std: 0.1
+gaussian_noise_p: 0.1
+scale_intensity_factor: 0.25
+scale_intensity_p: 0.15
+shift_intensity_offset: 0.1
+shift_intensity_p: 0.
+gamma_range: [0.7, 1.5]
+gamma_p: 0.3

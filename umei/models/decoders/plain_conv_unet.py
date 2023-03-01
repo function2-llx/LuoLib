@@ -17,7 +17,6 @@ class PlainConvUNetDecoder(Decoder):
 
     def __init__(
         self,
-        in_channels: int,
         layer_channels: list[int],
         dropout: tuple | str | float | None = None,
         norm: tuple | str | None = Norm.INSTANCE,

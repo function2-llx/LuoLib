@@ -1,0 +1,5 @@
+_bases:
+  - ./swin96.yaml
+name: swin
+kwargs:
+  layer_channels: [48, 48, 96, 192, 384]
