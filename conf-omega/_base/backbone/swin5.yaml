@@ -1,5 +1,6 @@
 name: swin
 kwargs:
+  in_channels: ${num_input_channels}
   stem_stride: 1
   stem_kernel: 3
   num_conv_layers: 1

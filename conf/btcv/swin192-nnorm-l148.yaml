@@ -28,8 +28,8 @@ train_batch_size: 2
 optim: AdamW
 learning_rate: 2e-4
 weight_decay: 1e-2
-num_train_epochs: 3000
-warmup_epochs: 100
+num_train_epochs: 1000
+warmup_epochs: 25
 crop: pn
 squared_dice: false
 include_background: true

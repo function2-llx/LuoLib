@@ -3,6 +3,7 @@ from pathlib import Path
 from torch.nn import functional as torch_f
 from toolz import itertoolz as itz
 
+from monai import transforms as monai_t
 from monai.data import MetaTensor
 from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
@@ -60,6 +61,13 @@ class BTCVModel(SegModel):
         to_pad = None
         for op in reversed(img.applied_operations[0]):
             match op[TraceKeys.CLASS_NAME]:
+                case 'SpatialPad':
+                    padded = op[TraceKeys.EXTRA_INFO]["padded"]
+                    roi_start = [i[0] for i in padded[1:]]
+                    roi_end = [i - j[1] for i, j in zip(pred_value.shape[2:], padded[1:])]
+                    cropper = monai_t.SpatialCrop(roi_start=roi_start, roi_end=roi_end)
+                    with cropper.trace_transform(False):
+                        pred_value[0] = cropper(pred_value[0])
                 case 'SpatialResample':
                     pred_value = torch_f.interpolate(pred_value, op[TraceKeys.ORIG_SIZE], mode='trilinear')
                 case 'CropForeground':

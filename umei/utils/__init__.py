@@ -6,7 +6,6 @@ from einops.layers.torch import Rearrange
 import torch
 
 from .argparse import UMeIParser
-from .logger import MyWandbLogger
 from .enums import DataSplit, DataKey
 
 PathLike = Union[str, bytes, os.PathLike]

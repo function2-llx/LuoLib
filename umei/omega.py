@@ -7,11 +7,13 @@ from typing import Any, TypeVar
 import omegaconf
 from omegaconf import DictConfig, OmegaConf
 
+from monai.utils import BlendMode
 from umei.types import tuple2_t, tuple3_t
 
 # omegaconf: Unions of containers are not supported
 @dataclass(kw_only=True)
 class AugConf:
+    dummy_dim: int | None = None
     rotate_range: list
     rotate_p: Any
     scale_range: list
@@ -26,76 +28,128 @@ class AugConf:
     gamma_p: float
 
 @dataclass(kw_only=True)
-class FitConf:
-    train_batch_size: int
-    sample_shape: tuple3_t[int]
+class DataConf:
     spacing: tuple3_t[float]
-    seed: int = 42
+    data_ratio: float = 1.
+    intensity_min: float | None = None
+    intensity_max: float | None = None
+    norm_intensity: bool
+    norm_mean: float | None = None
+    norm_std: float | None = None
+    scaled_intensity_min: float = 0.
+    scaled_intensity_max: float = 1.
 
 @dataclass(kw_only=True)
-class ConfNode:
-    _bases: list = field(default_factory=list)
+class FitConf(DataConf, AugConf):
+    monitor: str
+    monitor_mode: str
+    num_train_epochs: int = 1000
+    num_epoch_batches: int = 250
+    train_batch_size: int
+    optim: str = 'AdamW'
+    lr: float = 1e-3
+    weight_decay: float = 5e-2
+    warmup_epochs: int = 50
+    eta_min: float = 1e-6
+    optimizer_set_to_none: bool = True
+    precision: int = 16
+    ddp_find_unused_parameters: bool = False
+    num_nodes: int = 1
 
 @dataclass(kw_only=True)
-class ModelConf(ConfNode):
+class RuntimeConf:
+    train_cache_num: int = 100
+    val_cache_num: int = 100
+    num_cache_workers: int = 8
+    dataloader_num_workers: int = 8
+    dataloader_pin_memory: bool = True
+    do_train: bool = False
+    do_eval: bool = False
+    val_empty_cuda_cache: bool = False
+    eval_batch_size: int = 1
+    resume_log: bool = True
+    log_offline: bool = False
+    num_sanity_val_steps: int = 5
+
+@dataclass(kw_only=True)
+class ModelConf:
     name: str
     ckpt_path: Path | None = None
     kwargs: dict
 
 @dataclass(kw_only=True)
-class RuntimeConf:
-    train_cache_num: int
-    val_cache_num: int
-    num_cache_workers: int
-    dataloader_num_workers: int
-    dataloader_pin_memory: bool = True
-    do_train: bool
-    do_eval: bool
+class ExpConfBase(FitConf, RuntimeConf):
+    num_input_channels: int
+    sample_shape: tuple3_t[int]
+    backbone: ModelConf
+    conf_root: Path = Path('conf-omega')
+    output_root: Path = Path('output-omega')
+    output_dir: Path
+    exp_name: str
+    log_dir: Path
+    seed: int = 42
+    float32_matmul_precision: str = 'high'
+    ckpt_path: Path | None = None
+
 
 
 @dataclass(kw_only=True)
-class ExpConfBase(ConfNode):
-    conf_root: Path = Path('conf')
-    output_root: Path = Path('output')
-    output_dir: Path
+class SegInferConf:
+    sw_overlap: float = 0.25
+    sw_batch_size: int = 16
+    sw_blend_mode: BlendMode = BlendMode.GAUSSIAN
+    do_tta: bool
+    export: bool
+    fg_oversampling_ratio: list[float] = (2, 1)  # random vs force fg
 
-@dataclass
-class USegConf(ExpConfBase, AugConf, FitConf, RuntimeConf):
-    backbone: ModelConf
+@dataclass(kw_only=True)
+class SegExpConf(ExpConfBase, SegInferConf):
+    monitor: str = 'val/avg/dice'
+    monitor_mode: str = 'max'
+
     decoder: ModelConf
+    num_seg_classes: int
+    num_seg_heads: int = 3
+    spline_seg: bool = False
+    self_ensemble: bool = False
+    dice_include_background: bool = True
+    dice_squared: bool = False
+    multi_label: bool
+    dice_nr: float = 1e-5
+    dice_dr: float = 1e-5
 
 def parse_node(conf_path: Path):
     conf_dir = conf_path.parent
-    conf = OmegaConf.create(vars(ConfNode()))
-    conf.merge_with(OmegaConf.load(conf_path))
-    base_conf = OmegaConf.create()
-    for base in conf._bases:
+
+    def resolve(path):
+        path = Path(path)
+        return path if path.is_absolute() else conf_dir / path
+
+    conf = OmegaConf.load(conf_path)
+    base_confs = []
+    for base in conf.pop('_base', []):
         match type(base):
             case builtins.str:
-                base = Path(base)
-                if not base.is_absolute():
-                    base = conf_dir / base
-                base_conf.merge_with(parse_node(base))
+                base_confs.append(parse_node(resolve(base)))
             case omegaconf.DictConfig:
-                for k, v in base.items():
-                    assert isinstance(v, str)
-                    base_conf.merge_with(OmegaConf.create({
-                        k: parse_node(conf_dir / v)
-                    }))
+                base_confs.append({
+                    k: parse_node(resolve(v))
+                    for k, v in base.items()
+                })
             case _:
                 raise ValueError
 
-    conf.merge_with(base_conf)
-    return conf
+    return OmegaConf.unsafe_merge(*base_confs, conf)
 
 T = TypeVar('T', bound=ExpConfBase)
-def parse_exp_conf(conf_type: type[T]) -> T | DictConfig:
+def parse_exp_conf(conf_type: type[T]) -> T:
     argv = sys.argv[1:]
     conf_path = Path(argv[0])
     conf: ExpConfBase | DictConfig = OmegaConf.structured(conf_type)
     conf.merge_with(parse_node(conf_path))
     conf.merge_with_dotlist(argv[1:])
     if OmegaConf.is_missing(conf, 'output_dir'):
-        suffix = conf_path.relative_to(conf.conf_root).with_suffix('')
-        conf.output_dir = conf.output_root / suffix
+        if OmegaConf.is_missing(conf, 'exp_name'):
+            conf.exp_name = conf_path.relative_to(conf.conf_root).with_suffix('')
+        conf.output_dir = conf.output_root / conf.exp_name
     return conf

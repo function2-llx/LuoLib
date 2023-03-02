@@ -1,24 +1,29 @@
 from collections.abc import Sequence
-from functools import cached_property
+import itertools as it
 from typing import Callable
 
-import numpy as np
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
+import torch
 from torch.utils.data import Dataset as TorchDataset, RandomSampler
 
 import monai
 from monai import transforms as monai_t
 from monai.config import PathLike
-from monai.data import CacheDataset, DataLoader, Dataset, partition_dataset_classes, select_cross_validation_folds
+from monai.data import CacheDataset, DataLoader, Dataset
 from monai.utils import GridSampleMode, PytorchPadMode
-from .args import AugArgs, CVArgs, SegArgs, UMeIArgs
+
+from .omega import ExpConfBase, SegExpConf
+from .transforms import (
+    RandAffineCropD, RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD,
+    SpatialRangeGenerator,
+)
 from .utils import DataKey, DataSplit
 
-class UMeIDataModule(LightningDataModule):
-    def __init__(self, args: UMeIArgs):
+class ExpDataModuleBase(LightningDataModule):
+    def __init__(self, conf: ExpConfBase):
         super().__init__()
-        self.args = args
+        self.conf = conf
 
     def train_data(self) -> Sequence:
         raise NotImplementedError
@@ -29,165 +34,120 @@ class UMeIDataModule(LightningDataModule):
     def test_data(self) -> Sequence:
         raise NotImplementedError
 
-    @property
     def train_transform(self):
         raise NotImplementedError
 
-    @property
     def val_transform(self):
         raise NotImplementedError
 
-    @property
     def test_transform(self):
         raise NotImplementedError
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
-        args = self.args
+        conf = self.conf
         dataset = CacheDataset(
             self.train_data(),
-            transform=self.train_transform,
-            cache_num=self.args.train_cache_num,
-            num_workers=self.args.cache_dataset_workers,
+            transform=self.train_transform(),
+            cache_num=self.conf.train_cache_num,
+            num_workers=self.conf.num_cache_workers,
         )
+        device_count = torch.cuda.device_count()
+        assert conf.train_batch_size % torch.cuda.device_count() == 0
+        per_device_train_batch_size = conf.train_batch_size // device_count
         return DataLoader(
             dataset,
-            batch_size=self.args.per_device_train_batch_size,
+            batch_size=per_device_train_batch_size,
             sampler=RandomSampler(
                 dataset,
-                num_samples=args.per_device_train_batch_size * args.num_epoch_batches,
+                num_samples=per_device_train_batch_size * conf.num_epoch_batches,
             ),
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
-            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+            num_workers=self.conf.dataloader_num_workers,
+            pin_memory=self.conf.dataloader_pin_memory,
+            persistent_workers=True if self.conf.dataloader_num_workers > 0 else False,
         )
 
     def build_eval_dataloader(self, dataset: TorchDataset):
+        conf = self.conf
+        device_count = torch.cuda.device_count()
+        assert conf.eval_batch_size % torch.cuda.device_count() == 0
+        per_device_eval_batch_size = conf.eval_batch_size // device_count
         return DataLoader(
             dataset,
-            num_workers=self.args.dataloader_num_workers,
-            batch_size=self.args.per_device_eval_batch_size,
-            pin_memory=self.args.dataloader_pin_memory,
-            persistent_workers=True if self.args.dataloader_num_workers > 0 else False,
+            num_workers=self.conf.dataloader_num_workers,
+            batch_size=per_device_eval_batch_size,
+            pin_memory=self.conf.dataloader_pin_memory,
+            persistent_workers=True if self.conf.dataloader_num_workers > 0 else False,
         )
 
     def val_dataloader(self):
         return self.build_eval_dataloader(CacheDataset(
             self.val_data(),
-            transform=self.val_transform,
-            cache_num=self.args.val_cache_num,
-            num_workers=self.args.cache_dataset_workers,
+            transform=self.val_transform(),
+            cache_num=self.conf.val_cache_num,
+            num_workers=self.conf.num_cache_workers,
         ))
 
     def test_dataloader(self):
         return self.build_eval_dataloader(Dataset(
             self.test_data(),
-            transform=self.test_transform,
+            transform=self.test_transform(),
         ))
 
-class CVDataModule(UMeIDataModule):
-    args: CVArgs | UMeIArgs
-
-    def __init__(self, args: CVArgs | UMeIArgs):
-        super().__init__(args)
-        self.val_id = 0
-
-    # all data for fit (including train & val)
-    def fit_data(self) -> tuple[Sequence, Sequence]:
-        raise NotImplementedError
-
-    @property
-    def val_id(self) -> int:
-        return self._val_id
-
-    @val_id.setter
-    def val_id(self, x: int):
-        assert x in range(self.args.num_folds)
-        self._val_id = x
-
-    @cached_property
-    def partitions(self):
-        fit_data, classes = self.fit_data()
-        if classes is None:
-            classes = [0] * len(fit_data)
-        return partition_dataset_classes(
-            fit_data,
-            classes,
-            num_partitions=self.args.num_folds,
-            shuffle=True,
-            seed=self.args.seed,
-        )
-
-    def train_data(self):
-        return select_cross_validation_folds(
-            self.partitions,
-            folds=np.delete(range(len(self.partitions)), self.val_id),
-        )
-
-    def val_data(self):
-        return select_cross_validation_folds(self.partitions, folds=self.val_id)
-
-class SegDataModule(UMeIDataModule):
-    args: UMeIArgs | SegArgs | AugArgs
-
-    def __init__(self, args: UMeIArgs | SegArgs):
-        super().__init__(args)
+class SegDataModule(ExpDataModuleBase):
+    conf: SegExpConf
 
     def loader_transform(self):
-        # def fix_seg_affine(data: dict):
-        #     if load_seg:
-        #         data[f'{DataKey.SEG}_meta_dict']['affine'] = data[f'{DataKey.IMG}_meta_dict']['affine']
-        #     return data
         transforms = [
             monai_t.LoadImageD([DataKey.IMG, DataKey.SEG], ensure_channel_first=True, image_only=True),
         ]
         return transforms
 
     def normalize_transform(self, *, transform_seg: bool = True) -> list[monai_t.Transform]:
-        args = self.args
+        conf = self.conf
         transforms = []
         all_keys = [DataKey.IMG]
         if transform_seg:
             all_keys.append(DataKey.SEG)
 
-        if self.args.norm_intensity:
-            if args.a_min is not None:
+        if conf.norm_intensity:
+            if conf.intensity_min is not None:
                 transforms.append(monai_t.ThresholdIntensityD(
                     DataKey.IMG,
-                    threshold=args.a_min,
+                    threshold=conf.intensity_min,
                     above=True,
-                    cval=args.a_min,
+                    cval=conf.intensity_min,
                 ))
-            if args.a_max:
+            if conf.intensity_max:
                 transforms.append(monai_t.ThresholdIntensityD(
                     DataKey.IMG,
-                    threshold=args.a_max,
+                    threshold=conf.intensity_max,
                     above=False,
-                    cval=args.a_max,
+                    cval=conf.intensity_max,
                 ))
             transforms.extend([
                 monai_t.CropForegroundD(all_keys, DataKey.IMG, 'min'),
                 monai.transforms.NormalizeIntensityD(
                     DataKey.IMG,
-                    args.norm_mean,
-                    args.norm_std,
+                    conf.norm_mean,
+                    conf.norm_std,
                     non_min=True,
                 ),
             ])
         else:
             transforms.append(monai.transforms.ScaleIntensityRangeD(
                 DataKey.IMG,
-                a_min=self.args.a_min,
-                a_max=self.args.a_max,
-                b_min=self.args.b_min,
-                b_max=self.args.b_max,
+                a_min=conf.intensity_min,
+                a_max=conf.intensity_max,
+                b_min=conf.scaled_intensity_min,
+                b_max=conf.scaled_intensity_max,
                 clip=True,
             ))
 
         transforms.extend([
-            monai_t.SpacingD(DataKey.IMG, pixdim=args.spacing, mode=GridSampleMode.BILINEAR),
+            monai_t.SpacingD(DataKey.IMG, pixdim=conf.spacing, mode=GridSampleMode.BILINEAR),
             monai_t.SpatialPadD(
                 DataKey.IMG,
-                spatial_size=args.sample_shape,
+                spatial_size=conf.sample_shape,
                 mode=PytorchPadMode.CONSTANT,
                 pad_min=True,
             )
@@ -196,38 +156,65 @@ class SegDataModule(UMeIDataModule):
             transforms.extend([
                 monai_t.SpacingD(
                     DataKey.SEG,
-                    pixdim=self.args.spacing,
+                    pixdim=conf.spacing,
                     mode=GridSampleMode.NEAREST,
                 ),
                 monai_t.SpatialPadD(
                     DataKey.SEG,
-                    spatial_size=args.sample_shape,
+                    spatial_size=conf.sample_shape,
                     mode=PytorchPadMode.CONSTANT,
                 )
             ])
         return transforms
 
     def aug_transform(self) -> list[monai_t.Transform]:
-        args = self.args
+        conf = self.conf
         return [
-            monai_t.RandGaussianNoiseD(
-                DataKey.IMG,
-                prob=args.gaussian_noise_p,
-                std=args.gaussian_noise_std,
+            RandAffineCropD(
+                [DataKey.IMG, DataKey.SEG],
+                conf.sample_shape,
+                [GridSampleMode.BILINEAR, GridSampleMode.NEAREST],
+                dummy_dim=conf.dummy_dim,
+                center_generator=monai_t.OneOf(
+                    [
+                        RandSpatialCenterGeneratorD(DataKey.IMG, conf.sample_shape),
+                        RandCenterGeneratorByLabelClassesD(
+                            DataKey.SEG,
+                            conf.sample_shape,
+                            [0, *it.repeat(1, conf.num_seg_classes - 1)],
+                            conf.num_seg_classes,
+                        )
+                    ],
+                    conf.fg_oversampling_ratio,
+                ),
+                rotate_generator=SpatialRangeGenerator(
+                    conf.rotate_range,
+                    conf.rotate_p,
+                    repeat=3 if conf.dummy_dim is None else 1,
+                ),
+                scale_generator=SpatialRangeGenerator(
+                    conf.scale_range,
+                    conf.scale_p,
+                    default=1.,
+                    repeat=3 if conf.dummy_dim is None else 2,
+                ),
             ),
+            # monai_t.RandGaussianNoiseD(
+            #     DataKey.IMG,
+            #     prob=conf.gaussian_noise_p,
+            #     std=conf.gaussian_noise_std,
+            # ),
             # gaussian blur: monai_t.RandGaussianSmoothD(),
-            monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=args.scale_intensity_factor, prob=args.scale_intensity_p),
-            monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=args.shift_intensity_offset, prob=args.shift_intensity_p),
+            # monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=conf.scale_intensity_factor, prob=conf.scale_intensity_p),
+            # monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=conf.shift_intensity_offset, prob=conf.shift_intensity_p),
             # contrast
             # simulate low resolution
             # gamma: monai_t.RandAdjustContrastD(),
-            monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=args.flip_p, spatial_axis=0),
-            monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=args.flip_p, spatial_axis=1),
-            monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=args.flip_p, spatial_axis=2),
-            monai.transforms.RandRotate90D([DataKey.IMG, DataKey.SEG], prob=args.rotate_p, max_k=1),
+            # monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=0.5, spatial_axis=0),
+            # monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=0.5, spatial_axis=1),
+            # monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=0.5, spatial_axis=2),
         ]
 
-    @property
     def train_transform(self) -> Callable:
         return monai.transforms.Compose([
             *self.loader_transform(),
@@ -236,7 +223,6 @@ class SegDataModule(UMeIDataModule):
             monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
         ])
 
-    @property
     def val_transform(self) -> Callable:
         return monai.transforms.Compose([
             *self.loader_transform(),
@@ -244,7 +230,6 @@ class SegDataModule(UMeIDataModule):
             monai.transforms.SelectItemsD([DataKey.IMG, DataKey.SEG]),
         ])
 
-    @property
     def test_transform(self):
         return monai.transforms.Compose([
             *self.loader_transform(),

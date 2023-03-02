@@ -1,7 +1,10 @@
+import itertools as it
 from typing import Any, Callable, Hashable, Mapping, Sequence
 
+from einops import rearrange
 import numpy as np
 import torch
+from torch.nn import functional as torch_f
 
 import monai
 from monai import transforms as monai_t
@@ -39,7 +42,7 @@ class SpatialRangeGenerator(monai_t.Randomizable):
         rand_range: Sequence[tuple2_t[float]] | tuple2_t[float],
         prob: Sequence[float] | float = 1.,
         default: float = 0.,
-        repeat: int | None = None,
+        repeat: int | None = None,  # number of times to repeat when all dimensions share transform
         dtype: DtypeLike = np.float32,
     ):
         super().__init__()
@@ -54,11 +57,10 @@ class SpatialRangeGenerator(monai_t.Randomizable):
             assert prob.ndim == 0
         else:
             # independent transform
-            self.repeat = rand_range.shape[0]
-            assert repeat is None or repeat == self.repeat
+            self.spatial_dims = rand_range.shape[0]
             if prob.ndim > 0:
                 # independent prob
-                assert prob.shape[0] == rand_range.shape[0]
+                assert prob.shape[0] == self.spatial_dims
 
     def randomize(self, *_, **__):
         match self.rand_range.ndim, self.prob.ndim:
@@ -74,7 +76,7 @@ class SpatialRangeGenerator(monai_t.Randomizable):
                 return np.array([self.R.uniform(*r) for r in self.rand_range])
             case _, _:
                 # independent transform, independent prob
-                do_transform = self.R.uniform(size=self.repeat) < self.prob
+                do_transform = self.R.uniform(size=self.spatial_dims) < self.prob
                 if np.any(do_transform):
                     return np.array([
                         self.R.uniform(*r) if do
@@ -84,7 +86,7 @@ class SpatialRangeGenerator(monai_t.Randomizable):
                 else:
                     return None
 
-    def __call__(self, *args, **kwargs):
+    def __call__(self, *_, **__):
         ret = self.randomize()
         if ret is not None:
             ret = ret.astype(self.dtype)
@@ -97,32 +99,47 @@ class RandAffineCropD(monai_t.RandomizableTrait, monai_t.MapTransform):
         crop_size: Sequence[int],
         mode: SequenceStr = GridSampleMode.BILINEAR,
         padding_mode: SequenceStr = GridSamplePadMode.ZEROS,
+        dummy_dim: int | None = None,
         allow_missing_keys: bool = False,
         *,
         center_generator: Callable[[Mapping[Hashable, torch.Tensor]], Sequence[int]],
-        rotate_generator: Callable[[Mapping[Hashable, torch.Tensor]], Sequence[float] | None],
-        scale_generator: Callable[[Mapping[Hashable, torch.Tensor]], Sequence[float] | None],
+        rotate_generator: Callable[[Mapping[Hashable, torch.Tensor]], Sequence[float] | float | None],
+        scale_generator: Callable[[Mapping[Hashable, torch.Tensor]], Sequence[float] | float | None],
     ):
         monai_t.MapTransform.__init__(self, keys, allow_missing_keys)
-        self.crop_size = crop_size
-        self.rotate_generator = rotate_generator
-        self.scale_generator = scale_generator
+        self.crop_size = np.array(crop_size)
         self.mode = ensure_tuple_rep(mode, len(self.keys))
         self.padding_mode = ensure_tuple_rep(padding_mode, len(self.keys))
+        self.dummy_dim = dummy_dim
         self.center_generator = center_generator
+        self.rotate_generator = rotate_generator
+        self.scale_generator = scale_generator
 
     def __call__(self, data: Mapping[Hashable, torch.Tensor]):
         d = dict(data)
-        spatial_size = np.array(d[self.first_key(d)].shape[1:])
         self.center = center = np.array(self.center_generator(d))
-        patch_grid = create_patch_grid(spatial_size, center, self.crop_size)
+        sample_x = d[self.first_key(d)]
+        spatial_size = np.array(sample_x.shape[1:])
         self.rotate_params = rotate_params = self.rotate_generator(d)
         self.scale_params = scale_params = self.scale_generator(d)
         if rotate_params is not None or scale_params is not None:
+            if self.dummy_dim is not None:
+                dummy_crop_size = self.crop_size[self.dummy_dim]
+                crop_size = np.delete(self.crop_size, self.dummy_dim)
+                spatial_size = np.delete(spatial_size, self.dummy_dim)
+                dummy_center = center[self.dummy_dim]
+                dummy_slice = slice(
+                    dummy_center - (dummy_crop_size >> 1),
+                    dummy_center + dummy_crop_size - (dummy_crop_size >> 1),
+                )
+                center = np.delete(center, self.dummy_dim)
+            else:
+                crop_size = self.crop_size
+
             spatial_dims = len(spatial_size)
+            patch_grid = create_patch_grid(spatial_size, center, crop_size, sample_x.device)
             center_coord = center - (spatial_size - 1) / 2  # center's coordination in grid
             backend = TransformBackends.TORCH
-
             # shift the center to 0
             affine = create_translate(spatial_dims, -center_coord, backend=backend)
             if rotate_params is not None:
@@ -131,17 +148,49 @@ class RandAffineCropD(monai_t.RandomizableTrait, monai_t.MapTransform):
                 affine = create_scale(spatial_dims, scale_params, backend=backend) @ affine
             # shift center back
             affine = create_translate(spatial_dims, center_coord, backend=backend) @ affine
+            # apply affine on patch grid
             patch_grid = patch_grid.view(spatial_dims + 1, -1)
             patch_grid = affine @ patch_grid
-            patch_grid = patch_grid.view(spatial_dims + 1, *self.crop_size)
+            patch_grid = patch_grid.view(spatial_dims + 1, *crop_size)
+            patch_grid = patch_grid[list(reversed(range(spatial_dims)))]  # PyTorch believes D H W <-> z y x
+            patch_grid = rearrange(patch_grid, 'sd ... -> 1 ... sd')
+            # normalize grid, remember to flip the spatial size as well
+            patch_grid /= torch.from_numpy(np.maximum((np.flip(spatial_size) - 1) / 2, 1)).to(patch_grid)
 
-            resample = monai_t.Resample(dtype=None)
+            # monai_t.Resample is not traceable, no better than resampling myself
             for key, mode, padding_mode in self.key_iterator(d, self.mode, self.padding_mode):
-                d[key] = resample(d[key], patch_grid, mode, padding_mode)
+                x = d[key]
+                if self.dummy_dim is not None:
+                    x = x.movedim(self.dummy_dim + 1, 1)
+                    x = x[:, dummy_slice]  # directly crop along dummy dim
+                    # merge dummy spatial dim to channel dim to share the dummy-2D transform
+                    x = rearrange(x, 'c d ... -> (c d) ...')
+                if padding_mode == GridSamplePadMode.ZEROS:
+                    min_v = x.min()
+                    x -= min_v
+                x = torch_f.grid_sample(
+                    x[None],
+                    patch_grid,
+                    mode,
+                    padding_mode,
+                    align_corners=True,
+                )[0]
+                if padding_mode == GridSamplePadMode.ZEROS:
+                    x += min_v
+                if self.dummy_dim is not None:
+                    x = rearrange(x, '(c d) ... -> c d ...', d=dummy_crop_size)
+                    x = x.movedim(1, self.dummy_dim + 1)
+                x.meta['crop center'] = self.center
+                x.meta['rotate'] = rotate_params.tolist() if rotate_params is not None else None
+                x.meta['scale'] = scale_params.tolist() if scale_params is not None else None
+                d[key] = x
         else:
             crop = monai_t.SpatialCrop(center, self.crop_size)
             for key in self.key_iterator(d):
                 d[key] = crop(d[key])
+                d[key].meta['crop center'] = self.center
+                d[key].meta['rotate'] = str(self.rotate_params)
+                d[key].meta['scale'] = str(self.scale_params)
         return d
 
 # compatible with monai_t.create_grid, without normalization

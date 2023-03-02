@@ -147,6 +147,5 @@ SimMIM
 nim-review/
 # hydra
 outputs/
-datasets
 mvt-data
 benchmark-io

@@ -32,15 +32,8 @@ def node_zero_experiment(fn: Callable) -> Callable:
 
     return experiment
 
-class MyWandbLogger(WandbLogger):
-    # cannot wait: https://github.com/PyTorchLightning/pytorch-lightning/pull/12604/
-    @WandbLogger.name.getter
-    def name(self) -> Optional[str]:
-        return self._experiment.name if self._experiment else self._name
-
-    # FIX: just set both `RANK` instead of `NODE_RANK` (strange discrepancy between pytorch and pl)
-    # # https://github.com/PyTorchLightning/pytorch-lightning/issues/11380
-    # @WandbLogger.experiment.getter
-    # @node_zero_experiment
-    # def experiment(self):
-    #     return super().experiment
+# class MyWandbLogger(WandbLogger):
+#     # cannot wait: https://github.com/PyTorchLightning/pytorch-lightning/pull/12604/
+#     @WandbLogger.name.getter
+#     def name(self) -> Optional[str]:
+#         return self._experiment.name if self._experiment else self._name

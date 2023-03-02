@@ -1,3 +1,0 @@
-_bases:
-  - ../_base/aug/default.yaml
-  - ../_base/seg/swin96_conv.yaml
