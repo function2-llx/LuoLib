@@ -56,58 +56,6 @@ def main():
         conf_save_path.rename(conf_save_path.with_stem('conf-last'))
     OmegaConf.save(conf, conf_save_path)
     datamodule = BTCVDataModule(conf)
-    transform = datamodule.train_transform()
-    from tqdm import tqdm
-    import matplotlib
-    matplotlib.use('QtAgg')
-    for data in tqdm(datamodule.train_data()):
-        from monai import transforms as monai_t
-        from umei.utils.index_tracker import IndexTracker
-        from umei.utils import DataKey
-        loader = monai_t.Compose(
-            datamodule.loader_transform()
-            + datamodule.normalize_transform(),
-        )
-        data = loader(data)
-        # img = data[DataKey.IMG][0]
-        # seg = data[DataKey.SEG][0]
-        # IndexTracker(img, seg)
-        from copy import deepcopy
-
-        aug = monai_t.Compose(datamodule.aug_transform())
-        aug_data = aug(deepcopy(data))
-        img = aug_data[DataKey.IMG][0]
-        seg = aug_data[DataKey.SEG][0]
-        meta = img.meta
-        center = meta['crop center']
-        rotate_params = meta['rotate']
-        scale_params = meta['scale']
-        IndexTracker(img, seg, title=f'center: {center}\n'
-                                     f'rotate: {rotate_params}\n'
-                                     f'scale: {scale_params}')
-
-        from monai.utils import GridSampleMode
-        from monai.utils import GridSamplePadMode
-        bf = monai_t.Compose([
-            monai_t.SpatialCropD(
-                [DataKey.IMG, DataKey.SEG],
-                center,
-                conf.sample_shape,
-            ),
-            monai_t.AffineD(
-                [DataKey.IMG, DataKey.SEG],
-                [0, 0, *rotate_params],
-                scale_params=[*scale_params, 1],
-                mode=[GridSampleMode.BILINEAR, GridSampleMode.NEAREST],
-                padding_mode=GridSamplePadMode.ZEROS,
-            )
-        ])
-        data = bf(data)
-        img = data[DataKey.IMG][0]
-        seg = data[DataKey.SEG][0]
-        IndexTracker(img, seg)
-
-    exit(0)
     trainer = pl.Trainer(
         logger=WandbLogger(
             project=f'{task_name}-eval' if conf.do_eval else task_name,

@@ -1,0 +1,17 @@
+_base:
+  - patch96x96x96.yaml
+  - ../_base/exp/seg/swin5-l148_conv.yaml
+norm_intensity: true
+dummy_dim: 2
+
+rotate_p: 0
+scale_p: 0
+gaussian_noise_p: 0
+gaussian_smooth_p: 0
+scale_intensity_p: 0
+shift_intensity_p: 0
+adjust_contrast_p: 0
+simulate_low_res_zoom_range: [0.5, 0.5]
+simulate_low_res_p: 1
+gamma_p: 0
+flip_p: 0

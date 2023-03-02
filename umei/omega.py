@@ -20,12 +20,20 @@ class AugConf:
     scale_p: Any
     gaussian_noise_p: float
     gaussian_noise_std: float
+    gaussian_smooth_std_range: tuple[float, float]
+    gaussian_smooth_isotropic_prob: float = 1
+    gaussian_smooth_p: float
     scale_intensity_factor: float
     scale_intensity_p: float
     shift_intensity_offset: float
     shift_intensity_p: float
+    adjust_contrast_range: tuple[float, float]
+    adjust_contrast_p: float
+    simulate_low_res_zoom_range: tuple[float, float]
+    simulate_low_res_p: float
     gamma_range: tuple2_t[float]
     gamma_p: float
+    flip_p: float = 0.5
 
 @dataclass(kw_only=True)
 class DataConf:
@@ -61,7 +69,7 @@ class RuntimeConf:
     train_cache_num: int = 100
     val_cache_num: int = 100
     num_cache_workers: int = 8
-    dataloader_num_workers: int = 8
+    dataloader_num_workers: int = 16
     dataloader_pin_memory: bool = True
     do_train: bool = False
     do_eval: bool = False
@@ -104,7 +112,7 @@ class SegInferConf:
 
 @dataclass(kw_only=True)
 class SegExpConf(ExpConfBase, SegInferConf):
-    monitor: str = 'val/avg/dice'
+    monitor: str = 'val/dice/avg'
     monitor_mode: str = 'max'
 
     decoder: ModelConf

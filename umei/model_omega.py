@@ -215,14 +215,6 @@ class SegModel(ExpModelBase):
     def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
         img = batch[DataKey.IMG]
         seg_label = batch[DataKey.SEG]
-        from umei.utils.index_tracker import IndexTracker
-        for i in range(img.shape[0]):
-            meta = img.meta
-            IndexTracker(img[i, 0].cpu().numpy(), seg_label[i, 0].cpu().numpy(), title=f'center: {meta["crop center"][i]}\n'
-                                                                                       f'rotate: {meta["rotate"][i]}\n'
-                                                                                       f'scale: {meta["scale"][i]}')
-            a = 1
-
         backbone_output: BackboneOutput = self.backbone(img)
         decoder_output = self.decoder.forward(backbone_output.feature_maps, img)
         seg_outputs = [

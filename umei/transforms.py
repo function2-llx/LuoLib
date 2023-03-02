@@ -1,6 +1,7 @@
 import itertools as it
 from typing import Any, Callable, Hashable, Mapping, Sequence
 
+import einops
 from einops import rearrange
 import numpy as np
 import torch
@@ -10,7 +11,7 @@ import monai
 from monai import transforms as monai_t
 from monai.config import DtypeLike, KeysCollection, NdarrayOrTensor, SequenceStr
 from monai.networks.utils import meshgrid_ij
-from monai.transforms import Randomizable, create_rotate, create_scale, create_translate
+from monai.transforms import Randomizable, create_rotate, create_scale, create_translate, RandAdjustContrastD as RandGammaCorrectionD
 from monai.utils import GridSampleMode, GridSamplePadMode, TransformBackends, ensure_tuple_rep, get_equivalent_dtype
 
 from umei.types import tuple2_t
@@ -115,6 +116,13 @@ class RandAffineCropD(monai_t.RandomizableTrait, monai_t.MapTransform):
         self.rotate_generator = rotate_generator
         self.scale_generator = scale_generator
 
+        if dummy_dim is None:
+            self.id_rotate = (0, 0, 0)
+            self.id_scale = (1, 1, 1)
+        else:
+            self.id_rotate = (0, )
+            self.id_scale = (1, 1)
+
     def __call__(self, data: Mapping[Hashable, torch.Tensor]):
         d = dict(data)
         self.center = center = np.array(self.center_generator(d))
@@ -181,16 +189,18 @@ class RandAffineCropD(monai_t.RandomizableTrait, monai_t.MapTransform):
                     x = rearrange(x, '(c d) ... -> c d ...', d=dummy_crop_size)
                     x = x.movedim(1, self.dummy_dim + 1)
                 x.meta['crop center'] = self.center
-                x.meta['rotate'] = rotate_params.tolist() if rotate_params is not None else None
-                x.meta['scale'] = scale_params.tolist() if scale_params is not None else None
+                x.meta['rotate'] = self.id_rotate if rotate_params is None else np.array(rotate_params).tolist()
+                x.meta['scale'] = self.id_scale if scale_params is None else np.array(scale_params).tolist()
                 d[key] = x
         else:
             crop = monai_t.SpatialCrop(center, self.crop_size)
             for key in self.key_iterator(d):
-                d[key] = crop(d[key])
-                d[key].meta['crop center'] = self.center
-                d[key].meta['rotate'] = str(self.rotate_params)
-                d[key].meta['scale'] = str(self.scale_params)
+                x = crop(d[key])
+                x.meta['crop center'] = self.center
+                x.meta['rotate'] = self.id_rotate
+                x.meta['scale'] = self.id_scale
+                d[key] = x
+
         return d
 
 # compatible with monai_t.create_grid, without normalization
@@ -292,3 +302,66 @@ class RandCenterGeneratorByLabelClassesD(monai_t.Randomizable):
         self.randomize(label, indices, image)
 
         return self.dummy_rand_cropper.centers[0]
+
+class RandAdjustContrastD(monai_t.RandomizableTransform, monai_t.MapTransform):
+    def __init__(self, keys: KeysCollection, contrast_range: tuple[float, float], prob: float, preserve_range: bool = True, allow_missing: bool = False):
+        monai_t.RandomizableTransform.__init__(self, prob)
+        monai_t.MapTransform.__init__(self, keys, allow_missing)
+        self.contrast_range = contrast_range
+        self.preserve_range = preserve_range
+
+    def __call__(self, data: Mapping[Hashable, torch.Tensor]):
+        self.randomize(None)
+        if not self._do_transform:
+            return data
+        factor = self.R.uniform(*self.contrast_range)
+        d = dict(data)
+        sample_x = d[self.first_key(d)]
+        spatial_dims = sample_x.ndim - 1
+        reduce_dims = tuple(range(1, spatial_dims + 1))
+        for key in self.key_iterator(d):
+            x = d[key]
+            # mean = einops.reduce(x, 'c ... -> c', 'mean')
+            mean = x.mean(dim=reduce_dims, keepdim=True)
+            if self.preserve_range:
+                min_v = x.amin(dim=reduce_dims, keepdim=True)
+                max_v = x.amax(dim=reduce_dims, keepdim=True)
+            x = x * factor + mean * (1 - factor)
+            if self.preserve_range:
+                x.clamp_(min_v, max_v)
+
+            d[key] = x
+        return d
+
+class SimulateLowResolutionD(monai_t.RandomizableTransform, monai_t.MapTransform):
+    def __init__(self, keys: KeysCollection, zoom_range: tuple[float, float], prob: float, dummy_dim: int | None = None, allow_missing: bool = False):
+        monai_t.RandomizableTransform.__init__(self, prob)
+        monai_t.MapTransform.__init__(self, keys, allow_missing)
+        self.zoom_range = zoom_range
+        self.dummy_dim = dummy_dim
+
+    def __call__(self, data: Mapping[Hashable, torch.Tensor]):
+        self.randomize(None)
+        if not self._do_transform:
+            return data
+        d = dict(data)
+        zoom_factor = self.R.uniform(*self.zoom_range)
+        for key in self.key_iterator(d):
+            x = d[key]
+            spatial_shape = np.array(x.shape[1:])
+            if self.dummy_dim is not None:
+                dummy_size = spatial_shape[self.dummy_dim]
+                spatial_shape = np.delete(spatial_shape, self.dummy_dim)
+                x = x.movedim(self.dummy_dim + 1, 1)
+                x = einops.rearrange(x, 'c d ... -> (c d) ...')
+
+            downsample_shape = (spatial_shape * zoom_factor).astype(np.int16)
+            x = x[None]
+            x = torch_f.interpolate(x, tuple(downsample_shape), mode='nearest-exact')
+            x = torch_f.interpolate(x, tuple(spatial_shape), mode='bilinear' if self.dummy_dim is not None else 'trilinear')  # no tricubic
+            x = x[0]
+            if self.dummy_dim is not None:
+                x = einops.rearrange(x, '(c d) ... -> c d ...', d=dummy_size)
+                x = x.movedim(1, self.dummy_dim + 1)
+            d[key] = x
+        return d

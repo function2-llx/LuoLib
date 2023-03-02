@@ -13,6 +13,7 @@ from monai.config import PathLike
 from monai.data import CacheDataset, DataLoader, Dataset
 from monai.utils import GridSampleMode, PytorchPadMode
 
+from .transforms import RandAdjustContrastD, RandGammaCorrectionD, SimulateLowResolutionD
 from .omega import ExpConfBase, SegExpConf
 from .transforms import (
     RandAffineCropD, RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD,
@@ -199,20 +200,27 @@ class SegDataModule(ExpDataModuleBase):
                     repeat=3 if conf.dummy_dim is None else 2,
                 ),
             ),
-            # monai_t.RandGaussianNoiseD(
-            #     DataKey.IMG,
-            #     prob=conf.gaussian_noise_p,
-            #     std=conf.gaussian_noise_std,
-            # ),
-            # gaussian blur: monai_t.RandGaussianSmoothD(),
-            # monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=conf.scale_intensity_factor, prob=conf.scale_intensity_p),
-            # monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=conf.shift_intensity_offset, prob=conf.shift_intensity_p),
-            # contrast
-            # simulate low resolution
-            # gamma: monai_t.RandAdjustContrastD(),
-            # monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=0.5, spatial_axis=0),
-            # monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=0.5, spatial_axis=1),
-            # monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=0.5, spatial_axis=2),
+            monai_t.RandGaussianNoiseD(
+                DataKey.IMG,
+                prob=conf.gaussian_noise_p,
+                std=conf.gaussian_noise_std,
+            ),
+            monai_t.RandGaussianSmoothD(
+                DataKey.IMG,
+                conf.gaussian_smooth_std_range,
+                conf.gaussian_smooth_std_range,
+                conf.gaussian_smooth_std_range,
+                prob=conf.gaussian_smooth_p,
+                isotropic_prob=conf.gaussian_smooth_isotropic_prob,
+            ),
+            monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=conf.scale_intensity_factor, prob=conf.scale_intensity_p),
+            monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=conf.shift_intensity_offset, prob=conf.shift_intensity_p),
+            RandAdjustContrastD(DataKey.IMG, conf.adjust_contrast_range, conf.adjust_contrast_p),
+            SimulateLowResolutionD(DataKey.IMG, conf.simulate_low_res_zoom_range, conf.simulate_low_res_p, conf.dummy_dim),
+            RandGammaCorrectionD(DataKey.IMG, conf.gamma_p, conf.gamma_range),
+            monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=conf.flip_p, spatial_axis=0),
+            monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=conf.flip_p, spatial_axis=1),
+            monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=conf.flip_p, spatial_axis=2),
         ]
 
     def train_transform(self) -> Callable:
