@@ -1,0 +1,5 @@
+_base:
+  - patch96x96x96.yaml
+  - ../_base/exp/seg/swin5_conv.yaml
+norm_intensity: true
+lr: 2e-4
