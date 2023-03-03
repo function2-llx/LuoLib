@@ -1,5 +1,5 @@
 _base:
-  - swin5_conv_ni.yaml
+  - swin5_conv.yaml
 
 optim:
   lr: 2e-4

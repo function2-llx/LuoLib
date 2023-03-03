@@ -2,3 +2,4 @@ train_batch_size: 2
 num_input_channels: 1
 num_seg_classes: 14
 multi_label: false
+norm_intensity: true

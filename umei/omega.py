@@ -2,6 +2,7 @@ import builtins
 from dataclasses import dataclass, field
 from pathlib import Path
 import sys
+from types import MappingProxyType
 from typing import Any, TypeVar
 
 import omegaconf
@@ -52,7 +53,7 @@ class OptimizerConf:
     name: str
     lr: float
     weight_decay: float
-    kwargs: dict
+    kwargs: dict = field(default_factory=dict)
 
 @dataclass(kw_only=True)
 class FitConf(DataConf, AugConf):

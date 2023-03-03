@@ -1,5 +1,4 @@
 _base:
-  - default.yaml
   - ../_base/aug/dummy-2D.yaml
 sample_shape: [96, 96, 96]
 spacing: [1.5, 1.5, 3]

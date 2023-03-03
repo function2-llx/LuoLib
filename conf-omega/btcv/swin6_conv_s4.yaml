@@ -1,0 +1,4 @@
+_base:
+  - swin6_conv.yaml
+
+num_seg_heads: 4
