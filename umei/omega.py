@@ -48,10 +48,10 @@ class DataConf:
     scaled_intensity_max: float = 1.
 
 @dataclass(kw_only=True)
-class OptimConf:
-    name: str = 'AdamW'
-    lr: float = 1e-3
-    weight_decay: float = 5e-2
+class OptimizerConf:
+    name: str
+    lr: float
+    weight_decay: float
     kwargs: dict
 
 @dataclass(kw_only=True)
@@ -61,7 +61,7 @@ class FitConf(DataConf, AugConf):
     num_train_epochs: int = 1000
     num_epoch_batches: int = 250
     train_batch_size: int
-    optim: OptimConf
+    optimizer: OptimizerConf
     scheduler: dict
     eta_min: float = 1e-6
     optimizer_set_to_none: bool = True

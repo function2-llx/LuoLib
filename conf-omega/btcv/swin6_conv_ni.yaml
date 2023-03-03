@@ -1,7 +1,8 @@
 _base:
   - patch192x192x48.yaml
   - ../_base/exp/seg/swin6_conv.yaml
-  - scheduler: ../_base/scheduler/cosine.yaml
+  - optimizer: ../_base/optimizer/adamw.yaml
+    scheduler: ../_base/scheduler/cosine.yaml
 
 norm_intensity: true
 scheduler:

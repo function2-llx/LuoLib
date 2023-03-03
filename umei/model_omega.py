@@ -113,13 +113,13 @@ class ExpModelBase(LightningModule):
             json.dump(obj, f, indent=4, ensure_ascii=False)
         # create the pytorch optimizer object
         return [
-            {"params": [params_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.conf.optim.weight_decay},
+            {"params": [params_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.conf.optimizer.weight_decay},
             {"params": [params_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0},
         ]
 
     def configure_optimizers(self):
         from timm.optim import create_optimizer_v2
-        optim = self.conf.optim
+        optim = self.conf.optimizer
         optimizer = create_optimizer_v2(
             self.get_grouped_parameters(),  # type: ignore
             optim.name,
