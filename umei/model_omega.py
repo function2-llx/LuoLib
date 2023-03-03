@@ -1,32 +1,33 @@
-from collections.abc import Sequence
 import json
 from pathlib import Path
 
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities.types import STEP_OUTPUT
+from timm.scheduler.scheduler import Scheduler
 import torch
 from torch import nn
 from torch.nn import functional as torch_f
 from torch.optim import Optimizer
-from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 from monai.umei import Backbone, BackboneOutput, Decoder
-from monai.utils import MetricReduction
+from monai.utils import MetricReduction, ensure_tuple
 
 from umei.models import create_model
 from umei.omega import ExpConfBase, SegExpConf
 from umei.utils import DataKey
 
-def filter_state_dict(state_dict: dict[str, torch.Tensor], prefix: str) -> dict:
-    return {
-        k.split('.', 1)[1]: v
-        for k, v in state_dict.items()
-        if k.startswith(f'{prefix}.')
-    }
+class SimpleReprMixin(object):
+    """A mixin implementing a simple __repr__."""
+    def __repr__(self):
+        return "<{klass} @{id:x} {attrs}>".format(
+            klass=self.__class__.__name__,
+            id=id(self) & 0xFFFFFF,
+            attrs=", ".join("{}={!r}".format(k, v) for k, v in self.__dict__.items()),
+        )
 
 class ExpModelBase(LightningModule):
     def __init__(self, conf: ExpConfBase):
@@ -52,8 +53,15 @@ class ExpModelBase(LightningModule):
         return Path(logger.experiment.dir)
 
     def on_fit_start(self) -> None:
-        with open(self.log_exp_dir / 'model-structure.txt', 'w') as f:
-            print(self, file=f)
+        with open(self.log_exp_dir / 'fit-summary.txt', 'w') as f:
+            print(self, file=f, end='\n\n\n')
+            print('optimizers:\n', file=f)
+            for optimizer in ensure_tuple(self.optimizers()):
+                print(optimizer, file=f)
+            print('\n\n', file=f)
+            print('schedulers:\n', file=f)
+            for scheduler in ensure_tuple(self.lr_schedulers()):
+                print(scheduler, file=f)
 
     def get_grouped_parameters(self) -> list[dict]:
         # modify from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py
@@ -103,45 +111,39 @@ class ExpModelBase(LightningModule):
                 'no decay': list(no_decay),
             }
             json.dump(obj, f, indent=4, ensure_ascii=False)
-
         # create the pytorch optimizer object
         return [
-            {"params": [params_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.conf.weight_decay},
+            {"params": [params_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.conf.optim.weight_decay},
             {"params": [params_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0},
         ]
 
-    def get_optimizer(self):
-        from timm.optim import create_optimizer_v2
-        return create_optimizer_v2(
-            self.get_grouped_parameters(),  # type: ignore
-            self.conf.optim,
-            self.conf.lr,
-            self.conf.weight_decay,
-        )
-
-    def get_lr_scheduler(self, optimizer):
-        from umei.scheduler import LinearWarmupCosineAnnealingLR
-
-        if self.conf.warmup_epochs:
-            return LinearWarmupCosineAnnealingLR(
-                optimizer,
-                warmup_epochs=self.conf.warmup_epochs,
-                max_epochs=int(self.conf.num_train_epochs),
-                eta_min=self.conf.eta_min,
-            )
-        else:
-            return CosineAnnealingLR(
-                optimizer,
-                T_max=int(self.conf.num_train_epochs),
-            )
-
     def configure_optimizers(self):
-        optimizer = self.get_optimizer()
+        from timm.optim import create_optimizer_v2
+        optim = self.conf.optim
+        optimizer = create_optimizer_v2(
+            self.get_grouped_parameters(),  # type: ignore
+            optim.name,
+            optim.lr,
+            optim.weight_decay,
+            **optim.kwargs,
+        )
+        from timm.scheduler import create_scheduler
+        scheduler = create_scheduler(self.conf.scheduler, optimizer)[0]
+        if type(scheduler).__repr__ == object.__repr__:
+            type(scheduler).__repr__ = SimpleReprMixin.__repr__
         return {
             'optimizer': optimizer,
-            'lr_scheduler': self.get_lr_scheduler(optimizer),
+            'lr_scheduler': scheduler,
             'monitor': self.conf.monitor,
         }
+
+    def lr_scheduler_step(
+        self,
+        scheduler: Scheduler,
+        optimizer_idx: int,
+        metric,
+    ) -> None:
+        return scheduler.step(self.current_epoch, metric)
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
         optimizer.zero_grad(set_to_none=self.conf.optimizer_set_to_none)

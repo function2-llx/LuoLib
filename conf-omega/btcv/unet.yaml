@@ -1,6 +1,7 @@
 _base:
   - patch192x192x48.yaml
   - ../_base/exp/seg/unet.yaml
+  - scheduler: ../_base/scheduler/poly.yaml
 norm_intensity: true
 backbone:
   kwargs:
@@ -18,3 +19,9 @@ backbone:
       - 2
       - 2
       - [2, 2, 1]
+optim:
+  name: Nesterov
+  lr: 1e-2
+  weight_decay: 3e-5
+  kwargs:
+    momentum: 0.99

@@ -2,3 +2,5 @@ _base:
   - patch192x192x48.yaml
   - ../_base/exp/seg/swin6_conv.yaml
 norm_intensity: true
+scheduler:
+  warmup_epochs: 50

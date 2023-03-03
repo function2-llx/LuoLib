@@ -48,16 +48,21 @@ class DataConf:
     scaled_intensity_max: float = 1.
 
 @dataclass(kw_only=True)
+class OptimConf:
+    name: str = 'AdamW'
+    lr: float = 1e-3
+    weight_decay: float = 5e-2
+    kwargs: dict
+
+@dataclass(kw_only=True)
 class FitConf(DataConf, AugConf):
     monitor: str
     monitor_mode: str
     num_train_epochs: int = 1000
     num_epoch_batches: int = 250
     train_batch_size: int
-    optim: str = 'AdamW'
-    lr: float = 1e-3
-    weight_decay: float = 5e-2
-    warmup_epochs: int = 50
+    optim: OptimConf
+    scheduler: dict
     eta_min: float = 1e-6
     optimizer_set_to_none: bool = True
     precision: int = 16
@@ -98,8 +103,6 @@ class ExpConfBase(FitConf, RuntimeConf):
     seed: int = 42
     float32_matmul_precision: str = 'high'
     ckpt_path: Path | None = None
-
-
 
 @dataclass(kw_only=True)
 class SegInferConf:

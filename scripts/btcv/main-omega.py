@@ -29,7 +29,7 @@ def get_exp_suffix(conf: BTCVExpConf) -> str:
     suffix /= f's{conf.num_seg_heads}'
     if conf.spline_seg:
         append('-sps')
-    append(f'-{int(conf.num_train_epochs)}ep-{int(conf.warmup_epochs)}wu')
+    # append(f'-{int(conf.num_train_epochs)}ep-{int(conf.warmup_epochs)}wu')
     suffix /= f'data{conf.data_ratio}'
     suffix /= f'run-{conf.seed}'
     return str(suffix)
