@@ -39,6 +39,7 @@ class BTCVModel(SegModel):
             match op[TraceKeys.CLASS_NAME]:
                 case 'SpatialPad':
                     padded = op[TraceKeys.EXTRA_INFO]["padded"]
+                    print('\npadded:', padded)
                     roi_start = [i[0] for i in padded[1:]]
                     roi_end = [i - j[1] for i, j in zip(pred_value.shape[2:], padded[1:])]
                     cropper = monai_t.SpatialCrop(roi_start=roi_start, roi_end=roi_end)

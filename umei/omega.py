@@ -109,8 +109,8 @@ class SegInferConf:
     sw_overlap: float = 0.25
     sw_batch_size: int = 16
     sw_blend_mode: BlendMode = BlendMode.GAUSSIAN
-    do_tta: bool
-    export: bool
+    do_tta: bool = False
+    export: bool = False
     fg_oversampling_ratio: list[float] = (2, 1)  # random vs force fg
 
 @dataclass(kw_only=True)

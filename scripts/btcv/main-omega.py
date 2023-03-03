@@ -26,9 +26,9 @@ def get_exp_suffix(conf: BTCVExpConf) -> str:
         suffix /= 'scratch'
     else:
         raise NotImplementedError
-    suffix /= f's{conf.num_seg_heads}'
-    if conf.spline_seg:
-        append('-sps')
+    # suffix /= f's{conf.num_seg_heads}'
+    # if conf.spline_seg:
+    #     append('-sps')
     # append(f'-{int(conf.num_train_epochs)}ep-{int(conf.warmup_epochs)}wu')
     suffix /= f'data{conf.data_ratio}'
     suffix /= f'run-{conf.seed}'
@@ -51,7 +51,7 @@ def main():
     print('log dir:', conf.log_dir)
 
     # save config as file
-    conf_save_path = conf.output_dir / 'conf.yml'
+    conf_save_path = conf.log_dir / 'conf.yml'
     if conf_save_path.exists():
         conf_save_path.rename(conf_save_path.with_stem('conf-last'))
     OmegaConf.save(conf, conf_save_path)

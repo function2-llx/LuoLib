@@ -1,0 +1,9 @@
+_base:
+  - swin5-l148_conv_ni.yaml
+
+# use normalization of nnunet
+norm_intensity: true
+intensity_min: -958.0
+intensity_max: 326.0
+norm_mean: 82.95177
+norm_std: 136.94818
