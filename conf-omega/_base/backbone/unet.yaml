@@ -1,0 +1,6 @@
+name: unet
+kwargs:
+  in_channels: ${num_input_channels}
+  layer_channels: [32, 64, 128, 256, 320, 320]
+  norm: instance
+  act: leakyrelu

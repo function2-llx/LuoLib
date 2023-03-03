@@ -1,0 +1,8 @@
+_base:
+  - backbone: ../../backbone/unet.yaml
+decoder:
+  name: conv
+  kwargs:
+    layer_channels: ${backbone.kwargs.layer_channels}
+    lateral: false
+    bottleneck: false

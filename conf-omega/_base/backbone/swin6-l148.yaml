@@ -1,0 +1,4 @@
+_base:
+  - swin6.yaml
+kwargs:
+  layer_channels: [48, 48, 96, 192, 384, 384]

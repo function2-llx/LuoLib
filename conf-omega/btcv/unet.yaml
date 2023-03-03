@@ -1,0 +1,20 @@
+_base:
+  - patch192x192x48.yaml
+  - ../_base/exp/seg/unet.yaml
+norm_intensity: true
+backbone:
+  kwargs:
+    kernel_sizes:
+      - [3, 3, 1]
+      - 3
+      - 3
+      - 3
+      - 3
+      - 3
+    strides:
+      - 1
+      - [2, 2, 1]
+      - 2
+      - 2
+      - 2
+      - [2, 2, 1]
