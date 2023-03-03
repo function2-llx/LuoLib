@@ -1,0 +1,5 @@
+# use normalization of nnunet
+intensity_min: -958.0
+intensity_max: 326.0
+norm_mean: 82.95177
+norm_std: 136.94818
