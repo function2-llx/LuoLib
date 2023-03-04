@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+import json
 from pathlib import Path
 
 import numpy as np
@@ -39,18 +40,22 @@ def load_cohort(img_only: bool = False, merge: bool = False):
 class BTCVDataModule(SegDataModule):
     conf: BTCVExpConf
 
-    def __init__(self, conf: BTCVExpConf):
+    def __init__(self, conf: BTCVExpConf, fold_id: int):
         super().__init__(conf)
+        splits: list[dict[str, list[dict]]] = json.loads((DATA_DIR / 'splits.json').read_bytes())
         self.data = {
-            split: load_decathlon_datalist(
-                DATA_DIR / 'dataset_0.json',
-                data_list_key=key,
-            )
-            for split, key in [
-                (DataSplit.TRAIN, 'training'),
-                (DataSplit.VAL, 'validation'),
+            data_split: [
+                {
+                    k: DATA_DIR / path
+                    for k, path in case.items()
+                }
+                for case in cases
             ]
+            for data_split, cases in splits[fold_id].items()
         }
+        # for data_split in [DataSplit.TRAIN, DataSplit.VAL]:
+        #     for case in self.data[data_split]:
+
         self.data[DataSplit.TRAIN] = np.random.choice(
             self.data[DataSplit.TRAIN],
             int(conf.data_ratio * len(self.data[DataSplit.TRAIN])),

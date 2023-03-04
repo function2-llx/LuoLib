@@ -56,6 +56,11 @@ class OptimizerConf:
     kwargs: dict = field(default_factory=dict)
 
 @dataclass(kw_only=True)
+class CrossValConf:
+    num_folds: int = 5
+    fold_ids: list[int]
+
+@dataclass(kw_only=True)
 class FitConf(DataConf, AugConf):
     monitor: str
     monitor_mode: str
