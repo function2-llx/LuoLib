@@ -1,0 +1,14 @@
+name: swin
+kwargs:
+  in_channels: ${num_input_channels}
+  stem_stride: 1
+  stem_kernel: 3
+  num_conv_layers: 1
+  conv_norm: instance
+  conv_act: leakyrelu
+  layer_channels: [32, 48, 96, 192, 384]
+  num_heads: [-1, 3, 6, 12, 24]
+  layer_depths: [1, 2, 2, 6, 2]
+  kernel_sizes: [3, 6, 6, 6, 6]
+  conv_in_channels: null
+  drop_path_rate: 0

@@ -1,6 +1,5 @@
-optim:
-  name: Nesterov
-  lr: 1e-2
-  weight_decay: 3e-5
-  kwargs:
-    momentum: 0.99
+name: Nesterov
+lr: 1e-2
+weight_decay: 3e-5
+kwargs:
+  momentum: 0.99

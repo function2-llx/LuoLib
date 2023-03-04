@@ -1,0 +1,9 @@
+_base:
+  - _default.yaml
+  - patch96x96x96.yaml
+  - ../_base/exp/seg/swin5-l032_conv.yaml
+  - optimizer: ../_base/optimizer/adamw.yaml
+    scheduler: ../_base/scheduler/cosine-warmup50.yaml
+
+gradient_clip_val: 12
+gradient_clip_algorithm: norm

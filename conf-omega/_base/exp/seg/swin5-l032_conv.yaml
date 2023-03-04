@@ -1,0 +1,7 @@
+_base:
+  - backbone: ../../backbone/swin5-l032.yaml
+decoder:
+  name: conv
+  kwargs:
+    layer_channels: [32, 48, 96, 192, 384]
+    num_post_upsamplings: 0
