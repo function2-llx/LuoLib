@@ -68,7 +68,7 @@ def main():
         callbacks=[
             ModelCheckpoint(
                 dirpath=conf.output_dir,
-                filename=f'ep{{epoch}}-{conf.monitor.replace("/", " ")}={{{conf.monitor}:.3f}}',
+                filename=f'best_ep{{epoch}}-{conf.monitor.replace("/", " ")}={{{conf.monitor}:.3f}}',
                 auto_insert_metric_name=False,
                 monitor=conf.monitor,
                 mode=conf.monitor_mode,
@@ -83,7 +83,7 @@ def main():
                 verbose=True,
                 save_on_train_epoch_end=False,
                 save_top_k=-1,
-                every_n_epochs=20,
+                every_n_epochs=conf.save_every_n_epochs,
             ),
             LearningRateMonitor(logging_interval='epoch'),
             ModelSummary(max_depth=3),
