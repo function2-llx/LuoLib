@@ -1,6 +1,6 @@
 _base:
   - _default.yaml
   - patch192x192x48.yaml
-  - ../_base/exp/seg/swin6-l148_conv.yaml
+  - ../_base/exp/seg/swin6-l048_conv.yaml
   - optimizer: ../_base/optimizer/adamw.yaml
     scheduler: ../_base/scheduler/cosine-warmup50.yaml

@@ -1,5 +1,5 @@
 _base:
-  - backbone: ../../backbone/swin6-l148.yaml
+  - backbone: ../../backbone/swin6-l048.yaml
 decoder:
   name: conv
   kwargs:

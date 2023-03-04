@@ -66,9 +66,10 @@ def main():
             resume=conf.resume_log,
         ),
         callbacks=[
+            # save best & last
             ModelCheckpoint(
                 dirpath=conf.output_dir,
-                filename=f'best_ep{{epoch}}-{conf.monitor.replace("/", " ")}={{{conf.monitor}:.3f}}',
+                filename=f'best_ep{{epoch}}_{{{conf.monitor}:.3f}}',
                 auto_insert_metric_name=False,
                 monitor=conf.monitor,
                 mode=conf.monitor_mode,
@@ -78,7 +79,7 @@ def main():
             ),
             ModelCheckpoint(
                 dirpath=conf.output_dir,
-                filename=f'ep{{epoch}}-{conf.monitor.replace("/", " ")}={{{conf.monitor}:.3f}}',
+                filename=f'ep{{epoch}}_{{{conf.monitor}:.3f}}',
                 auto_insert_metric_name=False,
                 verbose=True,
                 save_on_train_epoch_end=False,
@@ -88,6 +89,8 @@ def main():
             LearningRateMonitor(logging_interval='epoch'),
             ModelSummary(max_depth=3),
         ],
+        gradient_clip_val=conf.gradient_clip_val,
+        gradient_clip_algorithm=conf.gradient_clip_algorithm,
         num_nodes=conf.num_nodes,
         accelerator='gpu',
         devices=torch.cuda.device_count(),

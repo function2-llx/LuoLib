@@ -143,10 +143,14 @@ class ExpModelBase(LightningModule):
         optimizer_idx: int,
         metric,
     ) -> None:
+        # make compatible with timm scheduler
         return scheduler.step(self.current_epoch, metric)
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
         optimizer.zero_grad(set_to_none=self.conf.optimizer_set_to_none)
+
+    def log_grad_norm(self, grad_norm_dict: Dict[str, float]) -> None:
+        pass
 
 class SegModel(ExpModelBase):
     conf: SegExpConf

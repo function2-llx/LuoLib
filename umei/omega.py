@@ -69,6 +69,8 @@ class FitConf(DataConf, AugConf):
     precision: int = 16
     ddp_find_unused_parameters: bool = False
     num_nodes: int = 1
+    gradient_clip_val: float | None = None
+    gradient_clip_algorithm: str | None = None
 
 @dataclass(kw_only=True)
 class RuntimeConf:
