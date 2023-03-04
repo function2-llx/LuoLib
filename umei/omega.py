@@ -86,7 +86,7 @@ class RuntimeConf:
     resume_log: bool = True
     log_offline: bool = False
     num_sanity_val_steps: int = 5
-    save_every_n_epochs = 25
+    save_every_n_epochs: int = 25
 
 @dataclass(kw_only=True)
 class ModelConf:
