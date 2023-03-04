@@ -149,8 +149,14 @@ class ExpModelBase(LightningModule):
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer, _optimizer_idx):
         optimizer.zero_grad(set_to_none=self.conf.optimizer_set_to_none)
 
-    def log_grad_norm(self, grad_norm_dict: Dict[str, float]) -> None:
-        pass
+    def on_before_optimizer_step(self, optimizer: Optimizer, optimizer_idx: int) -> None:
+        grad_norm = torch.norm(
+            torch.stack([
+                torch.norm(g.detach())
+                for p in self.parameters() if (g := p.grad) is not None
+            ])
+        )
+        self.log('train/grad_norm', grad_norm)
 
 class SegModel(ExpModelBase):
     conf: SegExpConf
