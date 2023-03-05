@@ -5,7 +5,7 @@ _base:
     scheduler: ../_base/scheduler/cosine-warmup50.yaml
 
 num_input_channels: 1
-train_batch_size: 4
+train_batch_size: 8
 spacing: [0.75, 0.75, 3]
 sample_shape: [192, 192, 48]
 norm_intensity: true
