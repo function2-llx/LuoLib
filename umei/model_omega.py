@@ -150,9 +150,9 @@ class ExpModelBase(LightningModule):
         optimizer.zero_grad(set_to_none=self.conf.optimizer_set_to_none)
 
     def on_before_optimizer_step(self, optimizer: Optimizer, optimizer_idx: int) -> None:
-        grad_norm = torch.norm(
+        grad_norm = torch.linalg.vector_norm(
             torch.stack([
-                torch.norm(g.detach())
+                torch.linalg.vector_norm(g.detach())
                 for p in self.parameters() if (g := p.grad) is not None
             ])
         )

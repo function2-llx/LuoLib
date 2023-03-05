@@ -22,3 +22,5 @@ backbone:
       - 2
       - 2
       - [2, 2, 1]
+gradient_clip_val: 12
+gradient_clip_algorithm: norm
