@@ -345,7 +345,7 @@ class SwinBackbone(Backbone):
         conv_in_channels: int | None = None,
         conv_norm: str = 'instance',
         conv_act: str = 'leakyrelu',
-        **_kwargs,
+        # **_kwargs,
     ):
         """
         Args:
@@ -421,6 +421,7 @@ class SwinBackbone(Backbone):
             np.cumsum(layer_depths[:-1]),
         )
 
+        self.num_conv_layers = num_conv_layers
         self.layers = nn.ModuleList([
             ResLayer(
                 layer_depths[i],
@@ -476,6 +477,14 @@ class SwinBackbone(Backbone):
             if 'relative_position_bias_table' in name:
                 nwd.add(name)
         return nwd
+
+    def patch_embed(self, x: torch.Tensor):
+        x = self.stem(x)
+        for layer, norm, downsampling in zip(self.layers[self.num_conv_layers], self.norms, self.downsamplings):
+            x = layer(x)
+            x = norm(x)
+            x = downsampling(x)
+        return x
 
     def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
         feature_maps = []

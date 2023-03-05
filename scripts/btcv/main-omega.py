@@ -98,12 +98,13 @@ def main():
             gradient_clip_algorithm=conf.gradient_clip_algorithm,
             num_nodes=conf.num_nodes,
             accelerator='gpu',
-            devices=torch.cuda.device_count(),
+            devices=(n_gpu := torch.cuda.device_count()),
             precision=conf.precision,
             benchmark=True,
             max_epochs=int(conf.num_train_epochs),
             num_sanity_val_steps=conf.num_sanity_val_steps,
-            strategy=DDPStrategy(find_unused_parameters=conf.ddp_find_unused_parameters),
+            strategy=DDPStrategy(find_unused_parameters=conf.ddp_find_unused_parameters) if n_gpu > 1 or conf.num_nodes > 1
+            else None,
             # limit_train_batches=0.1,
             # limit_val_batches=0.2,
         )
