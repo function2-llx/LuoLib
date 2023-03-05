@@ -60,7 +60,7 @@ class ExpDataModuleBase(LightningDataModule):
             batch_size=per_device_train_batch_size,
             sampler=RandomSampler(
                 dataset,
-                num_samples=per_device_train_batch_size * conf.num_epoch_batches,
+                num_samples=conf.train_batch_size * conf.num_epoch_batches,
             ),
             num_workers=self.conf.dataloader_num_workers,
             pin_memory=self.conf.dataloader_pin_memory,
