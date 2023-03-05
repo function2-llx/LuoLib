@@ -38,11 +38,15 @@ class ExpModelBase(LightningModule):
 
     @property
     def log_exp_dir(self) -> Path:
+        assert self.trainer.is_global_zero
         from pytorch_lightning.loggers import WandbLogger
         logger: WandbLogger = self.trainer.logger   # type: ignore
         return Path(logger.experiment.dir)
 
-    def on_fit_start(self) -> None:
+    def on_fit_start(self):
+        super().on_fit_start()
+        if not self.trainer.is_global_zero:
+            return
         with open(self.log_exp_dir / 'fit-summary.txt', 'w') as f:
             print(self, file=f, end='\n\n\n')
             print('optimizers:\n', file=f)
@@ -96,13 +100,14 @@ class ExpModelBase(LightningModule):
         assert len(inter_params) == 0, f"parameters {inter_params} made it into both decay/no_decay sets!"
         assert len(params_dict.keys() - union_params) == 0, \
             f"parameters {params_dict.keys() - union_params} were not separated into either decay/no_decay set!"
+        if self.trainer.is_global_zero:
+            with open(self.log_exp_dir / 'parameters.json', 'w') as f:
+                obj = {
+                    'decay': list(decay),
+                    'no decay': list(no_decay),
+                }
+                json.dump(obj, f, indent=4, ensure_ascii=False)
 
-        with open(self.log_exp_dir / 'parameters.json', 'w') as f:
-            obj = {
-                'decay': list(decay),
-                'no decay': list(no_decay),
-            }
-            json.dump(obj, f, indent=4, ensure_ascii=False)
         # create the pytorch optimizer object
         return [
             {"params": [params_dict[pn] for pn in sorted(list(decay))], "weight_decay": self.conf.optimizer.weight_decay},

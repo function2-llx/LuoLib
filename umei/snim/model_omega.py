@@ -8,10 +8,8 @@ from pytorch_lightning.loggers import WandbLogger
 import torch
 from torch import distributed as dist, nn
 
-import monai.data
 from monai.data import MetaTensor
-from monai.networks.blocks import Convolution, ResidualUnit
-from monai.networks.layers import Act, Norm, get_act_layer
+from monai.networks.layers import Act, get_act_layer
 from monai.utils import ImageMetaKey
 
 from umei.model_omega import ExpModelBase
@@ -75,11 +73,6 @@ class SnimDecoder(nn.Module):
         super().__init__()
         self.conf = conf
         num_layers = len(layer_channels)
-        self.laterals = nn.ModuleList([
-            get_conv_layer(layer_channels[i], layer_channels[i], 1) if lateral
-            else nn.Identity()
-            for i in range(num_layers - 1)
-        ])
 
         self.lateral_projects = nn.ModuleList([
             nn.Sequential(
@@ -228,56 +221,67 @@ class SnimModel(ExpModelBase):
         dis_loss = self.dis_loss_fn(dis_logit, mask.float())
         loss = reg_loss + conf.dis_loss_factor * dis_loss
 
-        return reg_loss_masked, reg_loss_visible, reg_loss, dis_loss, loss, mask, x_mask, reg_pred
+        return reg_loss_masked, reg_loss_visible, reg_loss, dis_loss, loss, mask, x_mask, reg_pred, dis_logit
 
     def training_step(self, x: MetaTensor, *args, **kwargs):
         reg_loss_masked, reg_loss_visible, reg_loss, dis_loss, loss, *_ = self.forward(x.as_tensor())
-        self.log('train/reg_loss(masked)', reg_loss_masked)
-        self.log('train/reg_loss(visible)', reg_loss_visible)
-        self.log('train/dis_loss', dis_loss)
+        self.log('train/reg-loss(masked)', reg_loss_masked)
+        self.log('train/reg-loss(visible)', reg_loss_visible)
+        self.log('train/dis-loss', dis_loss)
         self.log('train/loss', loss)
         return loss
 
     def validation_step(self, x: MetaTensor, *args, **kwargs):
         filename = Path(x.meta[ImageMetaKey.FILENAME_OR_OBJ][0]).name
         x = x.as_tensor()
-        reg_loss_masked, reg_loss_visible, reg_loss, dis_loss, loss, mask, x_mask, pred = self.forward(x)
-        self.log('val/reg_loss(masked)', reg_loss_masked, sync_dist=True)
-        self.log('val/reg_loss(visible)', reg_loss_visible, sync_dist=True)
-        self.log('val/dis_loss', dis_loss, sync_dist=True)
+        reg_loss_masked, reg_loss_visible, reg_loss, dis_loss, loss, mask, x_mask, reg_pred, dis_logit = self.forward(x)
+        self.log('val/reg-loss(masked)', reg_loss_masked, sync_dist=True)
+        self.log('val/reg-loss(visible)', reg_loss_visible, sync_dist=True)
+        self.log('val/dis-loss', dis_loss, sync_dist=True)
         self.log('val/loss', loss, sync_dist=True)
 
+        dis_pred = dis_logit.sigmoid() > 0.5
+
+        tot = mask.numel()
+        s_mask = mask.sum()
+        s_pred = dis_pred.sum()
+        tp = (dis_pred & mask).sum()
+        tn = (~(dis_pred | mask)).sum()
+        self.log('val/dis-acc', (dis_pred == mask).sum() / tot, sync_dist=True)
+        self.log('val/mask-precision', tp / s_pred if s_pred > 0 else int(s_mask == 0), sync_dist=True)
+        self.log('val/mask-recall', tp / s_mask if s_mask > 0 else 1, sync_dist=True)
+        self.log('val/visible-precision', tn / (tot - s_pred) if s_pred > 0 else int(s_mask == 0), sync_dist=True)
+        self.log('val/visible-recall', tn / (tot - s_mask) if s_mask > 0 else 1, sync_dist=True)
+
         conf = self.conf
-        # # for better visualization
-        # x_mask.clamp_(min=0, max=1)
-        # pred.clamp_(min=0, max=1)
-        pred_ol = patchify(pred.clone(), conf.mask_patch_size)
+        pred_ol = patchify(reg_pred.clone(), conf.mask_patch_size)
         pred_ol[~mask] = patchify(x, conf.mask_patch_size)[~mask].to(pred_ol.dtype)
         pred_ol = unpatchify(pred_ol, conf.mask_patch_size)
 
         slice_ids = [int(x.shape[-1] * r) for r in [0.25, 0.5, 0.75]]
         if self.trainer.world_size > 1:
             filenames = [None] * self.trainer.world_size
-            dist.gather_object(filename, filenames)
+            dist.all_gather_object(filenames, filename)
             flatten = Rearrange('w n ... -> (w n) ...')
-            all_x, all_x_mask, all_pred, all_pred_ol = map(flatten, self.all_gather([x, x_mask, pred, pred_ol]))
+            all_x, all_x_mask, all_pred, all_pred_ol = map(flatten, self.all_gather([x, x_mask, reg_pred, pred_ol]))
         else:
             filenames = [filename]
-            all_x, all_x_mask, all_pred, all_pred_ol = x, x_mask, pred, pred_ol
+            all_x, all_x_mask, all_pred, all_pred_ol = x, x_mask, reg_pred, pred_ol
 
         if self.trainer.is_global_zero:
-            for filename, x, x_mask, pred, pred_ol in zip(filenames, all_x, all_x_mask, all_pred, all_pred_ol):
+            for filename, x, x_mask, reg_pred, pred_ol in zip(filenames, all_x, all_x_mask, all_pred, all_pred_ol):
                 for slice_idx in slice_ids:
                     self.logger.log_image(
                         f'val/{filename}/{slice_idx}',
                         images=[
                             x[..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
                             x_mask[..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
-                            pred[..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
+                            reg_pred[..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
                             pred_ol[..., slice_idx].float().rot90(dims=(1, 2)).cpu(),
                         ],
                         caption=['original', 'mask', 'pred', 'pred-ol'],
                     )
+
 
     def configure_optimizers(self):
         optim_config = super().configure_optimizers()

@@ -7,6 +7,7 @@ from typing import Any, TypeVar
 
 import omegaconf
 from omegaconf import DictConfig, OmegaConf
+import torch
 
 from monai.utils import BlendMode
 from umei.types import tuple2_t, tuple3_t
@@ -77,6 +78,12 @@ class FitConf(DataConf, AugConf):
     gradient_clip_val: float | None = None
     gradient_clip_algorithm: str | None = None
 
+    @property
+    def per_device_train_batch_size(self):
+        q, r = divmod(self.train_batch_size, torch.cuda.device_count())
+        assert r == 0
+        return q
+
 @dataclass(kw_only=True)
 class RuntimeConf:
     train_cache_num: int = 100
@@ -87,7 +94,7 @@ class RuntimeConf:
     do_train: bool = False
     do_eval: bool = False
     val_empty_cuda_cache: bool = False
-    eval_batch_size: int = 1
+    eval_batch_size: int = torch.cuda.device_count()
     resume_log: bool = True
     log_offline: bool = False
     num_sanity_val_steps: int = 5

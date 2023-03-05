@@ -9,6 +9,8 @@ train_batch_size: 4
 spacing: [0.75, 0.75, 3]
 sample_shape: [192, 192, 48]
 norm_intensity: true
+gradient_clip_val: 1
+gradient_clip_algorithm: norm
 
 decoder:
   name: snim-decoder
