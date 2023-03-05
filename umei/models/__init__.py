@@ -3,7 +3,7 @@ from .layers import LayerNormNd
 from umei.omega import ModelConf
 
 # TODO: refactor with some registry
-def create_model(conf: ModelConf, **kwargs):
+def create_model(conf: ModelConf, *args, **kwargs):
     match conf.name:
         case 'swin':
             from umei.models.backbones.swin import SwinBackbone as create_fn
@@ -17,4 +17,4 @@ def create_model(conf: ModelConf, **kwargs):
     if conf.ckpt_path is not None:
         raise NotImplementedError
 
-    return create_fn(**conf.kwargs, **kwargs)
+    return create_fn(*args, **conf.kwargs, **kwargs)

@@ -120,6 +120,8 @@ class SwinTransformerBlock(nn.Module):
     https://github.com/microsoft/Swin-Transformer
     """
 
+    downsamplings: nn.ModuleList | Sequence[AdaptiveDownsampling]
+
     def __init__(
         self,
         dim: int,
@@ -480,11 +482,32 @@ class SwinBackbone(Backbone):
 
     def patch_embed(self, x: torch.Tensor):
         x = self.stem(x)
-        for layer, norm, downsampling in zip(self.layers[self.num_conv_layers], self.norms, self.downsamplings):
+        for layer, norm, downsampling in zip(self.layers[:self.num_conv_layers], self.norms, self.downsamplings):
             x = layer(x)
             x = norm(x)
             x = downsampling(x)
         return x
+
+    @property
+    def embed_dim(self):
+        if self.num_conv_layers > 1:
+            return self.downsamplings[self.num_conv_layers - 1]
+        else:
+            raise NotImplementedError
+
+    def forward_layers(self, x: torch.Tensor):
+        feature_maps = []
+        for layer, norm, downsampling in zip(
+            self.layers[self.num_conv_layers:],
+            self.norms[self.num_conv_layers:],
+            self.downsamplings[self.num_conv_layers:],
+        ):
+            x = layer(x)
+            x = norm(x)
+            feature_maps.append(x)
+            x = downsampling(x)
+
+        return feature_maps
 
     def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
         feature_maps = []

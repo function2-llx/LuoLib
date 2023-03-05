@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from monai.utils import StrEnum
-from umei.omega import ExpConfBase
+from umei.omega import ExpConfBase, ModelConf
 from umei.types import tuple3_t
 
 class MaskValue(StrEnum):
@@ -12,22 +12,18 @@ class MaskValue(StrEnum):
 
 @dataclass(kw_only=True)
 class SnimConf(ExpConfBase):
-    mask_ratio: float = 0.8
+    backbone: ModelConf
+    decoder: ModelConf
+    mask_ratio: float
     mask_block_shape: tuple3_t[int]
     mask_patch_size: tuple3_t[int]
-    norm_pix_loss: bool = True
+    norm_pix_loss: bool
     val_size: int = 2
-    visible_factor: float = field(default=1e-3)
+    reg_loss_visible_factor: float = 0
+    dis_loss_factor: float = 1
     mask_value: MaskValue = MaskValue.DIST
     loss: str = field(default='l2', metadata={'choices': ['l1', 'l2']})
     datasets: list[str]
-
-    @property
-    def p_block_shape(self):
-        return tuple(
-            block_size // patch_size
-            for block_size, patch_size in zip(self.mask_block_shape, self.mask_patch_size)
-        )
 
     def __post_init__(self):
         for mask_block_size, vit_patch_size in zip(self.mask_block_shape, self.mask_patch_size):
@@ -37,3 +33,10 @@ class SnimConf(ExpConfBase):
             assert self.norm_intensity
 
         self.datasets = sorted(set(self.datasets))
+
+    @property
+    def p_block_shape(self):
+        return tuple(
+            block_size // patch_size
+            for block_size, patch_size in zip(self.mask_block_shape, self.mask_patch_size)
+        )

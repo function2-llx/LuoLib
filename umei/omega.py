@@ -62,8 +62,8 @@ class CrossValConf:
 
 @dataclass(kw_only=True)
 class FitConf(DataConf, AugConf):
-    monitor: str
-    monitor_mode: str
+    monitor: str | None = None
+    monitor_mode: str | None = None
     num_train_epochs: int = 1000
     num_epoch_batches: int = 250
     train_batch_size: int
@@ -103,7 +103,6 @@ class ModelConf:
 class ExpConfBase(FitConf, RuntimeConf):
     num_input_channels: int
     sample_shape: tuple3_t[int]
-    backbone: ModelConf
     conf_root: Path = Path('conf-omega')
     output_root: Path = Path('output-omega')
     output_dir: Path
@@ -127,6 +126,7 @@ class SegExpConf(ExpConfBase, SegInferConf):
     monitor: str = 'val/dice/avg'
     monitor_mode: str = 'max'
 
+    backbone: ModelConf
     decoder: ModelConf
     num_seg_classes: int
     num_seg_heads: int = 3

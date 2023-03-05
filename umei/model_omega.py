@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities.types import STEP_OUTPUT
@@ -33,18 +34,7 @@ class ExpModelBase(LightningModule):
     def __init__(self, conf: ExpConfBase):
         super().__init__()
         self.conf = conf
-        self.backbone: Backbone = create_model(conf.backbone)
         self.tta_flips = [[2], [3], [4], [2, 3], [2, 4], [3, 4], [2, 3, 4]]
-
-    def dummy(self):
-        with torch.no_grad():
-            self.backbone.eval()
-            dummy_input = torch.zeros(1, self.conf.num_input_channels, *self.conf.sample_shape)
-            dummy_output = self.backbone.forward(dummy_input)
-            print('backbone output shapes:')
-            for x in dummy_output.feature_maps:
-                print(x.shape)
-        return dummy_input, dummy_output
 
     @property
     def log_exp_dir(self) -> Path:
@@ -87,6 +77,8 @@ class ExpModelBase(LightningModule):
                     no_decay.add(f'{mn}.{pn}' if mn else pn)
 
             for pn, p in m.named_parameters(prefix=mn, recurse=False):
+                if not p.requires_grad:
+                    continue
                 if pn.endswith('bias'):
                     # all biases will not be decayed
                     no_decay.add(pn)
@@ -128,7 +120,7 @@ class ExpModelBase(LightningModule):
             **optim.kwargs,
         )
         from timm.scheduler import create_scheduler
-        scheduler = create_scheduler(self.conf.scheduler, optimizer)[0]
+        scheduler = create_scheduler(SimpleNamespace(**self.conf.scheduler), optimizer)[0]
         if type(scheduler).__repr__ == object.__repr__:
             type(scheduler).__repr__ = SimpleReprMixin.__repr__
         return {
@@ -161,12 +153,23 @@ class ExpModelBase(LightningModule):
 class SegModel(ExpModelBase):
     conf: SegExpConf
 
+    def dummy(self):
+        with torch.no_grad():
+            self.backbone.eval()
+            dummy_input = torch.zeros(1, self.conf.num_input_channels, *self.conf.sample_shape)
+            dummy_output = self.backbone.forward(dummy_input)
+            print('backbone output shapes:')
+            for x in dummy_output.feature_maps:
+                print(x.shape)
+        return dummy_input, dummy_output
+
     def __init__(self, conf: SegExpConf):
         super().__init__(conf)
+        self.backbone: Backbone = create_model(conf.backbone)
         self.decoder: Decoder = create_model(conf.decoder)
         with torch.no_grad():
             self.decoder.eval()
-            dummy_input, dummy_encoder_output = super().dummy()
+            dummy_input, dummy_encoder_output = self.dummy()
             dummy_decoder_output = self.decoder.forward(dummy_encoder_output.feature_maps, dummy_input)
             print('decoder output shapes:')
             for x in dummy_decoder_output.feature_maps:

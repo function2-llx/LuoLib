@@ -1,0 +1,7 @@
+_base:
+  - _default.yaml
+
+datasets:
+  - act1k
+  - amos
+mask_block_shape: [16, 16, 4]
