@@ -15,5 +15,5 @@ decoder:
   kwargs:
     layer_channels: [96, 192, 384, 384]
 mask_ratio: 0.8
-mask_patch_size: [4, 4, 1]
-norm_pix_loss: true
+mask_patch_size: [4, 4, 1]  # physically isotropic
+norm_pix_loss: false  # patch size is too small
