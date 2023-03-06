@@ -4,8 +4,11 @@ _base:
     optimizer: ../_base/optimizer/adamw.yaml
     scheduler: ../_base/scheduler/cosine-warmup50.yaml
 
+optimizer:
+  lr: 1e-4
+
 num_input_channels: 1
-train_batch_size: 8
+train_batch_size: 16
 spacing: [0.75, 0.75, 3]
 sample_shape: [192, 192, 48]
 norm_intensity: true
@@ -15,6 +18,7 @@ gradient_clip_algorithm: norm
 dummy_dim: 2
 rotate_p: 0.35
 scale_p: 0.35
+scale_range: [0.6, 1.5]
 simulate_low_res_p: 0.2
 
 decoder:
@@ -24,6 +28,7 @@ decoder:
 mask_ratio: 0.8
 mask_patch_size: [4, 4, 1]  # physically isotropic
 norm_pix_loss: false  # patch size is too small
-
+dis_loss_factor: 0.5
 
 save_every_n_epochs: 10
+log_every_n_steps: 20

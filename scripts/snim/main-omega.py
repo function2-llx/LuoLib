@@ -18,7 +18,7 @@ def main():
     conf.output_dir /= exp_suffix
     conf.log_dir = conf.output_dir
 
-    conf = OmegaConf.to_object(conf)
+    conf: SnimConf = OmegaConf.to_object(conf)
     pl.seed_everything(conf.seed)
     datamodule = SnimDataModule(conf)
     conf.output_dir.mkdir(exist_ok=True, parents=True)
@@ -51,9 +51,10 @@ def main():
         precision=conf.precision,
         benchmark=True,
         max_epochs=int(conf.num_train_epochs),
-        num_sanity_val_steps=conf.num_sanity_val_steps,
+        log_every_n_steps=conf.log_every_n_steps,
         strategy=DDPStrategy(find_unused_parameters=conf.ddp_find_unused_parameters) if n_gpu > 1 or conf.num_nodes > 1
         else None,
+        num_sanity_val_steps=conf.num_sanity_val_steps,
     )
     model = SnimModel(conf)
     last_ckpt_path = conf.ckpt_path
