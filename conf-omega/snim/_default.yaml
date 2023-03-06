@@ -12,6 +12,11 @@ norm_intensity: true
 gradient_clip_val: 1
 gradient_clip_algorithm: norm
 
+dummy_dim: 2
+rotate_p: 0.35
+scale_p: 0.35
+simulate_low_res_p: 0.2
+
 decoder:
   name: snim-decoder
   kwargs:
@@ -19,3 +24,6 @@ decoder:
 mask_ratio: 0.8
 mask_patch_size: [4, 4, 1]  # physically isotropic
 norm_pix_loss: false  # patch size is too small
+
+
+save_every_n_epochs: 10

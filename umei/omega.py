@@ -15,7 +15,7 @@ from umei.types import tuple2_t, tuple3_t
 # omegaconf: Unions of containers are not supported
 @dataclass(kw_only=True)
 class AugConf:
-    dummy_dim: int | None = None
+    dummy_dim: int | None
     rotate_range: list
     rotate_p: Any
     scale_range: list

@@ -14,7 +14,7 @@ from monai.utils import ImageMetaKey
 
 from umei.model_omega import ExpModelBase
 from umei.models.backbones.swin import SwinBackbone
-from umei.models.blocks import get_conv_layer
+from umei.models.init import init_linear_conv3d
 from umei.snim.omega import MaskValue, SnimConf
 from umei.snim.utils import patchify, unpatchify
 from umei.utils import channel_first, channel_last
@@ -35,14 +35,17 @@ class SnimEncoder(SwinBackbone):
                 p_x[mask] = torch.rand(mask.sum(), p_x.shape[-1], device=x.device)
             case MaskValue.DIST:
                 for i in range(x.shape[0]):
-                    samples = rearrange(p_x[i], '... c -> c (...)')
-                    mu = samples.mean(dim=1)
-                    # force to use higher precision when calculation covariance
-                    with torch.autocast(x.device.type, dtype=torch.float32):
+                    # force to use higher precision or nan will occur
+                    with torch.autocast(x.device.type, enabled=False):
+                        samples = rearrange(p_x[i], '... c -> c (...)').double()
+                        mu = samples.mean(dim=1)
                         cov = samples.cov()
-                    if cov.count_nonzero(dim=0).count_nonzero().item() == cov.shape[0]:
-                        dist = torch.distributions.MultivariateNormal(mu, cov)
-                        p_x[i][mask[i]] = dist.sample(mask[i].sum().view(-1))
+                        if torch.all(cov.count_nonzero(dim=0)):
+                            dist = torch.distributions.MultivariateNormal(mu, cov)
+                            sample = dist.sample(mask[i].sum().view(-1))
+                            p_x[i][mask[i]] = sample.float()
+                            if torch.isnan(sample).sum() > 0:
+                                print(233)
             case MaskValue.PARAM:
                 # nothing to do at this time, only for visualization
                 p_x[mask] = 0
@@ -78,18 +81,25 @@ class SnimDecoder(nn.Module):
             nn.Sequential(
                 nn.Linear(layer_channels[i], layer_channels[i]),
                 nn.LayerNorm(layer_channels[i]),
-                get_act_layer(act),
             ) if lateral
             else nn.Identity()
             for i in range(num_layers - 1)
         ])
+
         self.up_projects = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(layer_channels[i + 1], 8 * layer_channels[i]),
                 Rearrange('n h w d (s0 s1 s2 c) -> n (h s0) (w s1) (d s2) c', s0=2, s1=2, s2=2),
+                nn.LayerNorm(layer_channels[i]),
             )
             for i in range(num_layers - 1)
         ])
+
+        self.acts = nn.ModuleList([
+            get_act_layer(act)
+            for _ in range(num_layers - 1)
+        ])
+
         self.projects = nn.ModuleList([
             nn.Sequential(
                 nn.Linear(layer_channels[i], layer_channels[i]),
@@ -98,7 +108,6 @@ class SnimDecoder(nn.Module):
             )
             for i in range(num_layers - 1)
         ])
-
         self.reg_head = nn.Sequential(
             nn.Linear(layer_channels[0], np.product(conf.mask_patch_size) * conf.num_input_channels),
             Rearrange('n h w d (s0 s1 s2 c) -> n c (h s0) (w s1) (d s2)', **{
@@ -111,18 +120,21 @@ class SnimDecoder(nn.Module):
             Rearrange('... 1 -> ...'),
         )
 
+        self.apply(init_linear_conv3d)
+
     def forward(self, feature_maps: list[torch.Tensor]):
         x = channel_last(feature_maps[-1]).contiguous()
-        for z, lateral_proj, up_proj, proj in zip(
+        for z, lateral_proj, up_proj, act, proj in zip(
             feature_maps[-2::-1],
             self.lateral_projects[::-1],
             self.up_projects[::-1],
+            self.acts[::-1],
             self.projects[::-1],
         ):
             z = channel_last(z).contiguous()
             z = lateral_proj(z)
             x = up_proj(x)
-            x = x + z
+            x = act(x + z)
             x = proj(x)
 
         reg_pred = self.reg_head(x)
@@ -220,7 +232,8 @@ class SnimModel(ExpModelBase):
         reg_loss = reg_loss_masked + conf.reg_loss_visible_factor * reg_loss_visible
         dis_loss = self.dis_loss_fn(dis_logit, mask.float())
         loss = reg_loss + conf.dis_loss_factor * dis_loss
-
+        if torch.isnan(loss):
+            print(233)
         return reg_loss_masked, reg_loss_visible, reg_loss, dis_loss, loss, mask, x_mask, reg_pred, dis_logit
 
     def training_step(self, x: MetaTensor, *args, **kwargs):
