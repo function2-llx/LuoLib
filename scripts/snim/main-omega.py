@@ -36,7 +36,7 @@ def main():
                 dirpath=conf.output_dir,
                 verbose=True,
                 save_last=True,
-                save_top_k=0,
+                save_top_k=-1,
                 every_n_epochs=conf.save_every_n_epochs,
                 save_on_train_epoch_end=True,
             ),

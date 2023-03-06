@@ -260,11 +260,11 @@ class SnimModel(ExpModelBase):
         s_pred = dis_pred.sum()
         tp = (dis_pred & mask).sum()
         tn = (~(dis_pred | mask)).sum()
-        self.log('val/dis-acc', (dis_pred == mask).sum() / tot, sync_dist=True)
-        self.log('val/mask-precision', tp / s_pred if s_pred > 0 else int(s_mask == 0), sync_dist=True)
-        self.log('val/mask-recall', tp / s_mask if s_mask > 0 else 1, sync_dist=True)
-        self.log('val/visible-precision', tn / (tot - s_pred) if s_pred > 0 else int(s_mask == 0), sync_dist=True)
-        self.log('val/visible-recall', tn / (tot - s_mask) if s_mask > 0 else 1, sync_dist=True)
+        self.log('val/dis-acc', (dis_pred == mask).sum() / tot * 100, sync_dist=True)
+        self.log('val/mask-precision', tp / s_pred * 100 if s_pred > 0 else int(s_mask == 0), sync_dist=True)
+        self.log('val/mask-recall', tp / s_mask * 100 if s_mask > 0 else 1, sync_dist=True)
+        self.log('val/visible-precision', tn / (tot - s_pred) * 100 if s_pred > 0 else int(s_mask == 0), sync_dist=True)
+        self.log('val/visible-recall', tn / (tot - s_mask) * 100 if s_mask > 0 else 1, sync_dist=True)
 
         conf = self.conf
         pred_ol = patchify(reg_pred.clone(), conf.mask_patch_size)
