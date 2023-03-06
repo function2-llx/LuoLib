@@ -41,7 +41,10 @@ class SnimEncoder(SwinBackbone):
                         mu = samples.mean(dim=1)
                         cov = samples.cov()
                         if torch.all(cov.count_nonzero(dim=0)):
-                            dist = torch.distributions.MultivariateNormal(mu, cov)
+                            dist = torch.distributions.MultivariateNormal(
+                                mu,
+                                cov + conf.cov_eps * torch.eye(cov.shape[0], device=cov.device),
+                            )
                             sample = dist.sample(mask[i].sum().view(-1))
                             p_x[i][mask[i]] = sample.float()
                             if torch.isnan(sample).sum() > 0:

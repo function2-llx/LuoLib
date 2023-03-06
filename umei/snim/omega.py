@@ -24,6 +24,7 @@ class SnimConf(ExpConfBase):
     mask_value: MaskValue = MaskValue.DIST
     loss: str = field(default='l2', metadata={'choices': ['l1', 'l2']})
     datasets: list[str]
+    cov_eps: float = 1e-6
 
     def __post_init__(self):
         for mask_block_size, vit_patch_size in zip(self.mask_block_shape, self.mask_patch_size):
