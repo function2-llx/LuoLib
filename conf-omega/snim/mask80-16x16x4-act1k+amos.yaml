@@ -1,7 +1,8 @@
 _base:
   - _default.yaml
 
+mask_ratio: 0.8
+mask_block_shape: [16, 16, 4]
 datasets:
   - act1k
   - amos
-mask_block_shape: [16, 16, 4]
