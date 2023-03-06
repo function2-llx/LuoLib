@@ -27,7 +27,7 @@ def get_exp_suffix(conf: BTCVExpConf, fold_id: int) -> str:
     if conf.backbone.ckpt_path is None:
         suffix /= 'scratch'
     else:
-        raise NotImplementedError
+        suffix /= '/'.join(conf.backbone.ckpt_path.parts[-3:])
     # suffix /= f's{conf.num_seg_heads}'
     # if conf.spline_seg:
     #     append('-sps')
@@ -60,7 +60,7 @@ def main():
         print('log dir:', conf.log_dir)
 
         # save config as file
-        conf_save_path = conf.log_dir / 'conf.yml'
+        conf_save_path = conf.log_dir / 'conf.yaml'
         if conf_save_path.exists():
             conf_save_path.rename(conf_save_path.with_stem('conf-last'))
         OmegaConf.save(conf, conf_save_path)

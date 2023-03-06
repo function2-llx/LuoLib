@@ -62,14 +62,11 @@ def main():
         last_ckpt_path = conf.output_dir / 'last.ckpt'
         if not last_ckpt_path.exists():
             last_ckpt_path = None
-    if trainer.is_global_zero:
-        conf_save_path = conf.output_dir / 'conf.yml'
-        if conf_save_path.exists():
-            conf_save_path.rename(conf.output_dir / 'conf-last.yml')
     if conf.do_train:
-        conf_save_path = conf.log_dir / 'conf.yml'
-        if conf_save_path.exists():
-            conf_save_path.rename(conf_save_path.with_stem('conf-last'))
+        conf_save_path = conf.output_dir / 'conf.yaml'
+        if trainer.is_global_zero:
+            if conf_save_path.exists():
+                conf_save_path.rename(conf_save_path.with_stem('conf-last'))
         OmegaConf.save(conf, conf_save_path)
         trainer.fit(model, datamodule=datamodule, ckpt_path=last_ckpt_path)
 

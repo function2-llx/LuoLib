@@ -105,6 +105,7 @@ class RuntimeConf:
 class ModelConf:
     name: str
     ckpt_path: Path | None = None
+    key_prefix: str = ''
     kwargs: dict
 
 @dataclass(kw_only=True)
