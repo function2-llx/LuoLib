@@ -281,7 +281,7 @@ class SnimModel(ExpModelBase):
             filenames = [filename]
             all_x, all_x_mask, all_pred, all_pred_ol = x, x_mask, reg_pred, pred_ol
 
-        if self.trainer.is_global_zero:
+        if self.trainer.is_global_zero and self.trainer.validating:
             for filename, x, x_mask, reg_pred, pred_ol in zip(filenames, all_x, all_x_mask, all_pred, all_pred_ol):
                 for slice_idx in slice_ids:
                     self.logger.log_image(
