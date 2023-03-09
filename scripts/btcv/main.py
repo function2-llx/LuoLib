@@ -2,13 +2,14 @@ from pathlib import Path
 
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint, ModelSummary
+from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
 
 from umei.datasets.btcv import BTCVArgs, BTCVDataModule
 from umei.datasets.btcv.model import BTCVModel
-from umei.utils import MyWandbLogger, UMeIParser
+from umei.utils import UMeIParser
 
 task_name = 'btcv'
 
@@ -36,14 +37,20 @@ def main():
     datamodule = BTCVDataModule(args)
     output_dir = args.output_dir / f'run-{args.seed}'
     output_dir.mkdir(exist_ok=True, parents=True)
+    last_ckpt_path = args.ckpt_path
+    if last_ckpt_path is None:
+        last_ckpt_path = output_dir / 'last.ckpt'
+        if not last_ckpt_path.exists():
+            last_ckpt_path = None
     log_dir = output_dir
     if args.do_eval:
-        log_dir /= f'eval-sw{args.sw_overlap}-{args.sw_blend_mode}{"-tta" if args.do_tta else ""}'
+        epoch = torch.load(last_ckpt_path)['epoch']
+        log_dir /= f'eval-sw{args.sw_overlap}-{args.sw_blend_mode}{"-tta" if args.do_tta else ""}/{epoch}'
     log_dir.mkdir(exist_ok=True, parents=True)
     print('real output dir:', output_dir)
     print('log dir:', log_dir)
     trainer = pl.Trainer(
-        logger=MyWandbLogger(
+        logger=WandbLogger(
             project=f'{task_name}-eval' if args.do_eval else task_name,
             name=str(output_dir.relative_to(args.output_root)),
             save_dir=str(log_dir),
@@ -87,11 +94,7 @@ def main():
         # limit_val_batches=0.2,
     )
     model = BTCVModel(args)
-    last_ckpt_path = args.ckpt_path
-    if last_ckpt_path is None:
-        last_ckpt_path = output_dir / 'last.ckpt'
-        if not last_ckpt_path.exists():
-            last_ckpt_path = None
+
     if args.do_train:
         if trainer.is_global_zero:
             conf_save_path = output_dir / 'conf.yml'
@@ -105,10 +108,18 @@ def main():
         with open(log_dir / 'results.txt', 'w') as f:
             print('\t'.join(model.results.keys()), file=f)
             print('\t'.join(map(str, model.results.values())), file=f)
-            # for k in ['test/dice-post/avg', 'test/sd-post/avg', 'test/hd95-post/avg']:
-            #     print(results[0][k], file=f, end='\n' if k == 'test/hd95-post/avg' else '\t')
         with open(log_dir / 'case-results.txt', 'w') as f:
-            print(*model.case_results, sep='\n', file=f)
+            for k, v in model.case_results.items():
+                print(k, file=f)
+                print(*v, sep='\n', file=f)
+
+        # with open(log_dir / 'results.txt', 'w') as f:
+        #     print('\t'.join(model.results.keys()), file=f)
+        #     print('\t'.join(map(str, model.results.values())), file=f)
+        #     # for k in ['test/dice-post/avg', 'test/sd-post/avg', 'test/hd95-post/avg']:
+        #     #     print(results[0][k], file=f, end='\n' if k == 'test/hd95-post/avg' else '\t')
+        # with open(log_dir / 'case-results.txt', 'w') as f:
+        #     print(*model.case_results, sep='\n', file=f)
 
     wandb.finish()
 

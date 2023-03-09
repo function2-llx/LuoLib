@@ -182,7 +182,7 @@ class SnimModel(ExpModelBase):
     #         w: torch.Tensor = m.weight.data
     #         torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
 
-    def gen_patch_mask(self, batch_size: int, img_shape: Sequence[int], device=None) -> torch.Tensor:
+    def gen_patch_mask(self, batch_size: int, img_shape: Sequence[int]) -> torch.Tensor:
         mask_shape = [
             size // patch_size
             for size, patch_size in zip(img_shape, self.conf.mask_patch_size)
@@ -216,7 +216,7 @@ class SnimModel(ExpModelBase):
 
         return mask
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor = None):
+    def forward(self, x: torch.Tensor, mask: torch.Tensor = None, apply_dis_overlay: bool = False):
         # p_xxx: patchified xxx
         conf = self.conf
         p_x = patchify(x, conf.mask_patch_size)
@@ -237,7 +237,13 @@ class SnimModel(ExpModelBase):
         loss = reg_loss + conf.dis_loss_factor * dis_loss
         if torch.isnan(loss):
             print(233)
-        return reg_loss_masked, reg_loss_visible, reg_loss, dis_loss, loss, mask, x_mask, reg_pred, dis_logit
+        if apply_dis_overlay:
+            visible_mask = dis_logit.sigmoid() < 0.5
+            p_reg_pred[visible_mask] = patchify(x_mask, conf.mask_patch_size)[visible_mask]
+            return x_mask, unpatchify(p_reg_pred, conf.mask_patch_size)
+        else:
+            return reg_loss_masked, reg_loss_visible, reg_loss, dis_loss, loss, mask, x_mask, reg_pred, dis_logit
+
 
     def training_step(self, x: MetaTensor, *args, **kwargs):
         reg_loss_masked, reg_loss_visible, reg_loss, dis_loss, loss, *_ = self.forward(x.as_tensor())

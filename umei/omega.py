@@ -181,4 +181,6 @@ def parse_exp_conf(conf_type: type[T]) -> T:
         if OmegaConf.is_missing(conf, 'exp_name'):
             conf.exp_name = conf_path.relative_to(conf.conf_root).with_suffix('')
         conf.output_dir = conf.output_root / conf.exp_name
+    elif OmegaConf.is_missing(conf, 'exp_name'):
+        conf.exp_name = conf.output_dir.relative_to(conf.output_root).with_suffix('')
     return conf

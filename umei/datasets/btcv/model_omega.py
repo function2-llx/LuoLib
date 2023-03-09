@@ -5,7 +5,7 @@ from torch.nn import functional as torch_f
 
 from monai import transforms as monai_t
 from monai.data import MetaTensor
-from monai.metrics import DiceMetric
+from monai.metrics import DiceMetric, HausdorffDistanceMetric, SurfaceDistanceMetric
 from monai.networks import one_hot
 from monai.utils import ImageMetaKey, MetricReduction, TraceKeys
 
@@ -18,15 +18,20 @@ class BTCVModel(SegModel):
         super().__init__(conf)
         self.test_metrics = {
             'dice': DiceMetric(include_background=True),
+            'sd': SurfaceDistanceMetric(include_background=True, symmetric=True),
+            'hd95': HausdorffDistanceMetric(include_background=True, percentile=95, directed=False),
         }
         self.results = {}
-        self.case_results = []
+        self.case_results = {
+            k: []
+            for k in self.test_metrics.keys()
+        }
 
     def on_test_epoch_start(self) -> None:
-        for metric in self.test_metrics.values():
-            metric.reset()
+        for k in self.test_metrics.keys():
+            self.test_metrics[k].reset()
+            self.case_results[k].clear()
         self.results = {}
-        self.case_results.clear()
 
     def test_step(self, batch, batch_idx, *args, **kwargs):
         img: MetaTensor = batch[DataKey.IMG]
@@ -58,8 +63,11 @@ class BTCVModel(SegModel):
         for k, metric in self.test_metrics.items():
             m = metric(pred_oh, seg_oh)
             for i in range(m.shape[0]):
-                self.case_results.append('\t'.join(map(str, m[i].tolist())))
-            print(m[:, 1:].nanmean().item() * 100)
+                self.case_results[k].append('\t'.join(map(str, m[i].tolist())))
+            avg = m[:, 1:].nanmean().item()
+            if k == 'dice':
+                avg *= 100
+            print(k, avg)
 
         if self.conf.export:
             import nibabel as nib
@@ -78,7 +86,9 @@ class BTCVModel(SegModel):
 
         for k, metric in self.test_metrics.items():
             m = metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
-            m = m[1:].nanmean() * 100
+            m = m[1:].nanmean()
+            if k == 'dice':
+                m *= 100
             self.log(f'test/{k}/avg', m, sync_dist=True)
             self.results[k] = m.item()
 
@@ -86,4 +96,6 @@ class BTCVModel(SegModel):
             print('\t'.join(self.results.keys()), file=f)
             print('\t'.join(map(str, self.results.values())), file=f)
         with open(conf.log_dir / 'case-results.txt', 'w') as f:
-            print(*self.case_results, sep='\n', file=f)
+            for k, v in self.case_results.items():
+                print(k, file=f)
+                print(*v, sep='\n', file=f)

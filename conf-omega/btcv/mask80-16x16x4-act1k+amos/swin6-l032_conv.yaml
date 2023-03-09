@@ -1,0 +1,6 @@
+_base:
+  - _default.yaml
+  - ../swin6-l032_conv_clip-grad-1.yaml
+
+optimizer:
+  lr: 5e-5

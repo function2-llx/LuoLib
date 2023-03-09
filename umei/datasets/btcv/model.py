@@ -6,7 +6,7 @@ from toolz import itertoolz as itz
 from monai import transforms as monai_t
 from monai.data import MetaTensor
 from monai.losses import DiceCELoss
-from monai.metrics import DiceMetric
+from monai.metrics import DiceMetric, HausdorffDistanceMetric, SurfaceDistanceMetric
 from monai.networks import one_hot
 from monai.utils import ImageMetaKey, MetricReduction, TraceKeys
 
@@ -34,17 +34,21 @@ class BTCVModel(SegModel):
         # # self.hd95_pre = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
         # self.hd95_post = HausdorffDistanceMetric(include_background=False, percentile=95, directed=False)
         # # self.resampler = monai.transforms.SpatialResample()
-        self.metrics = {
+        self.test_metrics = {
             'dice': DiceMetric(include_background=True),
+            'sd': SurfaceDistanceMetric(include_background=True, symmetric=True),
+            'hd95': HausdorffDistanceMetric(include_background=True, percentile=95, directed=False),
         }
         self.results = {}
-        self.case_results = []
-
+        self.case_results = {
+            k: []
+            for k in self.test_metrics.keys()
+        }
     def on_test_epoch_start(self) -> None:
-        for metric in self.metrics.values():
-            metric.reset()
+        for k in self.test_metrics.keys():
+            self.test_metrics[k].reset()
+            self.case_results[k].clear()
         self.results = {}
-        self.case_results.clear()
         # # self.dice_pre.reset()
         # self.dice_post.reset()
         # # self.sd_pre.reset()
@@ -78,11 +82,14 @@ class BTCVModel(SegModel):
         pred = torch_f.pad(pred, list(itz.concat(reversed(to_pad))))
         seg_oh = one_hot(seg, self.args.num_seg_classes)
         pred_oh = one_hot(pred, self.args.num_seg_classes)
-        for k, metric in self.metrics.items():
+        for k, metric in self.test_metrics.items():
             m = metric(pred_oh, seg_oh)
             for i in range(m.shape[0]):
-                self.case_results.append('\t'.join(map(str, m[i].tolist())))
-            print(m[:, 1:].nanmean().item() * 100)
+                self.case_results[k].append('\t'.join(map(str, m[i].tolist())))
+            avg = m[:, 1:].nanmean().item()
+            if k == 'dice':
+                avg *= 100
+            print(k, avg)
 
         if self.args.export:
             import nibabel as nib
@@ -108,9 +115,11 @@ class BTCVModel(SegModel):
         #     print(metric(pred_oh, seg_oh).nanmean().item(), end='\n' if metric is self.hd95_pre else ' ')
 
     def test_epoch_end(self, *args):
-        for k, metric in self.metrics.items():
+        for k, metric in self.test_metrics.items():
             m = metric.aggregate(reduction=MetricReduction.MEAN_BATCH)
-            m = m[1:].nanmean() * 100
+            m = m[1:].nanmean()
+            if k == 'dice':
+                m *= 100
             self.log(f'test/{k}/avg', m, sync_dist=True)
             self.results[k] = m.item()
 

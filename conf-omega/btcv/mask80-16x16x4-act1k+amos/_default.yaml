@@ -1,0 +1,6 @@
+_base:
+  - backbone: ../../_base/backbone/swin6-l032.yaml
+
+backbone:
+  ckpt_path: output-omega/snim/mask80-16x16x4-act1k+amos/run-42/epoch=69-step=7000.ckpt
+  key_prefix: encoder.

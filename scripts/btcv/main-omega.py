@@ -50,10 +50,20 @@ def main():
 
         # handle output_dir & log_dir
         conf.output_dir /= get_exp_suffix(conf, fold_id)
+        last_ckpt_path = conf.ckpt_path
+        if last_ckpt_path is None:
+            last_ckpt_path = conf.output_dir / 'last.ckpt'
+            if not last_ckpt_path.exists():
+                last_ckpt_path = None
         if OmegaConf.is_missing(conf, 'log_dir'):
             conf.log_dir = conf.output_dir
             if conf.do_eval:
-                conf.log_dir /= f'eval-sw{conf.sw_overlap}-{conf.sw_blend_mode}{"-tta" if conf.do_tta else ""}'
+                if last_ckpt_path:
+                    epoch = torch.load(last_ckpt_path)['epoch']
+                else:
+                    epoch = '-1'
+                conf.log_dir /= f'eval-sw{conf.sw_overlap}-{conf.sw_blend_mode}{"-tta" if conf.do_tta else ""}/{epoch}'
+
         conf.output_dir.mkdir(exist_ok=True, parents=True)
         conf.log_dir.mkdir(exist_ok=True, parents=True)
         print('real output dir:', conf.output_dir)
@@ -113,11 +123,7 @@ def main():
             # limit_val_batches=0.2,
         )
         model = BTCVModel(conf)
-        last_ckpt_path = conf.ckpt_path
-        if last_ckpt_path is None:
-            last_ckpt_path = conf.output_dir / 'last.ckpt'
-            if not last_ckpt_path.exists():
-                last_ckpt_path = None
+
         if conf.do_train:
             trainer.fit(model, datamodule=datamodule, ckpt_path=last_ckpt_path)
         if conf.do_eval:

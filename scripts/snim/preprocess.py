@@ -36,8 +36,9 @@ def get_amos():
 
 def main():
     max_workers = 8
-    process_map(process, get_amos(), it.repeat('amos'), max_workers=max_workers)
-    process_map(process, list(Path('datasets/AbdomenCT-1K/Image').glob('*.nii.gz')), it.repeat('act1k'), max_workers=max_workers)
+    # process_map(process, get_amos(), it.repeat('amos'), max_workers=max_workers)
+    # process_map(process, list(Path('datasets/AbdomenCT-1K/Image').glob('*.nii.gz')), it.repeat('act1k'), max_workers=max_workers)
+    process_map(process, list(Path('datasets/BTCV/RawData').glob('images*/*.nii.gz')), it.repeat('btcv'), max_workers=max_workers)
 
 if __name__ == '__main__':
     main()
