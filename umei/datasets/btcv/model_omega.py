@@ -18,7 +18,7 @@ class BTCVModel(SegModel):
         super().__init__(conf)
         self.test_metrics = {
             'dice': DiceMetric(include_background=True),
-            'sd': SurfaceDistanceMetric(include_background=True, symmetric=True),
+            'sd': SurfaceDistanceMetric(include_background=True, symmetric=True, no_inf=True),
             'hd95': HausdorffDistanceMetric(include_background=True, percentile=95, directed=False),
         }
         self.results = {}
