@@ -1,6 +1,3 @@
 [submodule "third-party/MONAI"]
 	path = third-party/MONAI
 	url = git@github.com:function2-llx/MONAI.git
-[submodule "third-party/nnUNet"]
-	path = third-party/nnUNet
-	url = git@github.com:MIC-DKFZ/nnUNet.git
