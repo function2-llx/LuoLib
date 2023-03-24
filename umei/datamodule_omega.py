@@ -1,7 +1,9 @@
 from collections.abc import Sequence
+from functools import cached_property
 import itertools as it
 from typing import Callable
 
+import numpy as np
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 import torch
@@ -10,11 +12,11 @@ from torch.utils.data import Dataset as TorchDataset, RandomSampler
 import monai
 from monai import transforms as monai_t
 from monai.config import PathLike
-from monai.data import CacheDataset, DataLoader, Dataset
+from monai.data import CacheDataset, DataLoader, Dataset, partition_dataset_classes, select_cross_validation_folds
 from monai.utils import GridSampleMode, PytorchPadMode
 
 from .transforms import RandAdjustContrastD, RandGammaCorrectionD, SimulateLowResolutionD
-from .omega import ExpConfBase, SegExpConf
+from .omega import CrossValConf, ExpConfBase, SegExpConf
 from .transforms import (
     RandAffineCropD, RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD,
     SpatialRangeGenerator,
@@ -93,6 +95,49 @@ class ExpDataModuleBase(LightningDataModule):
             self.test_data(),
             transform=self.test_transform(),
         ))
+
+class CrossValDataModule:
+    conf: ExpConfBase | CrossValConf
+
+    def __init__(self, conf: ExpConfBase | CrossValConf):
+        self.conf = conf
+        self.val_id = 0
+
+    # all data for fit (including train & val)
+    def fit_data(self) -> tuple[Sequence, Sequence]:
+        raise NotImplementedError
+
+    @property
+    def val_id(self) -> int:
+        return self._val_id
+
+    @val_id.setter
+    def val_id(self, x: int):
+        assert 0 <= x < self.conf.num_folds
+        self._val_id = x
+
+    @cached_property
+    def partitions(self):
+        fit_data, classes = self.fit_data()
+        if classes is None:
+            classes = [0] * len(fit_data)
+        return partition_dataset_classes(
+            fit_data,
+            classes,
+            num_partitions=self.conf.num_folds,
+            shuffle=True,
+            seed=self.conf.seed,
+        )
+
+    def train_data(self):
+        return select_cross_validation_folds(
+            self.partitions,
+            folds=np.delete(range(len(self.partitions)), self.val_id),
+        )
+
+    def val_data(self):
+        return select_cross_validation_folds(self.partitions, folds=self.val_id)
+
 
 class SegDataModule(ExpDataModuleBase):
     conf: SegExpConf

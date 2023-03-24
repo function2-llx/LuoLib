@@ -116,13 +116,6 @@ class RandAffineCropD(monai_t.RandomizableTrait, monai_t.MapTransform):
         self.rotate_generator = rotate_generator
         self.scale_generator = scale_generator
 
-        if dummy_dim is None:
-            self.id_rotate = (0, 0, 0)
-            self.id_scale = (1, 1, 1)
-        else:
-            self.id_rotate = (0, )
-            self.id_scale = (1, 1)
-
     def __call__(self, data: Mapping[Hashable, torch.Tensor]):
         d = dict(data)
         self.center = center = np.array(self.center_generator(d))
@@ -130,6 +123,12 @@ class RandAffineCropD(monai_t.RandomizableTrait, monai_t.MapTransform):
         spatial_size = np.array(sample_x.shape[1:])
         self.rotate_params = rotate_params = self.rotate_generator(d)
         self.scale_params = scale_params = self.scale_generator(d)
+        if self.dummy_dim is None and len(spatial_size) == 3:
+            id_rotate = (0, 0, 0)
+            id_scale = (1, 1, 1)
+        else:
+            id_rotate = (0,)
+            id_scale = (1, 1)
         if rotate_params is not None or scale_params is not None:
             if self.dummy_dim is not None:
                 dummy_crop_size = self.crop_size[self.dummy_dim]
@@ -189,16 +188,16 @@ class RandAffineCropD(monai_t.RandomizableTrait, monai_t.MapTransform):
                     x = rearrange(x, '(c d) ... -> c d ...', d=dummy_crop_size)
                     x = x.movedim(1, self.dummy_dim + 1)
                 x.meta['crop center'] = self.center
-                x.meta['rotate'] = self.id_rotate if rotate_params is None else np.array(rotate_params).tolist()
-                x.meta['scale'] = self.id_scale if scale_params is None else np.array(scale_params).tolist()
+                x.meta['rotate'] = id_rotate if rotate_params is None else np.array(rotate_params).tolist()
+                x.meta['scale'] = id_scale if scale_params is None else np.array(scale_params).tolist()
                 d[key] = x
         else:
             crop = monai_t.SpatialCrop(center, self.crop_size)
             for key in self.key_iterator(d):
                 x = crop(d[key])
                 x.meta['crop center'] = self.center
-                x.meta['rotate'] = self.id_rotate
-                x.meta['scale'] = self.id_scale
+                x.meta['rotate'] = id_rotate
+                x.meta['scale'] = id_scale
                 d[key] = x
 
         return d
@@ -358,7 +357,8 @@ class SimulateLowResolutionD(monai_t.RandomizableTransform, monai_t.MapTransform
             downsample_shape = (spatial_shape * zoom_factor).astype(np.int16)
             x = x[None]
             x = torch_f.interpolate(x, tuple(downsample_shape), mode='nearest-exact')
-            x = torch_f.interpolate(x, tuple(spatial_shape), mode='bilinear' if self.dummy_dim is not None else 'trilinear')  # no tricubic
+            # no tricubic at PyTorch 2.0, use linear interpolation for both 2D & 3D
+            x = torch_f.interpolate(x, tuple(spatial_shape), mode='bilinear' if len(spatial_shape) == 2 else 'trilinear')
             x = x[0]
             if self.dummy_dim is not None:
                 x = einops.rearrange(x, '(c d) ... -> c d ...', d=dummy_size)
