@@ -9,11 +9,13 @@ from monai.metrics import DiceMetric, HausdorffDistanceMetric, SurfaceDistanceMe
 from monai.networks import one_hot
 from monai.utils import ImageMetaKey, MetricReduction, TraceKeys
 
-from umei.model_omega import SegModel
+from umei.task_models.seg_model import SegModel
 from umei.utils import DataKey
 from .omega import BTCVExpConf
 
 class BTCVModel(SegModel):
+    conf: BTCVExpConf
+
     def __init__(self, conf: BTCVExpConf):
         super().__init__(conf)
         self.test_metrics = {
@@ -68,8 +70,7 @@ class BTCVModel(SegModel):
             if k == 'dice':
                 avg *= 100
             print(k, avg)
-
-        if self.conf.export:
+        if self.conf.export_seg_pred:
             import nibabel as nib
             pred_np = pred.cpu().numpy()
             affine_np = seg.affine.numpy()

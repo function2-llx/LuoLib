@@ -18,8 +18,8 @@ from monai.umei import Backbone, BackboneOutput
 from monai.utils import ensure_tuple_rep
 
 from umei.models.adaptive_resampling import AdaptiveDownsampling
-from umei.models.blocks import get_conv_layer, ResLayer
-from umei.models.init import init_linear_conv3d
+from umei.models.blocks import get_conv_layer, BasicConvLayer
+from umei.models.init import init_linear_conv
 from umei.models.layers import Act, LayerNormNd, Norm
 
 from umei.utils import channel_first, channel_last
@@ -389,7 +389,7 @@ class SwinBackbone(Backbone):
         if conv_in_channels is not None:
             self.conv_in_layers = nn.ModuleList()
             if stem_stride > 1:
-                self.conv_in_layers.append(ResLayer(
+                self.conv_in_layers.append(BasicConvLayer(
                     _num_blocks := 1,
                     in_channels,
                     conv_in_channels,
@@ -405,7 +405,7 @@ class SwinBackbone(Backbone):
                             conv_in_channels,
                             kernel_size=3,
                         ),
-                        ResLayer(
+                        BasicConvLayer(
                             _num_blocks := 1,
                             conv_in_channels,
                             conv_in_channels,
@@ -425,7 +425,7 @@ class SwinBackbone(Backbone):
 
         self.num_conv_layers = num_conv_layers
         self.layers = nn.ModuleList([
-            ResLayer(
+            BasicConvLayer(
                 layer_depths[i],
                 layer_channels[i],
                 layer_channels[i],
@@ -471,7 +471,7 @@ class SwinBackbone(Backbone):
         ])
 
         self.pool = nn.AdaptiveAvgPool3d(1)
-        self.apply(init_linear_conv3d)
+        self.apply(init_linear_conv)
 
     def no_weight_decay(self):
         nwd = set()

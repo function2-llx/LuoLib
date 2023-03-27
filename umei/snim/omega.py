@@ -12,7 +12,6 @@ class MaskValue(StrEnum):
 
 @dataclass(kw_only=True)
 class SnimConf(ExpConfBase):
-    backbone: ModelConf
     decoder: ModelConf
     mask_ratio: float
     mask_block_shape: tuple3_t[int]

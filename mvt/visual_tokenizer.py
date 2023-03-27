@@ -7,7 +7,7 @@ from torch.nn import functional as torch_f
 
 from umei.utils import channel_last
 from umei.models.backbones.swin import SwinBackbone
-from umei.models.init import init_linear_conv3d
+from umei.models.init import init_linear_conv
 from .args import MVTModelArgs
 from .decoder import SwinVQDecoder
 
@@ -59,8 +59,8 @@ class VisualTokenizer(pl.LightningModule):
         else:
             self.decode_task_layer = nn.Identity()
 
-        self.encode_task_layer.apply(init_linear_conv3d)
-        self.decode_task_layer.apply(init_linear_conv3d)
+        self.encode_task_layer.apply(init_linear_conv)
+        self.decode_task_layer.apply(init_linear_conv)
 
     def get_tokens(self, data, **kwargs):
         z_q, token_ids, loss = self.encode(data)

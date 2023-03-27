@@ -2,7 +2,6 @@ import builtins
 from dataclasses import dataclass, field
 from pathlib import Path
 import sys
-from types import MappingProxyType
 from typing import Any, TypeVar
 
 import omegaconf
@@ -10,28 +9,28 @@ from omegaconf import DictConfig, OmegaConf
 import torch
 
 from monai.utils import BlendMode
-from umei.types import tuple2_t, tuple3_t
+from umei.types import tuple2_t
 
 # omegaconf: Unions of containers are not supported
 @dataclass(kw_only=True)
 class AugConf:
     dummy_dim: int | None
-    rotate_range: list
-    rotate_p: Any
-    scale_range: list
-    scale_p: Any
+    rotate_range: list  # param23_t[tuple2_t[float]]
+    rotate_p: Any   # param23_t[float]
+    scale_range: list   # param23_t[tuple2_t[float]]
+    scale_p: Any    # param23_t[float]
     gaussian_noise_p: float
     gaussian_noise_std: float
-    gaussian_smooth_std_range: tuple[float, float]
+    gaussian_smooth_std_range: tuple2_t[float]
     gaussian_smooth_isotropic_prob: float = 1
     gaussian_smooth_p: float
     scale_intensity_factor: float
     scale_intensity_p: float
     shift_intensity_offset: float
     shift_intensity_p: float
-    adjust_contrast_range: tuple[float, float]
+    adjust_contrast_range: tuple2_t[float]
     adjust_contrast_p: float
-    simulate_low_res_zoom_range: tuple[float, float]
+    simulate_low_res_zoom_range: tuple2_t[float]
     simulate_low_res_p: float
     gamma_range: tuple2_t[float]
     gamma_p: float
@@ -39,7 +38,8 @@ class AugConf:
 
 @dataclass(kw_only=True)
 class DataConf:
-    spacing: tuple3_t[float]
+    spatial_dims: int = 3
+    spacing: tuple  # tuple2_t[float] | tuple3_t[float]
     data_ratio: float = 1.
     intensity_min: float | None = None
     intensity_max: float | None = None
@@ -53,6 +53,7 @@ class DataConf:
 class OptimizerConf:
     name: str
     lr: float
+    layer_decay: float = 1.
     weight_decay: float
     kwargs: dict = field(default_factory=dict)
 
@@ -105,37 +106,41 @@ class RuntimeConf:
 class ModelConf:
     name: str
     ckpt_path: Path | None = None
+    state_dict_key: str | None = None
     key_prefix: str = ''
-    kwargs: dict
+    kwargs: dict = field(default_factory=dict)
 
 @dataclass(kw_only=True)
 class ExpConfBase(FitConf, RuntimeConf):
+    backbone: ModelConf
     num_input_channels: int
-    sample_shape: tuple3_t[int]
-    conf_root: Path = Path('conf-omega')
-    output_root: Path = Path('output-omega')
+    sample_shape: tuple  # tuple2_t[int] | tuple3_t[int]
+    conf_root: Path = Path('conf')
+    output_root: Path = Path('output')
     output_dir: Path
     exp_name: str
     log_dir: Path
     seed: int = 42
     float32_matmul_precision: str = 'high'
     ckpt_path: Path | None = None
+    do_tta: bool = False
+
+@dataclass(kw_only=True)
+class ClsExpConf(ExpConfBase):
+    num_cls_classes: int
 
 @dataclass(kw_only=True)
 class SegInferConf:
     sw_overlap: float = 0.25
     sw_batch_size: int = 16
     sw_blend_mode: BlendMode = BlendMode.GAUSSIAN
-    do_tta: bool = False
-    export: bool = False
-    fg_oversampling_ratio: list[float] = (2, 1)  # random vs force fg
+    export_seg_pred: bool = False
 
 @dataclass(kw_only=True)
 class SegExpConf(ExpConfBase, SegInferConf):
-    monitor: str = 'val/dice/avg'
-    monitor_mode: str = 'max'
+    monitor = 'val/dice/avg'
+    monitor_mode = 'max'
 
-    backbone: ModelConf
     decoder: ModelConf
     num_seg_classes: int
     num_seg_heads: int = 3
@@ -143,6 +148,7 @@ class SegExpConf(ExpConfBase, SegInferConf):
     self_ensemble: bool = False
     dice_include_background: bool = True
     dice_squared: bool = False
+    fg_oversampling_ratio: list[float] = (2, 1)  # random vs force fg
     multi_label: bool
     dice_nr: float = 1e-5
     dice_dr: float = 1e-5

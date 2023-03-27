@@ -12,9 +12,9 @@ from monai.data import MetaTensor
 from monai.networks.layers import Act, get_act_layer
 from monai.utils import ImageMetaKey
 
-from umei.model_omega import ExpModelBase
+from umei.model_base import ExpModelBase
 from umei.models.backbones.swin import SwinBackbone
-from umei.models.init import init_linear_conv3d
+from umei.models.init import init_linear_conv
 from umei.snim.omega import MaskValue, SnimConf
 from umei.snim.utils import patchify, unpatchify
 from umei.utils import channel_first, channel_last
@@ -123,7 +123,7 @@ class SnimDecoder(nn.Module):
             Rearrange('... 1 -> ...'),
         )
 
-        self.apply(init_linear_conv3d)
+        self.apply(init_linear_conv)
 
     def forward(self, feature_maps: list[torch.Tensor]):
         x = channel_last(feature_maps[-1]).contiguous()

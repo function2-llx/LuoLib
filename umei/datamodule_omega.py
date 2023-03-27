@@ -96,24 +96,25 @@ class ExpDataModuleBase(LightningDataModule):
             transform=self.test_transform(),
         ))
 
-class CrossValDataModule:
+class CrossValDataModule(ExpDataModuleBase):
     conf: ExpConfBase | CrossValConf
 
     def __init__(self, conf: ExpConfBase | CrossValConf):
+        super().__init__(conf)
         self.conf = conf
-        self.val_id = 0
+        self.val_id = None
 
     # all data for fit (including train & val)
     def fit_data(self) -> tuple[Sequence, Sequence]:
         raise NotImplementedError
 
     @property
-    def val_id(self) -> int:
+    def val_id(self) -> int | None:
         return self._val_id
 
     @val_id.setter
-    def val_id(self, x: int):
-        assert 0 <= x < self.conf.num_folds
+    def val_id(self, x: int | None):
+        assert x is None or 0 <= x < self.conf.num_folds
         self._val_id = x
 
     @cached_property
@@ -130,12 +131,14 @@ class CrossValDataModule:
         )
 
     def train_data(self):
-        return select_cross_validation_folds(
-            self.partitions,
-            folds=np.delete(range(len(self.partitions)), self.val_id),
-        )
+        folds = range(len(self.partitions))
+        if self.val_id is not None:
+            folds = np.delete(folds, self.val_id)
+        return select_cross_validation_folds(self.partitions, folds)
 
     def val_data(self):
+        if self.val_id is None:
+            return []
         return select_cross_validation_folds(self.partitions, folds=self.val_id)
 
 
