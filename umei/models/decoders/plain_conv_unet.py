@@ -12,6 +12,8 @@ from umei.models.init import init_linear_conv
 from umei.models.layers import Act, Norm
 from umei.types import spatial_param_seq_t
 
+__all__ = []
+
 @decoder_registry.register_module('unet')
 class PlainConvUNetDecoder(Decoder):
     def __init__(

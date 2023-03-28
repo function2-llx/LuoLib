@@ -12,6 +12,8 @@ from ..blocks import BasicConvLayer, UNetUpLayer
 from ..layers import Act, Norm
 from ..utils import create_model
 
+__all__ = []
+
 @decoder_registry.register_module('full-res-adapter')
 class FullResAdapter(Decoder):
     def __init__(
