@@ -153,7 +153,7 @@ class SegModel(ExpModelBase):
             seg = one_hot(seg, self.conf.num_seg_classes)
         self.dice_metric(pred, seg)
 
-    def validation_epoch_end(self, *_) -> None:
+    def on_validation_epoch_end(self) -> None:
         if self.conf.val_empty_cuda_cache:
             torch.cuda.empty_cache()
         dice = self.dice_metric.aggregate(reduction=MetricReduction.MEAN_BATCH) * 100
