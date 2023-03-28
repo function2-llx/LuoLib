@@ -33,3 +33,42 @@ def create_model(conf: ModelConf, registry: Registry, **kwargs):
     load_ckpt(model, conf.ckpt_path, conf.key_prefix)
 
     return model
+
+def get_no_weight_decay_keys(module: nn.Module):
+    # modify from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py, `configure_optimizers`
+    from torch.nn.modules.conv import _ConvNd
+    whitelist_weight_modules = (
+        nn.Linear,
+        _ConvNd,
+    )
+    from torch.nn.modules.batchnorm import _BatchNorm
+    from torch.nn.modules.instancenorm import _InstanceNorm
+    blacklist_weight_modules = (
+        nn.LayerNorm,
+        _BatchNorm,
+        _InstanceNorm,
+        nn.Embedding,
+    )
+    decay = set()
+    no_decay = set()
+    for mn, m in module.named_modules():
+        if hasattr(m, 'no_weight_decay'):
+            no_decay |= {f'{mn}.{pn}' if mn else pn for pn in m.no_weight_decay()}
+
+        for pn, p in m.named_parameters(prefix=mn, recurse=False):
+            if not p.requires_grad:
+                continue
+            if pn.endswith('.bias'):
+                # all biases will not be decayed
+                no_decay.add(pn)
+            elif pn.endswith('.weight') and isinstance(m, whitelist_weight_modules):
+                # weights of whitelist modules will be weight decayed
+                decay.add(pn)
+            else:
+                assert pn.endswith('.weight') and isinstance(m, blacklist_weight_modules)
+                # weights of blacklist modules will NOT be weight decayed
+                no_decay.add(pn)
+
+    inter_params = decay & no_decay
+    assert len(inter_params) == 0, f"parameters {inter_params} made it into both decay/no_decay sets!"
+    return no_decay

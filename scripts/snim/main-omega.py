@@ -50,7 +50,7 @@ def main():
         devices=(n_gpu := torch.cuda.device_count()),
         precision=conf.precision,
         benchmark=True,
-        max_epochs=int(conf.num_train_epochs),
+        max_epochs=int(conf.max_epochs),
         log_every_n_steps=conf.log_every_n_steps,
         strategy=DDPStrategy(find_unused_parameters=conf.ddp_find_unused_parameters) if n_gpu > 1 or conf.num_nodes > 1
         else None,

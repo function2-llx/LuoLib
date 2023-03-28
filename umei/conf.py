@@ -5,7 +5,7 @@ import sys
 from typing import Any, TypeVar
 
 import omegaconf
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, SI
 import torch
 
 from monai.utils import BlendMode
@@ -65,9 +65,9 @@ class CrossValConf:
 @dataclass(kw_only=True)
 class FitConf(DataConf, AugConf):
     monitor: str | None = None
-    monitor_mode: str | None = None
-    num_train_epochs: int = 1000
-    num_epoch_batches: int = 250
+    monitor_mode: str | None
+    max_epochs: int | None
+    max_steps: int
     train_batch_size: int
     optimizer: OptimizerConf
     scheduler: dict
@@ -113,6 +113,7 @@ class ModelConf:
 @dataclass(kw_only=True)
 class ExpConfBase(FitConf, RuntimeConf):
     backbone: ModelConf
+    backbone_lr: float = omegaconf.II('.optimizer.lr')
     num_input_channels: int
     sample_shape: tuple  # tuple2_t[int] | tuple3_t[int]
     conf_root: Path = Path('conf')

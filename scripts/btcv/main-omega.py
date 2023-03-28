@@ -115,7 +115,7 @@ def main():
             devices=(n_gpu := torch.cuda.device_count()),
             precision=conf.precision,
             benchmark=True,
-            max_epochs=int(conf.num_train_epochs),
+            max_epochs=int(conf.max_epochs),
             num_sanity_val_steps=conf.num_sanity_val_steps,
             strategy=DDPStrategy(find_unused_parameters=conf.ddp_find_unused_parameters) if n_gpu > 1 or conf.num_nodes > 1
             else None,

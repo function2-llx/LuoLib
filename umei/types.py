@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 from collections.abc import Iterable, Sequence
 from typing import TypeVar, TypedDict
+from typing_extensions import Required
 
 from torch import nn
 
@@ -18,6 +21,10 @@ def check_tuple(obj, n: int, t: type):
         return False
     return all(isinstance(x, t) for x in obj)
 
-class ParameterGroup(TypedDict):
-    params: Iterable[nn.Parameter]
-    param_names: Iterable[str]
+
+# set total=False to comfort IDE
+class ParamGroup(TypedDict, total=False):
+    params: Required[Iterable[nn.Parameter]]
+    lr_scale: float  # inserted by timm
+    lr: float
+    weight_decay: float

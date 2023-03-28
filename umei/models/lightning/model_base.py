@@ -1,11 +1,12 @@
+import operator
 from pathlib import Path
 from types import SimpleNamespace
 
+import cytoolz
 from pytorch_lightning import LightningModule
 from timm.optim.optim_factory import param_groups_layer_decay
 from timm.scheduler.scheduler import Scheduler
 import torch
-from torch import nn
 from torch.optim import Optimizer
 
 from monai.umei import Backbone
@@ -13,13 +14,13 @@ from monai.utils import ensure_tuple
 
 from umei.conf import ExpConfBase
 from ..registry import backbone_registry
-from ..utils import create_model
+from ..utils import create_model, get_no_weight_decay_keys
 
 __all__ = [
     'ExpModelBase',
 ]
 
-from umei.types import ParameterGroup
+from umei.types import ParamGroup
 
 class SimpleReprMixin(object):
     """A mixin implementing a simple __repr__."""
@@ -79,53 +80,43 @@ class ExpModelBase(LightningModule):
             for scheduler in ensure_tuple(self.lr_schedulers()):
                 print(scheduler, file=f)
 
-    def no_weight_decay(self):
-        # modify from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py, `configure_optimizers`
-        from torch.nn.modules.conv import _ConvNd
-        whitelist_weight_modules = (
-            nn.Linear,
-            _ConvNd,
+    def get_parameter_groups(self) -> list[ParamGroup]:
+        backbone_no_decay_keys, others_no_decay_keys = map(
+            set,
+            operator.itemgetter(True, False)(
+                cytoolz.groupby(lambda k: k.startswith('backbone.'), get_no_weight_decay_keys(self))
+            ),
         )
-        from torch.nn.modules.batchnorm import _BatchNorm
-        from torch.nn.modules.instancenorm import _InstanceNorm
-        blacklist_weight_modules = (
-            nn.LayerNorm,
-            _BatchNorm,
-            _InstanceNorm,
-            nn.Embedding,
-        )
-        decay = set()
-        no_decay = set()
-        for mn, m in self.named_modules():
-            if hasattr(m, 'no_weight_decay'):
-                for pn in m.no_weight_decay():
-                    no_decay.add(f'{mn}.{pn}' if mn else pn)
-
-            for pn, p in m.named_parameters(prefix=mn, recurse=False):
-                if not p.requires_grad:
-                    continue
-                if pn.endswith('.bias'):
-                    # all biases will not be decayed
-                    no_decay.add(pn)
-                elif pn.endswith('.weight') and isinstance(m, whitelist_weight_modules):
-                    # weights of whitelist modules will be weight decayed
-                    decay.add(pn)
-                else:
-                    assert pn.endswith('.weight') and isinstance(m, blacklist_weight_modules)
-                    # weights of blacklist modules will NOT be weight decayed
-                    no_decay.add(pn)
-
-        inter_params = decay & no_decay
-        assert len(inter_params) == 0, f"parameters {inter_params} made it into both decay/no_decay sets!"
-        return no_decay
-
-    def get_parameter_groups(self) -> list[ParameterGroup]:
         optim = self.conf.optimizer
-        return param_groups_layer_decay(self, optim.weight_decay, self.no_weight_decay(), optim.layer_decay)
-        # if self.trainer.is_global_zero:
-        #     obj = {'decay': decay, 'no decay': no_decay}
-        #     (self.log_exp_dir / 'parameters.json').write_text(json.dumps(obj, indent=4, ensure_ascii=False))
-        #
+        backbone_param_groups: list[ParamGroup] = param_groups_layer_decay(
+            self.backbone,
+            optim.weight_decay,
+            backbone_no_decay_keys,
+            optim.layer_decay,
+        )
+        for param_group in backbone_param_groups:
+            param_group['lr'] = self.conf.backbone_lr * param_group.pop('lr_scale')
+
+        others_decay_params, others_no_decay_params = map(
+            lambda nps: map(lambda np: np[1], nps),
+            operator.itemgetter(False, True)(
+                cytoolz.groupby(
+                    lambda n, _: n in others_no_decay_keys,
+                    filter(lambda n, _: not n.startswith('backbone.'), self.named_parameters()),
+                ),
+            ),
+        )
+
+        return backbone_param_groups + [
+            {
+                'params': others_decay_params,
+                'weight_decay': optim.weight_decay,
+            },
+            {
+                'params': others_no_decay_params,
+                'weight_decay': 0.,
+            }
+        ]
 
     def configure_optimizers(self):
         from timm.optim import create_optimizer_v2
@@ -136,8 +127,6 @@ class ExpModelBase(LightningModule):
             parameter_groups,
             optim.name,
             optim.lr,
-            optim.weight_decay,
-            optim.layer_decay,
             **optim.kwargs,
         )
 
