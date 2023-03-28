@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 
 from monai.utils import StrEnum
-from umei.omega import ExpConfBase, ModelConf
+from umei.conf import ExpConfBase, ModelConf
 from umei.types import tuple3_t
 
 class MaskValue(StrEnum):

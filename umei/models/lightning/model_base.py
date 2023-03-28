@@ -11,7 +11,7 @@ from torch.optim import Optimizer
 from monai.umei import Backbone
 from monai.utils import ensure_tuple
 
-from umei.omega import ExpConfBase
+from umei.conf import ExpConfBase
 from ..registry import backbone_registry
 from ..utils import create_model
 

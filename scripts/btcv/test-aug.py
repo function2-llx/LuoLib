@@ -5,7 +5,7 @@ import monai
 from monai import transforms as monai_t
 from umei.datasets.btcv.datamodule_omega import BTCVDataModule
 from umei.datasets.btcv.omega import BTCVExpConf
-from umei.omega import parse_exp_conf
+from umei.conf import parse_exp_conf
 
 def main():
     conf = parse_exp_conf(BTCVExpConf)

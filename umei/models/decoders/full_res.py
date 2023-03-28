@@ -5,7 +5,7 @@ from torch import nn
 
 from monai.umei import Decoder, DecoderOutput
 
-from umei.omega import ModelConf
+from umei.conf import ModelConf
 from umei.types import spatial_param_seq_t
 from ..registry import decoder_registry
 from ..blocks import BasicConvLayer, UNetUpLayer

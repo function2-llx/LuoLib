@@ -9,7 +9,7 @@ import monai
 from monai import transforms as monai_t
 from monai.utils import GridSampleMode, NumpyPadMode, PytorchPadMode
 
-from umei.datamodule_omega import ExpDataModuleBase
+from umei.datamodule import ExpDataModuleBase
 from umei.snim.omega import SnimConf
 from umei.transforms import RandAffineCropD, RandSpatialCenterGeneratorD, SimulateLowResolutionD, SpatialRangeGenerator
 from umei.utils import DataKey, DataSplit

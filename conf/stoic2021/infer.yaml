@@ -1,9 +1,0 @@
-on_submit: True
-model_name: resnet
-model_depth: 34
-sample_size: 256
-sample_slices: 256
-resnet_shortcut: B
-resnet_conv1_size: 7
-resnet_conv1_stride: 2
-output_dir: submit/stoic2021

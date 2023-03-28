@@ -11,7 +11,7 @@ from monai.umei import BackboneOutput, Decoder
 from monai.utils import MetricReduction
 
 from umei.models import decoder_registry
-from umei.omega import SegExpConf
+from umei.conf import SegExpConf
 from umei.utils import DataKey
 from .model_base import ExpModelBase
 from ..utils import create_model

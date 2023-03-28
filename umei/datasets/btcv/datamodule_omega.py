@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from numpy.random import default_rng
 
-from umei.datamodule_omega import SegDataModule, load_decathlon_datalist
+from umei.datamodule import SegDataModule, load_decathlon_datalist
 from umei.utils import DataKey, DataSplit
 from .omega import BTCVExpConf
 

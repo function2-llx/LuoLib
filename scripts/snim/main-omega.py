@@ -6,7 +6,7 @@ from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
 
-from umei.omega import parse_exp_conf
+from umei.conf import parse_exp_conf
 from umei.snim.datamodule_omega import SnimDataModule
 from umei.snim.model_omega import SnimModel
 from umei.snim.omega import SnimConf

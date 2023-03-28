@@ -4,7 +4,7 @@ from mmcv import Registry
 import torch
 from torch import nn
 
-from umei.omega import ModelConf
+from umei.conf import ModelConf
 
 def load_ckpt(model: nn.Module, ckpt_path: Path | None, key_prefix: str):
     if ckpt_path is None:

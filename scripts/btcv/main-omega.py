@@ -10,7 +10,7 @@ from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
 
-from umei.omega import parse_exp_conf
+from umei.conf import parse_exp_conf
 from umei.datasets.btcv.omega import BTCVExpConf
 from umei.datasets.btcv.datamodule_omega import BTCVDataModule
 from umei.datasets.btcv.model_omega import BTCVModel
