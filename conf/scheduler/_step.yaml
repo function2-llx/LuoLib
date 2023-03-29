@@ -1,0 +1,4 @@
+interval: step
+kwargs:
+  t_in_epochs: false
+  t_initial: ${max_steps}

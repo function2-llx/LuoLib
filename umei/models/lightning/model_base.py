@@ -1,8 +1,5 @@
-import operator
 from pathlib import Path
-from types import SimpleNamespace
 
-import cytoolz
 from pytorch_lightning import LightningModule
 from timm.optim.optim_factory import param_groups_layer_decay
 from timm.scheduler.scheduler import Scheduler
@@ -13,6 +10,8 @@ from monai.umei import Backbone
 from monai.utils import ensure_tuple
 
 from umei.conf import ExpConfBase
+from umei.types import ParamGroup
+from umei.utils import SimpleReprMixin, partition_by_predicate
 from ..registry import backbone_registry
 from ..utils import create_model, get_no_weight_decay_keys
 
@@ -20,16 +19,8 @@ __all__ = [
     'ExpModelBase',
 ]
 
-from umei.types import ParamGroup
-
-class SimpleReprMixin(object):
-    """A mixin implementing a simple __repr__."""
-    def __repr__(self):
-        return "<{klass} @{id:x} {attrs}>".format(
-            klass=self.__class__.__name__,
-            id=id(self) & 0xFFFFFF,
-            attrs=", ".join("{}={!r}".format(k, v) for k, v in self.__dict__.items()),
-        )
+from ...optim import create_optimizer
+from ...scheduler import create_scheduler
 
 class ExpModelBase(LightningModule):
     def __init__(self, conf: ExpConfBase):
@@ -80,12 +71,10 @@ class ExpModelBase(LightningModule):
             for scheduler in ensure_tuple(self.lr_schedulers()):
                 print(scheduler, file=f)
 
-    def get_parameter_groups(self) -> list[ParamGroup]:
-        backbone_no_decay_keys, others_no_decay_keys = map(
+    def get_param_groups(self) -> list[ParamGroup]:
+        others_no_decay_keys, backbone_no_decay_keys = map(
             set,
-            operator.itemgetter(True, False)(
-                cytoolz.groupby(lambda k: k.startswith('backbone.'), get_no_weight_decay_keys(self))
-            ),
+            partition_by_predicate(lambda k: k.startswith('backbone.'), get_no_weight_decay_keys(self)),
         )
         optim = self.conf.optimizer
         backbone_param_groups: list[ParamGroup] = param_groups_layer_decay(
@@ -98,13 +87,11 @@ class ExpModelBase(LightningModule):
             param_group['lr'] = self.conf.backbone_lr * param_group.pop('lr_scale')
 
         others_decay_params, others_no_decay_params = map(
-            lambda nps: map(lambda np: np[1], nps),
-            operator.itemgetter(False, True)(
-                cytoolz.groupby(
-                    lambda n, _: n in others_no_decay_keys,
-                    filter(lambda n, _: not n.startswith('backbone.'), self.named_parameters()),
-                ),
-            ),
+            lambda nps: map(lambda np: np[1], nps),  # remove names
+            partition_by_predicate(
+                lambda np: np[0] in others_no_decay_keys,
+                filter(lambda np: not np[0].startswith('backbone.'), self.named_parameters()),
+            )
         )
 
         return backbone_param_groups + [
@@ -119,30 +106,26 @@ class ExpModelBase(LightningModule):
         ]
 
     def configure_optimizers(self):
-        from timm.optim import create_optimizer_v2
-        optim = self.conf.optimizer
-        parameter_groups = self.get_parameter_groups()
-        # timm's typing is really not so great
-        optimizer = create_optimizer_v2(
-            parameter_groups,
-            optim.name,
-            optim.lr,
-            **optim.kwargs,
-        )
-
-        from timm.scheduler import create_scheduler
-        scheduler, _num_epochs = create_scheduler(SimpleNamespace(**self.conf.scheduler), optimizer)
-        if type(scheduler).__repr__ == object.__repr__:
-            type(scheduler).__repr__ = SimpleReprMixin.__repr__
+        conf = self.conf
+        optimizer = create_optimizer(conf.optimizer, self.get_param_groups())
+        scheduler = create_scheduler(conf.scheduler, optimizer)
         return {
             'optimizer': optimizer,
-            'lr_scheduler': scheduler,
-            'monitor': self.conf.monitor,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'interval': conf.scheduler.interval,
+                'frequency': conf.scheduler.frequency,
+                'monitor': conf.monitor,
+            },
         }
 
     def lr_scheduler_step(self, scheduler: Scheduler, metric):
         # make compatible with timm scheduler
-        return scheduler.step(self.current_epoch + 1, metric)
+        match self.conf.scheduler.interval:
+            case 'epoch':
+                scheduler.step(self.current_epoch, metric)
+            case 'step':
+                scheduler.step_update(self.global_step, metric)
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer):
         optimizer.zero_grad(set_to_none=self.conf.optimizer_set_to_none)

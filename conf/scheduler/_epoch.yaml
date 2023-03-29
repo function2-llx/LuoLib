@@ -1,0 +1,4 @@
+interval: epoch
+kwargs:
+  t_in_epochs: true
+  t_initial: ${max_epochs}

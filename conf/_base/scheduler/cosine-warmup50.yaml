@@ -1,5 +1,0 @@
-_base:
-  - _default.yaml
-
-name: cosine
-warmup_epochs: 50

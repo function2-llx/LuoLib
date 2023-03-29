@@ -5,9 +5,10 @@ import sys
 from typing import Any, TypeVar
 
 import omegaconf
-from omegaconf import DictConfig, OmegaConf, SI
+from omegaconf import DictConfig, OmegaConf
 import torch
 
+from monai.config import PathLike
 from monai.utils import BlendMode
 from umei.types import tuple2_t
 
@@ -58,6 +59,13 @@ class OptimizerConf:
     kwargs: dict = field(default_factory=dict)
 
 @dataclass(kw_only=True)
+class SchedulerConf:
+    name: str
+    interval: str
+    frequency: int = 1
+    kwargs: dict
+
+@dataclass(kw_only=True)
 class CrossValConf:
     num_folds: int = 5
     fold_ids: list[int]
@@ -70,7 +78,7 @@ class FitConf(DataConf, AugConf):
     max_steps: int
     train_batch_size: int
     optimizer: OptimizerConf
-    scheduler: dict
+    scheduler: SchedulerConf
     eta_min: float = 1e-6
     optimizer_set_to_none: bool = True
     precision: int = 16
@@ -154,7 +162,9 @@ class SegExpConf(ExpConfBase, SegInferConf):
     dice_nr: float = 1e-5
     dice_dr: float = 1e-5
 
-def parse_node(conf_path: Path):
+T = TypeVar('T')
+def parse_node(conf_path: PathLike, conf_type: type[T] = Any) -> T:
+    conf_path = Path(conf_path)
     conf_dir = conf_path.parent
 
     def resolve(path):
@@ -175,10 +185,13 @@ def parse_node(conf_path: Path):
             case _:
                 raise ValueError
 
-    return OmegaConf.unsafe_merge(*base_confs, conf)
+    conf = OmegaConf.unsafe_merge(*base_confs, conf)
+    if conf_type != Any:
+        conf = OmegaConf.structured(conf_type(**conf))
+    return conf
 
-T = TypeVar('T', bound=ExpConfBase)
-def parse_exp_conf(conf_type: type[T]) -> T:
+exp_conf_t = TypeVar('exp_conf_t', bound=ExpConfBase)
+def parse_exp_conf(conf_type: type[exp_conf_t]) -> exp_conf_t:
     argv = sys.argv[1:]
     conf_path = Path(argv[0])
     conf: ExpConfBase | DictConfig = OmegaConf.structured(conf_type)

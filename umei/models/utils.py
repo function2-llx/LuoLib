@@ -64,7 +64,7 @@ def get_no_weight_decay_keys(module: nn.Module):
             elif pn.endswith('.weight') and isinstance(m, whitelist_weight_modules):
                 # weights of whitelist modules will be weight decayed
                 decay.add(pn)
-            else:
+            elif pn not in no_decay:
                 assert pn.endswith('.weight') and isinstance(m, blacklist_weight_modules)
                 # weights of blacklist modules will NOT be weight decayed
                 no_decay.add(pn)

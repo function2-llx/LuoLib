@@ -1,5 +1,0 @@
-_base:
-  - _default.yaml
-
-name: poly
-decay_rate: 0.9

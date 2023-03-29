@@ -12,7 +12,7 @@ from monai.data import MetaTensor
 from monai.networks.layers import Act, get_act_layer
 from monai.utils import ImageMetaKey
 
-from umei.model_base import ExpModelBase
+from umei.models import ExpModelBase
 from umei.models.backbones.swin import SwinBackbone
 from umei.models.init import init_linear_conv
 from umei.snim.omega import MaskValue, SnimConf

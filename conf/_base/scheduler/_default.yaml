@@ -1,6 +1,0 @@
-sched: ${.name}
-epochs: ${num_train_epochs}
-min_lr: 0
-warmup_lr: 0
-warmup_epochs: 0
-cooldown_epochs: 0
