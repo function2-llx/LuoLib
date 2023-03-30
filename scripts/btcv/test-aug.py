@@ -17,7 +17,7 @@ def main():
         from umei.utils.index_tracker import IndexTracker
         from umei.utils import DataKey
         loader = monai_t.Compose(
-            datamodule.loader_transform()
+            datamodule.load_data_transform()
             + datamodule.normalize_transform(),
         )
         data = loader(data)

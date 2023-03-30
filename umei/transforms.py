@@ -1,4 +1,3 @@
-import itertools as it
 from typing import Any, Callable, Hashable, Mapping, Sequence
 
 import einops
@@ -11,7 +10,7 @@ import monai
 from monai import transforms as monai_t
 from monai.config import DtypeLike, KeysCollection, NdarrayOrTensor, SequenceStr
 from monai.networks.utils import meshgrid_ij
-from monai.transforms import Randomizable, create_rotate, create_scale, create_translate, RandAdjustContrastD as RandGammaCorrectionD
+from monai.transforms import Randomizable, create_rotate, create_scale, create_translate
 from monai.utils import GridSampleMode, GridSamplePadMode, TransformBackends, ensure_tuple_rep, get_equivalent_dtype
 
 from umei.types import tuple2_t
@@ -173,7 +172,7 @@ class RandAffineCropD(monai_t.RandomizableTrait, monai_t.MapTransform):
                     # merge dummy spatial dim to channel dim to share the dummy-2D transform
                     x = rearrange(x, 'c d ... -> (c d) ...')
                 if padding_mode == GridSamplePadMode.ZEROS:
-                    min_v = x.min()
+                    min_v = x.view(x.shape[0], -1).amin(dim=1)
                     x -= min_v
                 x = torch_f.grid_sample(
                     x[None],

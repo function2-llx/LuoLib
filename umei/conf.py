@@ -40,7 +40,7 @@ class AugConf:
 @dataclass(kw_only=True)
 class DataConf:
     spatial_dims: int = 3
-    spacing: tuple  # tuple2_t[float] | tuple3_t[float]
+    spacing: tuple | None = None  # tuple2_t[float] | tuple3_t[float]
     data_ratio: float = 1.
     intensity_min: float | None = None
     intensity_max: float | None = None
@@ -64,11 +64,6 @@ class SchedulerConf:
     interval: str
     frequency: int = 1
     kwargs: dict
-
-@dataclass(kw_only=True)
-class CrossValConf:
-    num_folds: int = 5
-    fold_ids: list[int]
 
 @dataclass(kw_only=True)
 class FitConf(DataConf, AugConf):
@@ -135,6 +130,11 @@ class ExpConfBase(FitConf, RuntimeConf):
     do_tta: bool = False
 
 @dataclass(kw_only=True)
+class CrossValConf:
+    num_folds: int = 5
+    fold_ids: list[int]
+
+@dataclass(kw_only=True)
 class ClsExpConf(ExpConfBase):
     num_cls_classes: int
 
@@ -146,9 +146,11 @@ class SegInferConf:
     export_seg_pred: bool = False
 
 @dataclass(kw_only=True)
-class SegExpConf(ExpConfBase, SegInferConf):
+class SegExpConf(SegInferConf, ExpConfBase):
     monitor = 'val/dice/avg'
     monitor_mode = 'max'
+    max_epochs = None
+    max_steps: int = 250000  # nnunet default
 
     decoder: ModelConf
     num_seg_classes: int
