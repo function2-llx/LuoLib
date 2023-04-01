@@ -289,6 +289,7 @@ class RandCenterGeneratorByLabelClassesD(monai_t.Randomizable):
         image_threshold: float = 0.0,
         indices_key: str | None = None,
         allow_smaller: bool = False,
+        warn: bool = False,
     ) -> None:
         self.label_key = label_key
         self.image_key = image_key
@@ -299,6 +300,7 @@ class RandCenterGeneratorByLabelClassesD(monai_t.Randomizable):
             num_classes=num_classes,
             image_threshold=image_threshold,
             allow_smaller=allow_smaller,
+            warn=warn,
         )
 
     def set_random_state(self, seed: int | None = None, state: np.random.RandomState | None = None) -> Randomizable:
