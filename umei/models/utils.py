@@ -23,8 +23,10 @@ def load_ckpt(model: nn.Module, ckpt_path: Path | None, key_prefix: str):
         for k, v in state_dict.items()
         if k.startswith(key_prefix)
     }
-    model.load_state_dict(state_dict)
+    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
     print("Loaded {} from checkpoint '{}'".format(state_dict_key, ckpt_path))
+    print('missing keys:', missing_keys)
+    print('unexpected keys:', unexpected_keys)
 
 # TODO: filter kwargs
 def create_model(conf: ModelConf, registry: Registry, **kwargs):
