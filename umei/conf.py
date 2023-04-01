@@ -71,6 +71,7 @@ class FitConf(DataConf, AugConf):
     monitor_mode: str | None
     max_epochs: int | None
     max_steps: int
+    val_check_interval: int | None = None
     train_batch_size: int
     optimizer: OptimizerConf
     scheduler: SchedulerConf
@@ -153,6 +154,7 @@ class SegExpConf(SegInferConf, ExpConfBase):
     max_steps: int = 250000  # nnunet default
 
     decoder: ModelConf
+    # for multi-label task, not including background
     num_seg_classes: int
     num_seg_heads: int = 3
     spline_seg: bool = False

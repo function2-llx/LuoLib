@@ -66,7 +66,8 @@ class SegDataModule(ExpDataModuleBase):
                         RandCenterGeneratorByLabelClassesD(
                             DataKey.SEG,
                             conf.sample_shape,
-                            [0, *it.repeat(1, conf.num_seg_classes - 1)],
+                            list(it.repeat(1, conf.num_seg_classes)) if conf.multi_label
+                            else [0, *it.repeat(1, conf.num_seg_classes - 1)],
                             conf.num_seg_classes,
                         )
                     ],

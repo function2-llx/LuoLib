@@ -203,17 +203,19 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
                 if self.dummy_dim is not None:
                     x = rearrange(x, '(c d) ... -> c d ...', d=dummy_crop_size)
                     x = x.movedim(1, self.dummy_dim + 1)
-                x.meta['crop center'] = self.center
-                x.meta['rotate'] = self.id_rotate if rotate_params is None else np.array(rotate_params).tolist()
-                x.meta['scale'] = self.id_scale if scale_params is None else np.array(scale_params).tolist()
+                if hasattr(x, 'meta'):
+                    x.meta['crop center'] = self.center
+                    x.meta['rotate'] = self.id_rotate if rotate_params is None else np.array(rotate_params).tolist()
+                    x.meta['scale'] = self.id_scale if scale_params is None else np.array(scale_params).tolist()
                 d[key] = x
         else:
             crop = monai_t.SpatialCrop(center, self.crop_size)
             for key in self.key_iterator(d):
                 x = crop(d[key])
-                x.meta['crop center'] = self.center
-                x.meta['rotate'] = self.id_rotate
-                x.meta['scale'] = self.id_scale
+                if hasattr(x, 'meta'):
+                    x.meta['crop center'] = self.center
+                    x.meta['rotate'] = self.id_rotate
+                    x.meta['scale'] = self.id_scale
                 d[key] = x
 
         return d
