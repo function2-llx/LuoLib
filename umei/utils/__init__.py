@@ -8,7 +8,6 @@ from einops import rearrange
 from einops.layers.torch import Rearrange
 import torch
 
-from .argparse import UMeIParser
 from .enums import DataSplit, DataKey
 
 PathLike = Union[str, bytes, os.PathLike]
