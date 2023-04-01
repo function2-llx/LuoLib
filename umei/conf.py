@@ -16,8 +16,8 @@ from umei.types import tuple2_t
 @dataclass(kw_only=True)
 class AugConf:
     dummy_dim: int | None
-    rotate_range: list  # param23_t[tuple2_t[float]]
-    rotate_p: Any   # param23_t[float]
+    rotate_range: list  # param3_t[tuple2_t[float]]
+    rotate_p: Any   # param3_t[float]
     scale_range: list   # param23_t[tuple2_t[float]]
     scale_p: Any    # param23_t[float]
     gaussian_noise_p: float
@@ -147,9 +147,9 @@ class SegInferConf:
 
 @dataclass(kw_only=True)
 class SegExpConf(SegInferConf, ExpConfBase):
-    monitor = 'val/dice/avg'
-    monitor_mode = 'max'
-    max_epochs = None
+    monitor: str = 'val/dice/avg'
+    monitor_mode: str = 'max'
+    max_epochs: int | None = None
     max_steps: int = 250000  # nnunet default
 
     decoder: ModelConf

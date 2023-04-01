@@ -41,7 +41,7 @@ class FullResAdapter(Decoder):
                 stride=1 if i == 0 else strides[i - 1],
                 norm=norm,
                 act=act,
-                # res_block=False,
+                res_block=False,
             )
             for i in range(num_layers)
         ])

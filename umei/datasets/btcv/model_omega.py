@@ -9,7 +9,7 @@ from monai.metrics import DiceMetric, HausdorffDistanceMetric, SurfaceDistanceMe
 from monai.networks import one_hot
 from monai.utils import ImageMetaKey, MetricReduction, TraceKeys
 
-from umei.task_models.seg_model import SegModel
+from umei.models import SegModel
 from umei.utils import DataKey
 from .omega import BTCVExpConf
 

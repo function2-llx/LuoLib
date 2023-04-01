@@ -138,3 +138,13 @@ class ExpModelBase(LightningModule):
             ])
         )
         self.log('train/grad_norm', grad_norm)
+
+    @property
+    def interpolate_mode(self):
+        match self.conf.spatial_dims:
+            case 2:
+                return 'bilinear'
+            case 3:
+                return 'trilinear'
+            case _:
+                raise ValueError

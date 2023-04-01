@@ -5,7 +5,7 @@ import numpy as np
 from pytorch_lightning import LightningDataModule
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 import torch
-from torch.utils.data import Dataset as TorchDataset
+from torch.utils.data import Dataset as TorchDataset, RandomSampler
 
 import monai
 from monai import transforms as monai_t
@@ -122,7 +122,11 @@ class ExpDataModuleBase(LightningDataModule):
         return DataLoader(
             dataset,
             batch_size=per_device_train_batch_size,
-            shuffle=True,
+            shuffle=None if conf.max_epochs is None else True,
+            sampler=RandomSampler(
+                dataset,
+                num_samples=conf.max_steps * conf.train_batch_size,
+            ) if conf.max_epochs is None else None,
             num_workers=self.conf.dataloader_num_workers,
             pin_memory=self.conf.dataloader_pin_memory,
             persistent_workers=True if self.conf.dataloader_num_workers > 0 else False,

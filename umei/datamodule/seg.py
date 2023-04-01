@@ -8,7 +8,7 @@ from monai.transforms import RandAdjustContrastD as RandGammaCorrectionD
 from umei.conf import SegExpConf
 from umei.transforms import (
     RandAdjustContrastD, RandAffineCropD, RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD,
-    SimulateLowResolutionD, SpatialRangeGenerator,
+    SimulateLowResolutionD,
 )
 from umei.utils import DataKey, DataSplit
 from .base import ExpDataModuleBase
@@ -54,7 +54,12 @@ class SegDataModule(ExpDataModuleBase):
                 [DataKey.IMG, DataKey.SEG],
                 conf.sample_shape,
                 [GridSampleMode.BILINEAR, GridSampleMode.NEAREST],
-                dummy_dim=conf.dummy_dim,
+                conf.rotate_range,
+                conf.rotate_p,
+                conf.scale_range,
+                conf.scale_p,
+                conf.spatial_dims,
+                conf.dummy_dim,
                 center_generator=monai_t.OneOf(
                     [
                         RandSpatialCenterGeneratorD(DataKey.IMG, conf.sample_shape),
@@ -66,17 +71,6 @@ class SegDataModule(ExpDataModuleBase):
                         )
                     ],
                     conf.fg_oversampling_ratio,
-                ),
-                rotate_generator=SpatialRangeGenerator(
-                    conf.rotate_range,
-                    conf.rotate_p,
-                    repeat=conf.spatial_dims if conf.dummy_dim is None else 1,
-                ),
-                scale_generator=SpatialRangeGenerator(
-                    conf.scale_range,
-                    conf.scale_p,
-                    default=1.,
-                    repeat=conf.spatial_dims if conf.dummy_dim is None else 2,
                 ),
             ),
             monai_t.RandGaussianNoiseD(
