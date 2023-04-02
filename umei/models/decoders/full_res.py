@@ -24,17 +24,20 @@ class FullResAdapter(Decoder):
         layer_channels: Sequence[int],
         kernel_sizes: spatial_param_seq_t[int],
         strides: spatial_param_seq_t[int],
+        layer_blocks: list[int] | None = None,
         norm: tuple | str = Norm.INSTANCE,
         act: tuple | str = Act.LEAKYRELU,
     ):
         super().__init__()
         num_layers = len(layer_channels) - 1
+        if layer_blocks is None:
+            layer_blocks = [1] * num_layers
         # complement default values
         self.inner_decoder = create_model(ModelConf(**inner_decoder_conf), decoder_registry)
         self.encode_layers = nn.ModuleList([
             BasicConvLayer(
                 spatial_dims=spatial_dims,
-                num_blocks=2,
+                num_blocks=layer_blocks[i],
                 in_channels=num_input_channels if i == 0 else layer_channels[i - 1],
                 out_channels=layer_channels[i],
                 kernel_size=kernel_sizes[i],
