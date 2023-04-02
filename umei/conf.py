@@ -96,6 +96,7 @@ class RuntimeConf:
     num_cache_workers: int = 8
     dataloader_num_workers: int = 16
     dataloader_pin_memory: bool = True
+    dataloader_prefetch_factor: int | None = None
     do_train: bool = False
     do_eval: bool = False
     val_empty_cuda_cache: bool = False

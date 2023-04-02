@@ -124,7 +124,7 @@ class ExpModelBase(LightningModule):
         # make compatible with timm scheduler
         match self.conf.scheduler.interval:
             case 'epoch':
-                scheduler.step(self.current_epoch, metric)
+                scheduler.step(self.current_epoch + 1, metric)
             case 'step':
                 scheduler.step_update(self.global_step, metric)
 

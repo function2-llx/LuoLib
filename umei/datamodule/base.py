@@ -129,6 +129,7 @@ class ExpDataModuleBase(LightningDataModule):
             ) if conf.max_epochs is None else None,
             num_workers=self.conf.dataloader_num_workers,
             pin_memory=self.conf.dataloader_pin_memory,
+            prefetch_factor=self.conf.dataloader_prefetch_factor,
             persistent_workers=True if self.conf.dataloader_num_workers > 0 else False,
         )
 
