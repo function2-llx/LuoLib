@@ -117,7 +117,7 @@ class ModelConf:
 @dataclass(kw_only=True)
 class ExpConfBase(FitConf, RuntimeConf):
     backbone: ModelConf
-    backbone_lr: float = omegaconf.II('.optimizer.lr')
+    backbone_optim: OptimizerConf
     num_input_channels: int
     sample_shape: tuple  # tuple2_t[int] | tuple3_t[int]
     conf_root: Path = Path('conf')
