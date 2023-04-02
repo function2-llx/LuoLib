@@ -58,7 +58,7 @@ class SegModel(ExpModelBase):
             smooth_dr=self.conf.dice_dr,
         )
         self.val_metrics = {
-            'Dice': DiceMetric(include_background=True),
+            'dice': DiceMetric(include_background=True),
         }
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:

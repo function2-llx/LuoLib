@@ -10,8 +10,8 @@ scale_intensity_factor: 0.25
 scale_intensity_p: 0.15
 shift_intensity_offset: 0.1
 shift_intensity_p: 0
-adjust_contrast_p: 0.15
 adjust_contrast_range: [0.75, 1.25]
+adjust_contrast_p: 0.15
 simulate_low_res_zoom_range: [0.5, 1]
 simulate_low_res_p: 0.15
 gamma_range: [0.7, 1.5]
