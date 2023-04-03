@@ -54,7 +54,6 @@ class DataConf:
 class OptimizerConf:
     name: str
     lr: float
-    layer_decay: float = 1.
     weight_decay: float
     kwargs: dict = field(default_factory=dict)
 
@@ -118,12 +117,15 @@ class ModelConf:
     kwargs: dict = field(default_factory=dict)
 
 @dataclass(kw_only=True)
+class BackboneOptimConf:
+    lr: float = II('.optimizer.lr')
+    weight_decay: float = II('.optimizer.weight_decay')
+    layer_decay: float = 1.
+
+@dataclass(kw_only=True)
 class ExpConfBase(FitConf, RuntimeConf):
     backbone: ModelConf
-    backbone_optim: OptimizerConf = field(default_factory=lambda: {
-        'lr': II('optimizer.lr'),
-        'weight_decay': II('optimizer.weight_decay')
-    })
+    backbone_optim: BackboneOptimConf
     num_input_channels: int
     sample_shape: tuple  # tuple2_t[int] | tuple3_t[int]
     conf_root: Path = Path('conf')
