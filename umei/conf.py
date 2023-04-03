@@ -5,7 +5,7 @@ import sys
 from typing import Any, TypeVar
 
 import omegaconf
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, II, OmegaConf
 import torch
 
 from monai.config import PathLike
@@ -120,7 +120,10 @@ class ModelConf:
 @dataclass(kw_only=True)
 class ExpConfBase(FitConf, RuntimeConf):
     backbone: ModelConf
-    backbone_optim: OptimizerConf
+    backbone_optim: OptimizerConf = field(default_factory=lambda: {
+        'lr': II('optimizer.lr'),
+        'weight_decay': II('optimizer.weight_decay')
+    })
     num_input_channels: int
     sample_shape: tuple  # tuple2_t[int] | tuple3_t[int]
     conf_root: Path = Path('conf')
