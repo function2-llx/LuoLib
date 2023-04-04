@@ -118,14 +118,14 @@ class ModelConf:
 
 @dataclass(kw_only=True)
 class BackboneOptimConf:
-    lr: float = II('.optimizer.lr')
-    weight_decay: float = II('.optimizer.weight_decay')
+    lr: float = II('optimizer.lr')
+    weight_decay: float = II('optimizer.weight_decay')
     layer_decay: float = 1.
 
 @dataclass(kw_only=True)
 class ExpConfBase(FitConf, RuntimeConf):
     backbone: ModelConf
-    backbone_optim: BackboneOptimConf
+    backbone_optim: BackboneOptimConf = field(default_factory=BackboneOptimConf)    # TODO: make it better?
     num_input_channels: int
     sample_shape: tuple  # tuple2_t[int] | tuple3_t[int]
     conf_root: Path = Path('conf')
