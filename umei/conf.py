@@ -10,6 +10,7 @@ import torch
 
 from monai.config import PathLike
 from monai.utils import BlendMode
+
 from umei.types import tuple2_t
 
 # omegaconf: Unions of containers are not supported
@@ -146,6 +147,10 @@ class CrossValConf:
 @dataclass(kw_only=True)
 class ClsExpConf(ExpConfBase):
     num_cls_classes: int
+    label_smoothing: float = 0.
+    cls_weights: list[float] | None = None
+    monitor: str = 'val/loss'
+    monitor_mode: str = 'min'
 
 @dataclass(kw_only=True)
 class SegInferConf:
@@ -160,6 +165,7 @@ class SegExpConf(SegInferConf, ExpConfBase):
     monitor_mode: str = 'max'
     max_epochs: int | None = None
     max_steps: int = 250000  # nnunet default
+    val_check_interval = 250  # nnunet default
 
     decoder: ModelConf
     # for multi-label task, not including background

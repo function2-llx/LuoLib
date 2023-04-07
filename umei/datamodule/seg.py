@@ -1,15 +1,11 @@
 import itertools as it
 
-import monai
 from monai import transforms as monai_t
 from monai.utils import GridSampleMode, PytorchPadMode
-from monai.transforms import RandAdjustContrastD as RandGammaCorrectionD
 
 from umei.conf import SegExpConf
-from umei.transforms import (
-    RandAdjustContrastD, RandAffineCropD, RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD,
-    SimulateLowResolutionD,
-)
+from umei.transforms import SimulateLowResolutionD, RandAdjustContrastD, RandAffineCropD, RandGammaCorrectionD
+from umei.transforms.utils import RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD
 from umei.utils import DataKey, DataSplit
 from .base import ExpDataModuleBase
 
@@ -87,13 +83,13 @@ class SegDataModule(ExpDataModuleBase):
                 prob=conf.gaussian_smooth_p,
                 isotropic_prob=conf.gaussian_smooth_isotropic_prob,
             ),
-            monai.transforms.RandScaleIntensityD(DataKey.IMG, factors=conf.scale_intensity_factor, prob=conf.scale_intensity_p),
-            monai.transforms.RandShiftIntensityD(DataKey.IMG, offsets=conf.shift_intensity_offset, prob=conf.shift_intensity_p),
+            monai_t.RandScaleIntensityD(DataKey.IMG, factors=conf.scale_intensity_factor, prob=conf.scale_intensity_p),
+            monai_t.RandShiftIntensityD(DataKey.IMG, offsets=conf.shift_intensity_offset, prob=conf.shift_intensity_p),
             RandAdjustContrastD(DataKey.IMG, conf.adjust_contrast_range, conf.adjust_contrast_p),
             SimulateLowResolutionD(DataKey.IMG, conf.simulate_low_res_zoom_range, conf.simulate_low_res_p, conf.dummy_dim),
             RandGammaCorrectionD(DataKey.IMG, conf.gamma_p, conf.gamma_range),
             *[
-                monai.transforms.RandFlipD([DataKey.IMG, DataKey.SEG], prob=conf.flip_p, spatial_axis=i)
+                monai_t.RandFlipD([DataKey.IMG, DataKey.SEG], prob=conf.flip_p, spatial_axis=i)
                 for i in range(conf.spatial_dims)
             ],
         ]

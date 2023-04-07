@@ -1,4 +1,3 @@
-import numpy as np
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 from torch import nn

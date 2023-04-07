@@ -11,7 +11,10 @@ from monai.utils import GridSampleMode, NumpyPadMode, PytorchPadMode
 
 from umei.datamodule import ExpDataModuleBase
 from umei.snim.omega import SnimConf
-from umei.transforms import RandAffineCropD, RandSpatialCenterGeneratorD, SimulateLowResolutionD, SpatialRangeGenerator
+from umei.transforms import SpatialRangeGenerator
+from umei.transforms.simulate_low_res import SimulateLowResolutionD
+from umei.transforms.affine_crop import RandAffineCropD
+from umei.transforms.utils import RandSpatialCenterGeneratorD
 from umei.utils import DataKey, DataSplit
 
 DATA_DIR = Path('snim-data')

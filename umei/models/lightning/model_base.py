@@ -19,8 +19,8 @@ __all__ = [
     'ExpModelBase',
 ]
 
-from ...optim import create_optimizer
-from ...scheduler import create_scheduler
+from umei.optim import create_optimizer
+from umei.scheduler import create_scheduler
 
 class ExpModelBase(LightningModule):
     def __init__(self, conf: ExpConfBase):

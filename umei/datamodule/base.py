@@ -1,3 +1,4 @@
+from collections.abc import Iterable
 from functools import cached_property
 from typing import Callable, Sequence
 
@@ -29,17 +30,18 @@ class ExpDataModuleBase(LightningDataModule):
     def test_data(self) -> Sequence:
         raise NotImplementedError
 
-    def load_data_transform(self, stage: DataSplit) -> list[Callable]:
+    # return a list of transform instead of a `Compose` object to make cache dataset work
+    def load_data_transform(self, stage: DataSplit) -> Iterable[Callable]:
         raise NotImplementedError
 
     # crop/pad, affine
-    def spatial_normalize_transform(self, stage: DataSplit) -> list[Callable]:
-        raise NotImplementedError
+    def spatial_normalize_transform(self, stage: DataSplit) -> Iterable[Callable]:
+        return []
 
-    def aug_transform(self) -> list[Callable]:
-        raise NotImplementedError
+    def aug_transform(self) -> Iterable[Callable]:
+        return []
 
-    def intensity_normalize_transform(self, _stage) -> list[Callable]:
+    def intensity_normalize_transform(self, _stage) -> Iterable[Callable]:
         conf = self.conf
         transforms = []
 
@@ -78,7 +80,7 @@ class ExpDataModuleBase(LightningDataModule):
         return transforms
 
     def post_transform(self, _stage):
-        raise NotImplementedError
+        return []
 
     def train_transform(self) -> Callable:
         stage = DataSplit.TRAIN
