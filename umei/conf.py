@@ -75,7 +75,6 @@ class FitConf(DataConf, AugConf):
     train_batch_size: int
     optimizer: OptimizerConf
     scheduler: SchedulerConf
-    eta_min: float = 1e-6
     optimizer_set_to_none: bool = True
     precision: int = 16
     ddp_find_unused_parameters: bool = False
