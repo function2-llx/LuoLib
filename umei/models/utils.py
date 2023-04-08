@@ -6,18 +6,17 @@ from torch import nn
 
 from umei.conf import ModelConf
 
-def load_ckpt(model: nn.Module, ckpt_path: Path | None, key_prefix: str):
+def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | None, key_prefix: str):
     if ckpt_path is None:
         return
     ckpt = torch.load(ckpt_path, map_location='cpu')
-    state_dict_key = ''
-    if isinstance(ckpt, dict):
+    if state_dict_key is None and isinstance(ckpt, dict):
         if 'state_dict' in ckpt:
             state_dict_key = 'state_dict'
         elif 'model' in ckpt:
             state_dict_key = 'model'
     from timm.models.helpers import clean_state_dict
-    state_dict = clean_state_dict(ckpt[state_dict_key] if state_dict_key else ckpt)
+    state_dict = clean_state_dict(ckpt if state_dict_key is None else ckpt[state_dict_key])
     state_dict = {
         k[len(key_prefix):]: v
         for k, v in state_dict.items()
@@ -32,7 +31,7 @@ def load_ckpt(model: nn.Module, ckpt_path: Path | None, key_prefix: str):
 def create_model(conf: ModelConf, registry: Registry, **kwargs):
     create_fn = registry.get(conf.name)
     model = create_fn(**conf.kwargs, **kwargs)
-    load_ckpt(model, conf.ckpt_path, conf.key_prefix)
+    load_ckpt(model, conf.ckpt_path, conf.state_dict_key, conf.key_prefix)
 
     return model
 

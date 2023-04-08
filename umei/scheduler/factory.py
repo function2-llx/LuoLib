@@ -1,4 +1,4 @@
-from timm.scheduler import CosineLRScheduler
+from timm.scheduler import CosineLRScheduler, MultiStepLRScheduler
 from torch.optim import Optimizer
 
 from umei.conf import SchedulerConf
@@ -6,6 +6,7 @@ from umei.utils import SimpleReprMixin
 
 registry = {
     'cosine': CosineLRScheduler,
+    'multistep': MultiStepLRScheduler,
 }
 
 def create_scheduler(conf: SchedulerConf, optimizer: Optimizer):

@@ -30,7 +30,7 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
         padding_mode: SequenceStr = GridSamplePadMode.ZEROS,
         allow_missing_keys: bool = False,
         *,
-        center_generator: Callable[[Mapping[Hashable, torch.Tensor]], Sequence[int]] | monai_t.Randomizable,
+        center_generator: Callable[[Mapping[Hashable, torch.Tensor]], Sequence[int]],
     ):
         monai_t.MapTransform.__init__(self, keys, allow_missing_keys)
         self.crop_size = np.array(crop_size)
@@ -55,7 +55,8 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
 
     def set_random_state(self, seed: int | None = None, state: np.random.RandomState | None = None) -> Randomizable:
         super().set_random_state(seed, state)
-        self.center_generator.set_random_state(seed, state)
+        if isinstance(self.center_generator, monai_t.Randomizable):
+            self.center_generator.set_random_state(seed, state)
         self.rotate_generator.set_random_state(seed, state)
         self.scale_generator.set_random_state(seed, state)
         return self
@@ -131,7 +132,10 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
                     x.meta['scale'] = self.id_scale if scale_params is None else np.array(scale_params).tolist()
                 d[key] = x
         else:
-            crop = monai_t.SpatialCrop(center, self.crop_size)
+            crop = monai_t.Compose([
+                monai_t.SpatialCrop(center, self.crop_size),
+                monai_t.SpatialPad(self.crop_size),  # note: this does not guarantee the center
+            ])
             for key in self.key_iterator(d):
                 x = crop(d[key])
                 if hasattr(x, 'meta'):

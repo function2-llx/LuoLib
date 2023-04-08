@@ -8,7 +8,6 @@ from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 import torch
 from torch.utils.data import Dataset as TorchDataset, RandomSampler
 
-import monai
 from monai import transforms as monai_t
 from monai.config import PathLike
 from monai.data import CacheDataset, DataLoader, Dataset, partition_dataset_classes, select_cross_validation_folds
@@ -61,7 +60,7 @@ class ExpDataModuleBase(LightningDataModule):
                     cval=conf.intensity_max,
                 ))
             transforms.extend([
-                monai.transforms.NormalizeIntensityD(
+                monai_t.NormalizeIntensityD(
                     DataKey.IMG,
                     conf.norm_mean,
                     conf.norm_std,
@@ -69,7 +68,7 @@ class ExpDataModuleBase(LightningDataModule):
                 ),
             ])
         else:
-            transforms.append(monai.transforms.ScaleIntensityRangeD(
+            transforms.append(monai_t.ScaleIntensityRangeD(
                 DataKey.IMG,
                 a_min=conf.intensity_min,
                 a_max=conf.intensity_max,
@@ -84,7 +83,7 @@ class ExpDataModuleBase(LightningDataModule):
 
     def train_transform(self) -> Callable:
         stage = DataSplit.TRAIN
-        return monai.transforms.Compose([
+        return monai_t.Compose([
             *self.load_data_transform(stage),
             *self.spatial_normalize_transform(stage),
             *self.aug_transform(),
@@ -94,7 +93,7 @@ class ExpDataModuleBase(LightningDataModule):
 
     def val_transform(self) -> Callable:
         stage = DataSplit.VAL
-        return monai.transforms.Compose([
+        return monai_t.Compose([
             *self.load_data_transform(stage),
             *self.spatial_normalize_transform(stage),
             *self.intensity_normalize_transform(stage),
@@ -103,7 +102,7 @@ class ExpDataModuleBase(LightningDataModule):
 
     def test_transform(self):
         stage = DataSplit.TEST
-        return monai.transforms.Compose([
+        return monai_t.Compose([
             *self.load_data_transform(stage),
             *self.spatial_normalize_transform(stage),
             *self.intensity_normalize_transform(stage),

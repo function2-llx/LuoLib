@@ -149,6 +149,7 @@ class ClsExpConf(ExpConfBase):
     num_cls_classes: int
     label_smoothing: float = 0.
     cls_weights: list[float] | None = None
+    cls_hidden_size: int
     monitor: str = 'val/loss'
     monitor_mode: str = 'min'
 
