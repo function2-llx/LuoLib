@@ -94,5 +94,9 @@ class SegDataModule(ExpDataModuleBase):
             ],
         ]
 
-    def post_transform(self, _stage):
-        return [monai_t.SelectItemsD([DataKey.IMG, DataKey.SEG])]
+    def post_transform(self, stage: DataSplit):
+        match stage:
+            case DataSplit.TRAIN:
+                return [monai_t.SelectItemsD([DataKey.IMG, DataKey.SEG])]
+            case _:
+                return [monai_t.SelectItemsD([DataKey.IMG, DataKey.SEG, DataKey.CASE])]

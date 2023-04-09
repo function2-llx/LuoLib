@@ -85,9 +85,9 @@ class ExpDataModuleBase(LightningDataModule):
         stage = DataSplit.TRAIN
         return monai_t.Compose([
             *self.load_data_transform(stage),
+            *self.intensity_normalize_transform(stage),
             *self.spatial_normalize_transform(stage),
             *self.aug_transform(),
-            *self.intensity_normalize_transform(stage),
             *self.post_transform(stage),
         ])
 
@@ -95,8 +95,8 @@ class ExpDataModuleBase(LightningDataModule):
         stage = DataSplit.VAL
         return monai_t.Compose([
             *self.load_data_transform(stage),
-            *self.spatial_normalize_transform(stage),
             *self.intensity_normalize_transform(stage),
+            *self.spatial_normalize_transform(stage),
             *self.post_transform(stage),
         ])
 
@@ -104,8 +104,8 @@ class ExpDataModuleBase(LightningDataModule):
         stage = DataSplit.TEST
         return monai_t.Compose([
             *self.load_data_transform(stage),
-            *self.spatial_normalize_transform(stage),
             *self.intensity_normalize_transform(stage),
+            *self.spatial_normalize_transform(stage),
             *self.post_transform(stage),
         ])
 
