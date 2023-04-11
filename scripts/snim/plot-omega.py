@@ -8,9 +8,9 @@ import torch
 import monai
 from monai import transforms as monai_t
 from monai.utils import NumpyPadMode
-from umei.snim.model_omega import SnimModel
-from umei.snim.omega import SnimConf
-from umei.utils import DataKey
+from luolib.snim.model_omega import SnimModel
+from luolib.snim.omega import SnimConf
+from luolib.utils import DataKey
 
 plot_dir = Path('snim-plot')
 

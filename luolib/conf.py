@@ -138,6 +138,20 @@ class ExpConfBase(FitConf, RuntimeConf):
     ckpt_path: Path | None = None
     do_tta: bool = False
 
+    def get_last_ckpt_path(self):
+        last_ckpt_path = self.ckpt_path
+        if last_ckpt_path is None:
+            last_ckpt_path = self.output_dir / 'last.ckpt'
+            if not last_ckpt_path.exists():
+                last_ckpt_path = None
+        return last_ckpt_path
+
+    def save_conf_as_file(self):
+        conf_save_path = self.log_dir / 'conf.yaml'
+        if conf_save_path.exists():
+            conf_save_path.rename(conf_save_path.with_stem('conf-last'))
+        OmegaConf.save(self, conf_save_path)
+
 @dataclass(kw_only=True)
 class CrossValConf:
     num_folds: int = 5

@@ -1,7 +1,7 @@
 import torch
 from tqdm import trange
 
-from umei.utils import UMeIParser
+from luolib.utils import UMeIParser
 from umei.snim.args import MaskValue, SnimArgs
 from umei.snim import SnimModel
 

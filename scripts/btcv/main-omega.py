@@ -10,10 +10,10 @@ from pytorch_lightning.strategies import DDPStrategy
 import torch
 import wandb
 
-from umei.conf import parse_exp_conf
-from umei.datasets.btcv.omega import BTCVExpConf
-from umei.datasets.btcv.datamodule_omega import BTCVDataModule
-from umei.datasets.btcv.model_omega import BTCVModel
+from luolib.conf import parse_exp_conf
+from luolib.datasets.btcv.omega import BTCVExpConf
+from luolib.datasets.btcv.datamodule_omega import BTCVDataModule
+from luolib.datasets.btcv.model_omega import BTCVModel
 
 task_name = 'btcv'
 
