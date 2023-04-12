@@ -3,10 +3,10 @@ import itertools as it
 from monai import transforms as monai_t
 from monai.utils import GridSampleMode, PytorchPadMode
 
-from umei.conf import SegExpConf
-from umei.transforms import SimulateLowResolutionD, RandAdjustContrastD, RandAffineCropD, RandGammaCorrectionD
-from umei.transforms.utils import RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD
-from umei.utils import DataKey, DataSplit
+from luolib.conf import SegExpConf
+from luolib.transforms import SimulateLowResolutionD, RandAdjustContrastD, RandAffineCropD, RandGammaCorrectionD
+from luolib.transforms.utils import RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD
+from luolib.utils import DataKey, DataSplit
 from .base import ExpDataModuleBase
 
 class SegDataModule(ExpDataModuleBase):

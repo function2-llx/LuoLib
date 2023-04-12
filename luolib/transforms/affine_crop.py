@@ -12,7 +12,7 @@ from monai.networks.utils import meshgrid_ij
 from monai.transforms import Randomizable, create_rotate, create_scale, create_translate
 from monai.utils import GridSamplePadMode, TransformBackends, ensure_tuple_rep, get_equivalent_dtype
 
-from umei.types import param3_t, spatial_param_t, tuple2_t
+from luolib.types import param3_t, spatial_param_t, tuple2_t
 from .utils import SpatialRangeGenerator
 
 class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):

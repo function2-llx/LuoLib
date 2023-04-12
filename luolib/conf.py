@@ -11,7 +11,7 @@ import torch
 from monai.config import PathLike
 from monai.utils import BlendMode
 
-from umei.types import tuple2_t
+from luolib.types import tuple2_t
 
 # omegaconf: Unions of containers are not supported
 @dataclass(kw_only=True)

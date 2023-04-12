@@ -6,7 +6,8 @@ import torch
 from monai import transforms as monai_t
 from monai.config import DtypeLike, NdarrayOrTensor
 from monai.transforms import Randomizable
-from umei.types import tuple2_t
+
+from luolib.types import tuple2_t
 
 class SpatialRangeGenerator(monai_t.Randomizable):
     def __init__(
