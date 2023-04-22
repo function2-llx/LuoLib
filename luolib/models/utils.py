@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from mmcv import Registry
+from mmengine import Registry
 import torch
 from torch import nn
 
-from umei.conf import ModelConf
+from luolib.conf import ModelConf
 
 def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | None, key_prefix: str):
     if ckpt_path is None:

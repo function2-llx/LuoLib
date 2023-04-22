@@ -6,12 +6,12 @@ from timm.scheduler.scheduler import Scheduler
 import torch
 from torch.optim import Optimizer
 
-from monai.umei import Backbone
+from monai.luolib import Backbone
 from monai.utils import ensure_tuple
 
-from umei.conf import ExpConfBase
-from umei.types import ParamGroup
-from umei.utils import SimpleReprMixin, partition_by_predicate
+from luolib.conf import ExpConfBase
+from luolib.types import ParamGroup
+from luolib.utils import partition_by_predicate
 from ..registry import backbone_registry
 from ..utils import create_model, get_no_weight_decay_keys
 
@@ -19,8 +19,8 @@ __all__ = [
     'ExpModelBase',
 ]
 
-from umei.optim import create_optimizer
-from umei.scheduler import create_scheduler
+from luolib.optim import create_optimizer
+from luolib.scheduler import create_scheduler
 
 class ExpModelBase(LightningModule):
     def __init__(self, conf: ExpConfBase):

@@ -76,7 +76,7 @@ class FitConf(DataConf, AugConf):
     optimizer: OptimizerConf
     scheduler: SchedulerConf
     optimizer_set_to_none: bool = True
-    precision: int = 16
+    precision: str = '16-mixed'
     ddp_find_unused_parameters: bool = False
     num_nodes: int = 1
     gradient_clip_val: float | None = None
@@ -172,6 +172,7 @@ class SegInferConf:
     sw_batch_size: int = 16
     sw_blend_mode: BlendMode = BlendMode.GAUSSIAN
     export_seg_pred: bool = False
+    do_post: bool = True
 
 @dataclass(kw_only=True)
 class SegExpConf(SegInferConf, ExpConfBase):

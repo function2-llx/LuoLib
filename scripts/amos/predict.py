@@ -95,7 +95,7 @@ class AmosEnsemblePredictor(pl.LightningModule):
             model: AmosModel
             pred_logit = sliding_window_inference(
                 batch['img'],
-                roi_size=model.args.sample_shape,
+                roi_size=model.conf.sample_shape,
                 sw_batch_size=self.args.sw_batch_size,
                 predictor=model.forward,
                 overlap=self.args.sw_overlap,

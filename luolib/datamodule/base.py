@@ -33,13 +33,6 @@ class ExpDataModuleBase(LightningDataModule):
     def load_data_transform(self, stage: DataSplit) -> Iterable[Callable]:
         raise NotImplementedError
 
-    # crop/pad, affine
-    def spatial_normalize_transform(self, stage: DataSplit) -> Iterable[Callable]:
-        return []
-
-    def aug_transform(self) -> Iterable[Callable]:
-        return []
-
     def intensity_normalize_transform(self, _stage) -> Iterable[Callable]:
         conf = self.conf
         transforms = []
@@ -77,6 +70,13 @@ class ExpDataModuleBase(LightningDataModule):
                 clip=True,
             ))
         return transforms
+
+    # crop/pad, affine
+    def spatial_normalize_transform(self, stage: DataSplit) -> Iterable[Callable]:
+        return []
+
+    def aug_transform(self) -> Iterable[Callable]:
+        return []
 
     def post_transform(self, _stage):
         return []

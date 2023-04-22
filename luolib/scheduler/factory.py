@@ -1,8 +1,8 @@
 from timm.scheduler import CosineLRScheduler, MultiStepLRScheduler
 from torch.optim import Optimizer
 
-from umei.conf import SchedulerConf
-from umei.utils import SimpleReprMixin
+from luolib.conf import SchedulerConf
+from luolib.utils import SimpleReprMixin
 
 registry = {
     'cosine': CosineLRScheduler,

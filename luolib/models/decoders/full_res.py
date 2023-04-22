@@ -3,10 +3,10 @@ from collections.abc import Mapping, Sequence
 import torch
 from torch import nn
 
-from monai.umei import Decoder, DecoderOutput
+from monai.luolib import Decoder, DecoderOutput
 
-from umei.conf import ModelConf
-from umei.types import spatial_param_seq_t
+from luolib.conf import ModelConf
+from luolib.types import spatial_param_seq_t
 from ..registry import decoder_registry
 from ..blocks import BasicConvLayer, UNetUpLayer
 from ..layers import Act, Norm
@@ -49,7 +49,7 @@ class FullResAdapter(Decoder):
             for i in range(num_layers)
         ])
         self.decode_layers = nn.ModuleList([
-            UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i])
+            UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i], strides[i])
             for i in range(num_layers)
         ])
 

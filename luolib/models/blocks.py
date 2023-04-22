@@ -7,8 +7,8 @@ from torch import nn
 from monai.networks.blocks import Convolution, get_output_padding, get_padding
 from monai.networks.layers import Conv, DropPath, Pool, get_act_layer, get_norm_layer
 
-from umei.models.layers import Act, Norm
-from umei.types import spatial_param_seq_t
+from luolib.models.layers import Act, Norm
+from luolib.types import spatial_param_t
 
 def get_conv_layer(
     spatial_dims: int,
@@ -49,8 +49,8 @@ class BasicConvBlock(nn.Module):
         spatial_dims: int,
         in_channels: int,
         out_channels: int,
-        kernel_size: spatial_param_seq_t[int],
-        stride: spatial_param_seq_t[int],
+        kernel_size: spatial_param_t[int],
+        stride: spatial_param_t[int],
         norm: tuple | str = Norm.INSTANCE,
         act: tuple | str = Act.LEAKYRELU,
         drop_path: float = .0,
@@ -105,8 +105,8 @@ class BasicConvLayer(nn.Module):
         num_blocks: int,
         in_channels: int,
         out_channels: int,
-        kernel_size: spatial_param_seq_t[int],
-        stride: spatial_param_seq_t[int],
+        kernel_size: spatial_param_t[int],
+        stride: spatial_param_t[int],
         norm: tuple | str = Norm.INSTANCE,
         act: tuple | str = Act.LEAKYRELU,
         drop_paths: float | Sequence[float] = 0.,
@@ -133,8 +133,8 @@ class UNetUpLayer(nn.Module):
         spatial_dims: int,
         in_channels: int,
         out_channels: int,
-        kernel_size: spatial_param_seq_t[int],
-        upsample_stride: int = 2,
+        kernel_size: spatial_param_t[int],
+        upsample_stride: spatial_param_t[int],
         norm: tuple | str = Norm.INSTANCE,
         act: tuple | str = Act.LEAKYRELU,
         res: bool = False,

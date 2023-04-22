@@ -5,12 +5,12 @@ from typing import Sequence
 import torch
 from torch import nn
 
-from monai.umei import Decoder, DecoderOutput
-from umei.models import decoder_registry
-from umei.models.blocks import UNetUpLayer, get_conv_layer
-from umei.models.init import init_linear_conv
-from umei.models.layers import Act, Norm
-from umei.types import spatial_param_seq_t
+from monai.luolib import Decoder, DecoderOutput
+from luolib.models import decoder_registry
+from luolib.models.blocks import UNetUpLayer, get_conv_layer
+from luolib.models.init import init_linear_conv
+from luolib.models.layers import Act, Norm
+from luolib.types import spatial_param_seq_t
 
 __all__ = []
 
@@ -21,6 +21,7 @@ class PlainConvUNetDecoder(Decoder):
         spatial_dims: int,
         layer_channels: list[int],
         kernel_sizes: spatial_param_seq_t[int],
+        upsample_strides: spatial_param_seq_t[int],
         norm: tuple | str | None = Norm.INSTANCE,
         act: tuple | str | None = Act.LEAKYRELU,
         lateral_kernel_sizes: spatial_param_seq_t[int] | None = None,
@@ -28,7 +29,7 @@ class PlainConvUNetDecoder(Decoder):
         super().__init__()
         num_layers = len(layer_channels) - 1
         self.layers = nn.ModuleList([
-            UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i])
+            UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i], upsample_strides[i])
             for i in range(num_layers)
         ])
         if lateral_kernel_sizes is None:

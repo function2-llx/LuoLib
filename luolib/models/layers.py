@@ -5,7 +5,7 @@ from typing import Type
 from torch import nn
 
 from monai.networks.layers import Norm, Act
-from umei.utils import ChannelFirst, ChannelLast
+from luolib.utils import ChannelFirst, ChannelLast
 
 __all__ = ['LayerNormNd', 'Norm', 'Act']
 

@@ -8,12 +8,12 @@ from monai.losses import DiceCELoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 from monai.networks.layers import Conv
-from monai.umei import BackboneOutput, Decoder
+from monai.luolib import BackboneOutput, Decoder
 from monai.utils import MetricReduction
 
-from umei.models import decoder_registry
-from umei.conf import SegExpConf
-from umei.utils import DataKey
+from luolib.models import decoder_registry
+from luolib.conf import SegExpConf
+from luolib.utils import DataKey
 from .model_base import ExpModelBase
 from ..utils import create_model
 
@@ -90,17 +90,9 @@ class SegModel(ExpModelBase):
     def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
         img = batch[DataKey.IMG]
         seg_label = batch[DataKey.SEG]
-        # from matplotlib import pyplot as plt
-        # from einops import rearrange
+        # from luolib.utils import IndexTracker
         # for i in range(img.shape[0]):
-        #     from timm.data import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
-        #     s = rearrange(img[i], 'c h w -> w h c').cpu().numpy()
-        #     s *= IMAGENET_DEFAULT_STD
-        #     s += IMAGENET_DEFAULT_MEAN
-        #     plt.imshow(s)
-        #     from matplotlib.colors import ListedColormap
-        #     plt.imshow(seg_label[i, 0].transpose(0, 1).cpu().numpy(), cmap=ListedColormap(['none', 'lightgreen']), alpha=0.35)
-        #     plt.show()
+        #     IndexTracker(img[i, 1].cpu().numpy(), seg_label[i, 1].cpu().numpy())
         backbone_output: BackboneOutput = self.backbone(img)
         decoder_output = self.decoder.forward(backbone_output.feature_maps, img)
         seg_outputs = [
@@ -110,7 +102,6 @@ class SegModel(ExpModelBase):
         single_loss, ds_loss = self.compute_loss(seg_outputs, seg_label)
         self.log('train/single_loss', single_loss)
         self.log('train/ds_loss', ds_loss)
-        # print(img.meta['rotate'])
         return ds_loss
 
     def sw_infer(self, img: torch.Tensor, progress: bool = None, softmax: bool = False):
