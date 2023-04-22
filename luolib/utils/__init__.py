@@ -38,3 +38,5 @@ class SimpleReprMixin(object):
             id=id(self) & 0xFFFFFF,
             attrs=", ".join("{}={!r}".format(k, v) for k, v in self.__dict__.items()),
         )
+
+from .index_tracker import IndexTracker
