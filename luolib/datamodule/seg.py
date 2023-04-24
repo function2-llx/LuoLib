@@ -1,24 +1,30 @@
 import itertools as it
 
+from pytorch_lightning.trainer.states import RunningStage
+
 from monai import transforms as monai_t
 from monai.utils import GridSampleMode, PytorchPadMode
 
 from luolib.conf import SegExpConf
 from luolib.transforms import SimulateLowResolutionD, RandAdjustContrastD, RandAffineCropD, RandGammaCorrectionD
 from luolib.transforms.utils import RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD
-from luolib.utils import DataKey, DataSplit
+from luolib.utils import DataKey
 from .base import ExpDataModuleBase
 
 class SegDataModule(ExpDataModuleBase):
     conf: SegExpConf
 
-    def load_data_transform(self, _stage) -> list:
-        return [monai_t.LoadImageD([DataKey.IMG, DataKey.SEG], ensure_channel_first=True, image_only=True)]
+    def load_data_transform(self, stage: RunningStage) -> list:
+        match stage:
+            case RunningStage.PREDICTING:
+                return [monai_t.LoadImageD(DataKey.IMG, ensure_channel_first=True, image_only=True)]
+            case _:
+                return [monai_t.LoadImageD([DataKey.IMG, DataKey.SEG], ensure_channel_first=True, image_only=True)]
 
-    def spatial_normalize_transform(self, stage: DataSplit):
+    def spatial_normalize_transform(self, stage: RunningStage):
         conf = self.conf
         transform_keys = [DataKey.IMG]
-        if stage in [DataSplit.TRAIN, DataSplit.VAL]:
+        if stage in [RunningStage.TRAINING, RunningStage.VALIDATING]:
             transform_keys.append(DataKey.SEG)
         transforms = [monai_t.CropForegroundD(transform_keys, DataKey.IMG, 'min')]
         if conf.spacing is not None:
@@ -94,9 +100,11 @@ class SegDataModule(ExpDataModuleBase):
             ],
         ]
 
-    def post_transform(self, stage: DataSplit):
+    def post_transform(self, stage: RunningStage):
         match stage:
-            case DataSplit.TRAIN:
+            case RunningStage.TRAINING:
                 return [monai_t.SelectItemsD([DataKey.IMG, DataKey.SEG])]
+            case RunningStage.PREDICTING:
+                return [monai_t.SelectItemsD([DataKey.IMG, DataKey.CASE])]
             case _:
                 return [monai_t.SelectItemsD([DataKey.IMG, DataKey.SEG, DataKey.CASE])]

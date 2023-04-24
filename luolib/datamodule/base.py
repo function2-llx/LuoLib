@@ -4,6 +4,7 @@ from typing import Callable, Sequence
 
 import numpy as np
 from pytorch_lightning import LightningDataModule
+from pytorch_lightning.trainer.states import RunningStage
 from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
 import torch
 from torch.utils.data import Dataset as TorchDataset, RandomSampler
@@ -29,8 +30,11 @@ class ExpDataModuleBase(LightningDataModule):
     def test_data(self) -> Sequence:
         raise NotImplementedError
 
+    def predict_data(self) -> Sequence:
+        raise NotImplementedError
+
     # return a list of transform instead of a `Compose` object to make cache dataset work
-    def load_data_transform(self, stage: DataSplit) -> Iterable[Callable]:
+    def load_data_transform(self, stage: RunningStage) -> Iterable[Callable]:
         raise NotImplementedError
 
     def intensity_normalize_transform(self, _stage) -> Iterable[Callable]:
@@ -72,7 +76,7 @@ class ExpDataModuleBase(LightningDataModule):
         return transforms
 
     # crop/pad, affine
-    def spatial_normalize_transform(self, stage: DataSplit) -> Iterable[Callable]:
+    def spatial_normalize_transform(self, stage: RunningStage) -> Iterable[Callable]:
         return []
 
     def aug_transform(self) -> Iterable[Callable]:
@@ -82,7 +86,7 @@ class ExpDataModuleBase(LightningDataModule):
         return []
 
     def train_transform(self) -> Callable:
-        stage = DataSplit.TRAIN
+        stage = RunningStage.TRAINING
         return monai_t.Compose([
             *self.load_data_transform(stage),
             *self.intensity_normalize_transform(stage),
@@ -92,7 +96,7 @@ class ExpDataModuleBase(LightningDataModule):
         ])
 
     def val_transform(self) -> Callable:
-        stage = DataSplit.VAL
+        stage = RunningStage.VALIDATING
         return monai_t.Compose([
             *self.load_data_transform(stage),
             *self.intensity_normalize_transform(stage),
@@ -101,7 +105,16 @@ class ExpDataModuleBase(LightningDataModule):
         ])
 
     def test_transform(self):
-        stage = DataSplit.TEST
+        stage = RunningStage.TESTING
+        return monai_t.Compose([
+            *self.load_data_transform(stage),
+            *self.intensity_normalize_transform(stage),
+            *self.spatial_normalize_transform(stage),
+            *self.post_transform(stage),
+        ])
+
+    def predict_transform(self):
+        stage = RunningStage.PREDICTING
         return monai_t.Compose([
             *self.load_data_transform(stage),
             *self.intensity_normalize_transform(stage),
@@ -159,6 +172,12 @@ class ExpDataModuleBase(LightningDataModule):
         return self.build_eval_dataloader(Dataset(
             self.test_data(),
             transform=self.test_transform(),
+        ))
+
+    def predict_dataloader(self):
+        return self.build_eval_dataloader(Dataset(
+            self.predict_data(),
+            transform=self.predict_transform(),
         ))
 
 class CrossValDataModule(ExpDataModuleBase):
