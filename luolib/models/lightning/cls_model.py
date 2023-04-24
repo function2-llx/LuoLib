@@ -50,7 +50,9 @@ class ClsModel(ExpModelBase):
 
     def training_step(self, batch, _batch_idx: int):
         logit = self.cal_logit(batch)
-        return self.cls_loss_fn(logit, batch[DataKey.CLS])
+        loss = self.cls_loss_fn(logit, batch[DataKey.CLS])
+        self.log('train/loss', loss)
+        return loss
 
     def on_validation_epoch_start(self):
         super().on_validation_epoch_start()
@@ -62,7 +64,7 @@ class ClsModel(ExpModelBase):
         label = batch[DataKey.CLS]
         loss = self.cls_loss_fn(logit, label)
         split = self.val_splits[dataloader_idx]
-        self.log(f'{split}/loss', loss)
+        self.log(f'{split}/loss', loss, add_dataloader_idx=False)
         prob = logit.softmax(dim=-1)
         self.accumulate_metrics(prob, label, self.cls_metrics[split])
         return prob
