@@ -82,11 +82,11 @@ class FitConf(DataConf, AugConf):
     gradient_clip_val: float | None = None
     gradient_clip_algorithm: str | None = None
 
-    @property
-    def per_device_train_batch_size(self):
-        q, r = divmod(self.train_batch_size, torch.cuda.device_count())
-        assert r == 0
-        return q
+    # @property
+    # def per_device_train_batch_size(self):
+    #     q, r = divmod(self.train_batch_size, torch.cuda.device_count())
+    #     assert r == 0
+    #     return q
 
 @dataclass(kw_only=True)
 class RuntimeConf:
@@ -162,7 +162,6 @@ class ClsExpConf(ExpConfBase):
     num_cls_classes: int
     label_smoothing: float = 0.
     cls_weights: list[float] | None = None
-    cls_hidden_size: int
     monitor: str = 'val/loss'
     monitor_mode: str = 'min'
 
@@ -172,7 +171,7 @@ class SegInferConf:
     sw_batch_size: int = 16
     sw_blend_mode: BlendMode = BlendMode.GAUSSIAN
     export_seg_pred: bool = False
-    do_post: bool = True
+    # do_post: bool = True
 
 @dataclass(kw_only=True)
 class SegExpConf(SegInferConf, ExpConfBase):
@@ -188,8 +187,9 @@ class SegExpConf(SegInferConf, ExpConfBase):
     num_seg_heads: int = 3
     spline_seg: bool = False
     self_ensemble: bool = False
-    dice_include_background: bool = True
+    loss_include_background: bool = True
     dice_squared: bool = False
+    focal_gamma: int = 0  # default is BCE
     fg_oversampling_ratio: list[float] = (2, 1)  # random vs force fg
     multi_label: bool
     dice_nr: float = 1e-5

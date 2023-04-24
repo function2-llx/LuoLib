@@ -4,7 +4,7 @@ from torch import nn
 from torch.nn import functional as torch_f
 
 from monai.inferers import sliding_window_inference
-from monai.losses import DiceCELoss
+from monai.losses import DiceCELoss, DiceFocalLoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 from monai.networks.layers import Conv
@@ -47,15 +47,27 @@ class SegModel(ExpModelBase):
             if seg_head.bias is not None:
                 nn.init.zeros_(seg_head.bias)
 
-        self.seg_loss_fn = DiceCELoss(
-            include_background=self.conf.dice_include_background,
-            to_onehot_y=not conf.multi_label,
-            sigmoid=conf.multi_label,
-            softmax=not conf.multi_label,
-            squared_pred=self.conf.dice_squared,
-            smooth_nr=self.conf.dice_nr,
-            smooth_dr=self.conf.dice_dr,
-        )
+        if conf.multi_label:
+            self.seg_loss_fn = DiceFocalLoss(
+                include_background=conf.loss_include_background,
+                to_onehot_y=False,
+                sigmoid=True,
+                softmax=False,
+                squared_pred=conf.dice_squared,
+                smooth_nr=conf.dice_nr,
+                smooth_dr=conf.dice_dr,
+                gamma=conf.focal_gamma,
+            )
+        else:
+            self.seg_loss_fn = DiceCELoss(
+                include_background=conf.loss_include_background,
+                to_onehot_y=True,
+                sigmoid=False,
+                softmax=True,
+                squared_pred=conf.dice_squared,
+                smooth_nr=conf.dice_nr,
+                smooth_dr=conf.dice_dr,
+            )
         self.val_metrics = {
             'dice': DiceMetric(include_background=True),
         }

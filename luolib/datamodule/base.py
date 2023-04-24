@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 from functools import cached_property
-from typing import Callable, Sequence
+from typing import Callable, Sequence, TypeAlias
 
 import numpy as np
 from pytorch_lightning import LightningDataModule
@@ -16,21 +16,27 @@ from monai.data import CacheDataset, DataLoader, Dataset, partition_dataset_clas
 from luolib.conf import CrossValConf, ExpConfBase
 from luolib.utils import DataKey, DataSplit
 
+DataSeq: TypeAlias = Sequence[dict]
+
 class ExpDataModuleBase(LightningDataModule):
     def __init__(self, conf: ExpConfBase):
         super().__init__()
         self.conf = conf
 
-    def train_data(self) -> Sequence:
+    # # all data for fit (including train & val)
+    # def fit_data(self) -> DataSeq:
+    #     raise NotImplementedError
+
+    def train_data(self) -> DataSeq:
         raise NotImplementedError
 
-    def val_data(self) -> dict[DataSplit, Sequence] | Sequence:
+    def val_data(self) -> DataSeq:
         raise NotImplementedError
 
-    def test_data(self) -> Sequence:
+    def test_data(self) -> DataSeq:
         raise NotImplementedError
 
-    def predict_data(self) -> Sequence:
+    def predict_data(self) -> DataSeq:
         raise NotImplementedError
 
     # return a list of transform instead of a `Compose` object to make cache dataset work
@@ -187,10 +193,6 @@ class CrossValDataModule(ExpDataModuleBase):
         super().__init__(conf)
         self.val_id = None
 
-    # all data for fit (including train & val)
-    def fit_data(self) -> tuple[Sequence, Sequence]:
-        raise NotImplementedError
-
     @property
     def val_id(self) -> int | None:
         return self._val_id
@@ -201,17 +203,18 @@ class CrossValDataModule(ExpDataModuleBase):
         self._val_id = x
 
     @cached_property
-    def partitions(self):
-        fit_data, classes = self.fit_data()
-        if classes is None:
-            classes = [0] * len(fit_data)
-        return partition_dataset_classes(
-            fit_data,
-            classes,
-            num_partitions=self.conf.num_folds,
-            shuffle=True,
-            seed=self.conf.seed,
-        )
+    def partitions(self) -> Sequence[DataSeq]:
+        raise NotImplementedError
+        # fit_data, classes = self.fit_data()
+        # if classes is None:
+        #     classes = [0] * len(fit_data)
+        # return partition_dataset_classes(
+        #     fit_data,
+        #     classes,
+        #     num_partitions=self.conf.num_folds,
+        #     shuffle=True,
+        #     seed=self.conf.seed,
+        # )
 
     def train_data(self):
         # deliberately not using self.conf.num_folds
