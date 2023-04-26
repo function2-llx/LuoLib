@@ -63,6 +63,7 @@ class SchedulerConf:
     name: str
     interval: str
     frequency: int = 1
+    reduce_on_plateau: bool = False
     kwargs: dict
 
 @dataclass(kw_only=True)
@@ -76,7 +77,7 @@ class FitConf(DataConf, AugConf):
     optimizer: OptimizerConf
     scheduler: SchedulerConf
     optimizer_set_to_none: bool = True
-    precision: str = '16-mixed'
+    precision: str | int = '16-mixed'
     ddp_find_unused_parameters: bool = False
     num_nodes: int = 1
     gradient_clip_val: float | None = None

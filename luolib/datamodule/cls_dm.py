@@ -9,11 +9,6 @@ from .base import ExpDataModuleBase, DataSeq
 class ClsDataModule(ExpDataModuleBase):
     conf: ClsExpConf
 
-    def __init__(self, conf: ClsExpConf):
-        super().__init__(conf)
-        if conf.cls_weights is None:
-            conf.cls_weights = self.default_cls_weights()
-
     def classes_counting_data(self) -> DataSeq:
         return self.train_data()
 

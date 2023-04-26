@@ -8,6 +8,7 @@ from torchmetrics.utilities.enums import AverageMethod
 
 from luolib.conf import ClsExpConf
 from luolib.utils import DataSplit, DataKey
+from monai.data import MetaTensor
 from .model_base import ExpModelBase
 
 MetricsCollection: TypeAlias = Mapping[str, torchmetrics.Metric]
@@ -36,7 +37,7 @@ class ClsModel(ExpModelBase):
     def cal_logit_impl(self, batch: dict):
         raise NotImplementedError
 
-    def cal_logit(self, batch):
+    def cal_logit(self, batch: dict):
         conf = self.conf
         logit = self.cal_logit_impl(batch)
         if self.trainer.testing and conf.do_tta:
@@ -64,7 +65,7 @@ class ClsModel(ExpModelBase):
         label = batch[DataKey.CLS]
         loss = self.cls_loss_fn(logit, label)
         split = self.val_splits[dataloader_idx]
-        self.log(f'{split}/loss', loss, add_dataloader_idx=False)
+        self.log(f'{split}/loss', loss, add_dataloader_idx=False, batch_size=label.shape[0])
         prob = logit.softmax(dim=-1)
         self.accumulate_metrics(prob, label, self.cls_metrics[split])
         return prob
@@ -87,6 +88,8 @@ class ClsModel(ExpModelBase):
 
     @staticmethod
     def accumulate_metrics(prob: torch.Tensor, label: torch.Tensor, metrics: MetricsCollection):
+        if isinstance(prob, MetaTensor):
+            prob = prob.as_tensor()
         for k, metric in metrics.items():
             metric(prob, label)
 

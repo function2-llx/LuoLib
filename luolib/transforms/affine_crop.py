@@ -75,7 +75,7 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
                 spatial_size = np.delete(spatial_size, self.dummy_dim)
                 dummy_center = center[self.dummy_dim]
                 dummy_slice = slice(
-                    dummy_center - (dummy_crop_size >> 1),
+                    max(0, dummy_center - (dummy_crop_size >> 1)),
                     dummy_center + dummy_crop_size - (dummy_crop_size >> 1),
                 )
                 center = np.delete(center, self.dummy_dim)
@@ -124,8 +124,9 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
                 if padding_mode == GridSamplePadMode.ZEROS:
                     x += min_v
                 if self.dummy_dim is not None:
-                    x = rearrange(x, '(c d) ... -> c d ...', d=dummy_crop_size)
+                    x = rearrange(x, '(c d) ... -> c d ...', d=dummy_slice.stop - dummy_slice.start)
                     x = x.movedim(1, self.dummy_dim + 1)
+                    x = monai_t.SpatialPad(self.crop_size, pad_min=True)(x)
                 if hasattr(x, 'meta'):
                     x.meta['crop center'] = self.center
                     x.meta['rotate'] = self.id_rotate if rotate_params is None else np.array(rotate_params).tolist()
@@ -134,7 +135,7 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
         else:
             crop = monai_t.Compose([
                 monai_t.SpatialCrop(center, self.crop_size),
-                monai_t.SpatialPad(self.crop_size),  # note: this does not guarantee the center
+                monai_t.SpatialPad(self.crop_size, pad_min=True),  # note: this does not guarantee the center
             ])
             for key in self.key_iterator(d):
                 x = crop(d[key])

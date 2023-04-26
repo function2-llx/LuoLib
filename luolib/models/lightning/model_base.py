@@ -73,14 +73,17 @@ class ExpModelBase(LightningModule):
         )
         backbone_optim = self.conf.backbone_optim
         optim = self.conf.optimizer
-        backbone_param_groups: list[ParamGroup] = param_groups_layer_decay(
-            self.backbone,
-            backbone_optim.weight_decay,
-            backbone_no_decay_keys,
-            backbone_optim.layer_decay,
-        )
-        for param_group in backbone_param_groups:
-            param_group['lr'] = backbone_optim.lr * param_group.pop('lr_scale')
+        param_groups = []
+        if backbone_optim.lr != 0:
+            backbone_param_groups: list[ParamGroup] = param_groups_layer_decay(
+                self.backbone,
+                backbone_optim.weight_decay,
+                backbone_no_decay_keys,
+                backbone_optim.layer_decay,
+            )
+            for param_group in backbone_param_groups:
+                param_group['lr'] = backbone_optim.lr * param_group.pop('lr_scale')
+            param_groups.extend(backbone_param_groups)
 
         others_decay_params, others_no_decay_params = map(
             lambda nps: map(lambda np: np[1], nps),  # remove names
@@ -90,7 +93,7 @@ class ExpModelBase(LightningModule):
             )
         )
 
-        return backbone_param_groups + [
+        param_groups.extend([
             {
                 'params': others_decay_params,
                 'weight_decay': optim.weight_decay,
@@ -99,7 +102,9 @@ class ExpModelBase(LightningModule):
                 'params': others_no_decay_params,
                 'weight_decay': 0.,
             }
-        ]
+        ])
+
+        return param_groups
 
     def configure_optimizers(self):
         conf = self.conf
@@ -111,17 +116,23 @@ class ExpModelBase(LightningModule):
                 'scheduler': scheduler,
                 'interval': conf.scheduler.interval,
                 'frequency': conf.scheduler.frequency,
+                'reduce_on_plateau': conf.scheduler.reduce_on_plateau,
                 'monitor': conf.monitor,
             },
         }
 
     def lr_scheduler_step(self, scheduler: Scheduler, metric):
         # make compatible with timm scheduler
-        match self.conf.scheduler.interval:
+        conf = self.conf
+        match conf.scheduler.interval:
             case 'epoch':
                 scheduler.step(self.current_epoch + 1, metric)
             case 'step':
-                scheduler.step_update(self.global_step, metric)
+                from timm.scheduler import PlateauLRScheduler
+                if isinstance(scheduler, PlateauLRScheduler):
+                    scheduler.step(self.global_step // conf.scheduler.frequency, metric)
+                else:
+                    scheduler.step_update(self.global_step, metric)
 
     def optimizer_zero_grad(self, _epoch, _batch_idx, optimizer: Optimizer):
         optimizer.zero_grad(set_to_none=self.conf.optimizer_set_to_none)
