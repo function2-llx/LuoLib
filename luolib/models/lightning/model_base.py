@@ -74,16 +74,19 @@ class ExpModelBase(LightningModule):
         backbone_optim = self.conf.backbone_optim
         optim = self.conf.optimizer
         param_groups = []
-        if backbone_optim.lr != 0:
-            backbone_param_groups: list[ParamGroup] = param_groups_layer_decay(
-                self.backbone,
-                backbone_optim.weight_decay,
-                backbone_no_decay_keys,
-                backbone_optim.layer_decay,
-            )
-            for param_group in backbone_param_groups:
-                param_group['lr'] = backbone_optim.lr * param_group.pop('lr_scale')
-            param_groups.extend(backbone_param_groups)
+        if backbone_optim.lr == 0:
+            for p in self.backbone.parameters():
+                p.requires_grad = False
+            print('fix backbone weights')
+        backbone_param_groups: list[ParamGroup] = param_groups_layer_decay(
+            self.backbone,
+            backbone_optim.weight_decay,
+            backbone_no_decay_keys,
+            backbone_optim.layer_decay,
+        )
+        for param_group in backbone_param_groups:
+            param_group['lr'] = backbone_optim.lr * param_group.pop('lr_scale')
+        param_groups.extend(backbone_param_groups)
 
         others_decay_params, others_no_decay_params = map(
             lambda nps: map(lambda np: np[1], nps),  # remove names
