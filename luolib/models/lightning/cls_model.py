@@ -28,7 +28,7 @@ class ClsModel(ExpModelBase):
         self.cls_metrics: Mapping[DataSplit, MetricsCollection] = nn.ModuleDict({
             split: self.create_metrics(conf.num_cls_classes)
             for split in self.val_splits
-        })
+        })  # type: ignore
 
     @property
     def flip_keys(self) -> list[Hashable]:
@@ -46,7 +46,7 @@ class ClsModel(ExpModelBase):
                 for key in self.flip_keys:
                     batch[key] = torch.flip(batch[key], flip_idx)
                 logit += self.cal_logit_impl(batch)
-            logit /= len(self.tta_flips + 1)
+            logit /= len(self.tta_flips) + 1
         return logit
 
     def training_step(self, batch, _batch_idx: int):
@@ -74,6 +74,10 @@ class ClsModel(ExpModelBase):
         super().on_validation_epoch_end()
         for split in self.val_splits:
             self.log_metrics(split)
+
+    @property
+    def cls_metrics_test(self):
+        return self.cls_metrics[DataSplit.TEST]
 
     def on_test_epoch_start(self):
         super().on_test_epoch_start()
@@ -112,7 +116,7 @@ class ClsModel(ExpModelBase):
                 self.log(f'{split}/{k}', m, sync_dist=True)
 
     @staticmethod
-    def create_metrics(num_classes: int) -> Mapping[str, torchmetrics.Metric]:
+    def create_metrics(num_classes: int) -> MetricsCollection:
         return nn.ModuleDict({
             k: metric_cls(task='multiclass', num_classes=num_classes, average=average)
             for k, metric_cls, average in [
@@ -125,7 +129,7 @@ class ClsModel(ExpModelBase):
         })
 
     @staticmethod
-    def metrics_report(metrics: Mapping[str, torchmetrics.Metric], names: list[str]):
+    def metrics_report(metrics: MetricsCollection, names: list[str]):
         report = {}
         for k, metric in metrics.items():
             m = metric.compute()

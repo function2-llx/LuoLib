@@ -108,6 +108,7 @@ class RuntimeConf:
     save_every_n_steps: int
     save_top_k: int = 1
     log_every_n_steps: int = 50
+    print_shape: bool = True
 
 @dataclass(kw_only=True)
 class ModelConf:

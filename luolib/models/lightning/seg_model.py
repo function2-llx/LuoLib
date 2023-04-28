@@ -31,9 +31,10 @@ class SegModel(ExpModelBase):
             self.decoder.eval()
             dummy_input, dummy_encoder_output = self.backbone_dummy()
             dummy_decoder_output = self.decoder.forward(dummy_encoder_output.feature_maps, dummy_input)
-            print('decoder output shapes:')
-            for x in dummy_decoder_output.feature_maps:
-                print(x.shape)
+            if conf.print_shape:
+                print('decoder output shapes:')
+                for x in dummy_decoder_output.feature_maps:
+                    print(x.shape)
             decoder_feature_sizes = [feature.shape[1] for feature in dummy_decoder_output.feature_maps]
         # decoder feature map: from small to large
         # i-th seg head for the last i-th output from decoder, i.e., the 0-th seg head for the largest output
