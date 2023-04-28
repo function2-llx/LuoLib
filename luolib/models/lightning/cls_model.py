@@ -16,7 +16,7 @@ MetricsCollection: TypeAlias = Mapping[str, torchmetrics.Metric]
 # multi-class classification model base
 class ClsModel(ExpModelBase):
     conf: ClsExpConf
-    micro_metrics: MetricsCollection | None = None
+    micro_metrics: MetricsCollection | None
 
     @property
     def val_splits(self):
@@ -24,6 +24,7 @@ class ClsModel(ExpModelBase):
 
     def __init__(self, conf: ClsExpConf):
         super().__init__(conf)
+        self.micro_metrics = None
         self.cls_loss_fn = nn.CrossEntropyLoss(weight=torch.tensor(conf.cls_weights))
         self.cls_metrics: Mapping[DataSplit, MetricsCollection] = nn.ModuleDict({
             split: self.create_metrics(conf.num_cls_classes)
@@ -37,10 +38,9 @@ class ClsModel(ExpModelBase):
     def cal_logit_impl(self, batch: dict):
         raise NotImplementedError
 
-    def cal_logit(self, batch: dict):
-        conf = self.conf
+    def cal_logit(self, batch: dict, flip: bool = False):
         logit = self.cal_logit_impl(batch)
-        if self.trainer.testing and conf.do_tta:
+        if flip:
             for flip_idx in self.tta_flips:
                 batch = dict(batch)
                 for key in self.flip_keys:
