@@ -91,11 +91,14 @@ class ClsModel(ExpModelBase):
             self.accumulate_metrics(prob, label, self.micro_metrics)
 
     @staticmethod
-    def accumulate_metrics(prob: torch.Tensor, label: torch.Tensor, metrics: MetricsCollection):
+    def accumulate_metrics(prob: torch.Tensor, label: torch.Tensor, metrics: MetricsCollection, pred: torch.Tensor | None = None):
         if isinstance(prob, MetaTensor):
             prob = prob.as_tensor()
         for k, metric in metrics.items():
-            metric(prob, label)
+            if not getattr(metric, '_luolib_force_prob', False) and pred is not None:
+                metric(pred, label)
+            else:
+                metric(prob, label)
 
     def reset_metrics(self, split: DataSplit):
         for metric in self.cls_metrics[split].values():
@@ -118,13 +121,17 @@ class ClsModel(ExpModelBase):
     @staticmethod
     def create_metrics(num_classes: int) -> MetricsCollection:
         return nn.ModuleDict({
-            k: metric_cls(task='multiclass', num_classes=num_classes, average=average)
-            for k, metric_cls, average in [
-                ('auroc', torchmetrics.AUROC, AverageMethod.NONE),
-                ('recall', torchmetrics.Recall, AverageMethod.NONE),
-                ('precision', torchmetrics.Precision, AverageMethod.NONE),
-                ('f1', torchmetrics.F1Score, AverageMethod.NONE),
-                ('acc', torchmetrics.Accuracy, AverageMethod.MICRO),
+            k: (
+                metric := metric_cls(task='multiclass', num_classes=num_classes, average=average),
+                setattr(metric, '_luolib_force_prob', force_prob),
+                metric,
+            )[-1]
+            for k, metric_cls, average, force_prob in [
+                ('auroc', torchmetrics.AUROC, AverageMethod.NONE, True),
+                ('recall', torchmetrics.Recall, AverageMethod.NONE, False),
+                ('precision', torchmetrics.Precision, AverageMethod.NONE, False),
+                ('f1', torchmetrics.F1Score, AverageMethod.NONE, False),
+                ('acc', torchmetrics.Accuracy, AverageMethod.MICRO, False),
             ]
         })
 
