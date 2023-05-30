@@ -98,10 +98,10 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
             patch_grid = patch_grid.view(spatial_dims + 1, -1)
             patch_grid = affine @ patch_grid
             patch_grid = patch_grid.view(spatial_dims + 1, *crop_size)
-            patch_grid = patch_grid[list(reversed(range(spatial_dims)))]  # PyTorch believes D H W <-> z y x
+            patch_grid = patch_grid[list(reversed(range(spatial_dims)))]  # flip: PyTorch believes D H W <-> z y x
             patch_grid = rearrange(patch_grid, 'sd ... -> 1 ... sd')
             # normalize grid, remember to flip the spatial size as well
-            patch_grid /= torch.from_numpy(np.maximum((np.flip(spatial_size) - 1) / 2, 1)).to(patch_grid)
+            patch_grid /= torch.from_numpy(np.flip(spatial_size) / 2).to(patch_grid)
 
             # monai_t.Resample is not traceable, no better than resampling myself
             for key, mode, padding_mode in self.key_iterator(d, self.sample_mode, self.padding_mode):
@@ -119,7 +119,7 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
                     patch_grid,
                     mode,
                     padding_mode,
-                    align_corners=True,
+                    align_corners=False,
                 )[0]
                 if padding_mode == GridSamplePadMode.ZEROS:
                     x += min_v
@@ -148,6 +148,7 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
         return d
 
 # compatible with monai_t.create_grid, without normalization
+# TODO: support non-integer center
 def create_patch_grid(
     spatial_size: Sequence[int],
     center: Sequence[int],
@@ -156,12 +157,10 @@ def create_patch_grid(
     dtype=torch.float32,
 ):
     spatial_size = np.array(spatial_size)
-    center = np.array(center)
+    center = np.array(center) - (spatial_size - 1) / 2
     patch_size = np.array(patch_size)
-    front_shift = patch_size >> 1
-    back_shift = patch_size - front_shift - 1
-    start = center - front_shift - (spatial_size - 1) / 2
-    end = center + back_shift - (spatial_size - 1) / 2
+    start = center - patch_size / 2
+    end = center + patch_size / 2
     ranges = [
         torch.linspace(
             start[i], end[i], patch_size[i],
