@@ -1,3 +1,4 @@
+import math
 import warnings
 from collections.abc import Sequence
 
@@ -6,8 +7,10 @@ import torch
 from torch import nn
 from torch.nn import functional as torch_f
 
-def with_if(x, y):
-    return x if y is None else x + y
+from luolib.models.blocks import get_conv_layer
+from luolib.models.init import init_linear_conv
+from luolib.models.layers import Norm, Act
+from monai.luolib import Decoder, DecoderOutput
 
 def get_spatial_pattern(spatial_shape: Sequence[int]):
     spatial_dims = len(spatial_shape)
@@ -53,15 +56,14 @@ class MultiscaleDeformableSelfAttention(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        position_embeddings: torch.Tensor | None = None,
-        reference_points=None,  # (n, n_seq, L, sp), normalized to [-1, 1], no align corners
-        spatial_shapes=None,
-    ):
+        position_embeddings: torch.Tensor,
+        reference_points: torch.Tensor,  # (n, n_seq, L, sp), normalized to [-1, 1], no align corners
+        spatial_shapes: torch.Tensor
+    ) -> torch.Tensor:
         # add position embeddings to the hidden states before projecting to queries and keys
-        hidden_states = with_if(hidden_states, position_embeddings)
+        hidden_states = hidden_states + position_embeddings
         values = self.value_proj(hidden_states)
         values = einops.rearrange(values, '... (M d) -> ... M d', M=self.n_heads)
-        # value = value.view(batch_size, sequence_length, self.n_heads, self.d_model // self.n_heads)
         sampling_offsets = self.sampling_offsets(hidden_states)
         sampling_offsets = einops.rearrange(
             sampling_offsets, '... (M L K sp) -> ... M L K sp',
@@ -76,18 +78,18 @@ class MultiscaleDeformableSelfAttention(nn.Module):
         dummy_dim = ' 1 ' if self.spatial_dims == 3 else ' '
         for level_id, spatial_shape in enumerate(spatial_shapes):
             spatial_pattern, spatial_dict = get_spatial_pattern(spatial_shape)
-            value_l_ = einops.rearrange(
+            level_value = einops.rearrange(
                 value_list[level_id],
                 f'n ({spatial_pattern}) M d -> (n M) d {spatial_pattern}',
                 **spatial_dict,
             )
             sampling_value = torch_f.grid_sample(
-                value_l_,
+                level_value,
                 einops.rearrange(
                     sampling_points[:, :, :, level_id],
-                    f'n nq M K sp -> (n M){dummy_dim}nq K sp'
+                    f'n nq M K sp -> (n M){dummy_dim}nq K sp',
                 ),
-                mode="bilinear", padding_mode="zeros", align_corners=False,
+                mode='bilinear', padding_mode="zeros", align_corners=False,
             )
             sampling_value_list.append(sampling_value)
         sampling_values = einops.rearrange(sampling_value_list, f'L (n M) d{dummy_dim}nq K -> n nq M (L K) d', M=self.n_heads)
@@ -100,23 +102,212 @@ class MultiscaleDeformableSelfAttention(nn.Module):
 
         return output
 
+class MultiscaleDeformablePixelDecoderLayer(nn.Module):
+    def __init__(self, spatial_dims: int, embed_dim: int, num_heads: int, n_levels: int, n_points: int, mlp_dim: int, dropout: float = 0.):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.num_heads = num_heads
+
+        self.ms_deform_sa = MultiscaleDeformableSelfAttention(embed_dim, num_heads, n_levels, n_points, spatial_dims)
+        self.self_attn_layer_norm = nn.LayerNorm(self.embed_dim)
+        self.dropout = dropout
+        self.activation_fn = nn.functional.relu
+        self.activation_dropout = dropout
+        self.fc1 = nn.Linear(embed_dim, mlp_dim)
+        self.fc2 = nn.Linear(mlp_dim, embed_dim)
+        self.final_layer_norm = nn.LayerNorm(embed_dim)
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        position_embeddings: torch.Tensor,
+        reference_points: torch.Tensor,
+        spatial_shapes: torch.Tensor,
+    ) -> torch.Tensor:
+        residual = hidden_states
+        hidden_states = self.ms_deform_sa(hidden_states, position_embeddings, reference_points, spatial_shapes)
+        hidden_states = torch_f.dropout(hidden_states, p=self.dropout, training=self.training)
+        hidden_states = residual + hidden_states
+        # following the post-norm used by deformable detr
+        hidden_states = self.self_attn_layer_norm(hidden_states)
+
+        residual = hidden_states
+        hidden_states = self.activation_fn(self.fc1(hidden_states))
+        hidden_states = torch_f.dropout(hidden_states, p=self.activation_dropout, training=self.training)
+        hidden_states = self.fc2(hidden_states)
+        hidden_states = torch_f.dropout(hidden_states, p=self.dropout, training=self.training)
+        hidden_states = residual + hidden_states
+        hidden_states = self.final_layer_norm(hidden_states)
+
+        if self.training:
+            if torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any():
+                clamp_value = torch.finfo(hidden_states.dtype).max - 1000
+                hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
+
+        return hidden_states
+
+# modified from transformers.models.mask2former.modeling_mask2former.Mask2FormerSinePositionEmbedding
+class PositionEmbedding(nn.Module):
+    def __init__(
+        self, feature_dim: int, spatial_dims: int, temperature: int = 10000, normalize: bool = True, scale: float | None = 2 * math.pi,
+    ):
+        super().__init__()
+        if scale is not None and normalize is False:
+            raise ValueError("normalize should be True if scale is passed")
+        assert feature_dim % spatial_dims == 0
+        self.num_pos_feats = feature_dim // spatial_dims
+        self.spatial_dims = spatial_dims
+        self.temperature = temperature
+        self.normalize = normalize
+        self.scale = 2 * math.pi if scale is None else scale
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
+        if mask is None:
+            mask = x.new_zeros((x.shape[0], *x.shape[2:]), dtype=torch.bool)
+            # mask = torch.zeros((x.size(0), x.size(2), x.size(3)), device=x.device, dtype=torch.bool)
+        not_mask = ~mask
+        embeds = torch.stack([not_mask.cumsum(dim=i, dtype=torch.float32) for i in range(1, self.spatial_dims + 1)], dim=-1)
+        if self.normalize:
+            eps = 1e-6
+            for i in range(self.spatial_dims):
+                spatial_slice = [slice(None)] * self.spatial_dims
+                spatial_slice[i] = slice(-1, None)
+                embeds[..., i] /= (embeds[:, *spatial_slice, i] + eps)
+            embeds *= self.scale
+
+        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=x.device)
+        dim_t = self.temperature ** (2 * torch.div(dim_t, 2, rounding_mode="floor") / self.num_pos_feats)
+
+        pos = embeds[..., None] / dim_t
+        pos = einops.rearrange([pos[..., 0::2].sin(), pos[..., 1::2].cos()], 'li2 n ... sp d -> n (sp d li2) ...')
+        return pos
+
+# from transformers.models.mask2former.modeling_mask2former import Mask2FormerPixelDecoder
+class MultiscaleDeformablePixelDecoder(Decoder):
+    def __init__(
+        self,
+        spatial_dims: int,
+        backbone_feature_channels: Sequence[int] = (96, 192, 384, 768),
+        feature_dim: int = 192,
+        num_layers: int = 6,
+        num_heads: int = 8,
+        num_feature_levels: int = 3,
+        n_points: int = 4,
+        mlp_dims: int = 768,
+    ):
+        super().__init__()
+        self.spatial_dims = spatial_dims
+        self.interpolate_mode = 'bilinear' if spatial_dims == 2 else 'trilinear'
+        self.num_fpn_levels = len(backbone_feature_channels) - num_feature_levels
+        self.input_projections = nn.ModuleList([
+            get_conv_layer(
+                spatial_dims, backbone_feature_channel, feature_dim, kernel_size=1,
+                norm=(Norm.GROUP, {'num_groups': 32, 'num_channels': feature_dim}),
+                act=None,
+                bias=i >= self.num_fpn_levels   # follow the reference implementation
+            )
+            for i, backbone_feature_channel in enumerate(backbone_feature_channels)
+        ])
+        self.position_embedding = PositionEmbedding(feature_dim, spatial_dims)
+        self.level_embedding = nn.Parameter(torch.empty(num_feature_levels, feature_dim))
+        self.layers: Sequence[MultiscaleDeformablePixelDecoderLayer] | nn.ModuleList = nn.ModuleList([
+            MultiscaleDeformablePixelDecoderLayer(spatial_dims, feature_dim, num_heads, num_feature_levels, n_points, mlp_dims)
+            for _ in range(num_layers)
+        ])
+        self.output_convs = nn.ModuleList([
+            get_conv_layer(
+                spatial_dims, feature_dim, feature_dim, kernel_size=1, bias=False,
+                norm=(Norm.GROUP, {'num_groups': 32, 'num_channels': feature_dim}),
+                act=Act.RELU,
+            )
+            for _ in range(self.num_fpn_levels)
+        ])
+
+        self.apply(init_linear_conv)
+        nn.init.trunc_normal_(self.level_embedding, std=.02)
+
+    def no_weight_decay(self):
+        return {'level_embedding'}
+
+    @staticmethod
+    def get_reference_points(spatial_shapes: torch.Tensor, batch_size: int):
+        device = spatial_shapes.device
+        reference_points = torch.cat(
+            [
+                torch.cartesian_prod(*[
+                    torch.linspace(start := -1 + 1 / s, -start, s, dtype=torch.float32, device=device)
+                    for s in spatial_shape
+                ])
+                for spatial_shape in spatial_shapes
+            ],
+            dim=0,
+        )
+        reference_points = einops.repeat(
+            reference_points,
+            'nq sp -> n nq L sp', n=batch_size, L=spatial_shapes.shape[0],
+        )
+        return reference_points
+
+    def forward_deformable_layers(self, feature_maps: list[torch.Tensor]):
+        position_embeddings = [
+            self.position_embedding(x)
+            for x in feature_maps
+        ]
+        hidden_states = torch.cat(
+            [
+                einops.rearrange(feature_map, 'n c ... -> n (...) c')
+                for feature_map in feature_maps
+            ],
+            dim=1,
+        )
+        spatial_shapes = torch.tensor([embed.shape[2:] for embed in position_embeddings], device=hidden_states.device)
+        position_embeddings = torch.cat(
+            [
+                einops.rearrange(pe, 'n c ... -> n (...) c') + self.level_embedding[i]
+                for i, pe in enumerate(position_embeddings)
+            ],
+            dim=1,
+        )
+        reference_points = self.get_reference_points(spatial_shapes, hidden_states.shape[0])
+        for layer in self.layers:
+            hidden_states = layer.forward(hidden_states, position_embeddings, reference_points, spatial_shapes)
+        return [
+            einops.rearrange(x, f'n ({spatial_pattern}) d -> n d {spatial_pattern}', **spatial_dict)
+            for x, (spatial_pattern, spatial_dict) in zip(
+                hidden_states.split(spatial_shapes.prod(dim=-1).tolist(), dim=1),
+                [get_spatial_pattern(spatial_shape) for spatial_shape in spatial_shapes]
+            )
+        ]
+
+    def forward(self, backbone_feature_maps: list[torch.Tensor], x_in: torch.Tensor) -> DecoderOutput:
+        feature_maps = [
+            projection(feature_map)
+            for projection, feature_map in zip(self.input_projections, backbone_feature_maps)
+        ]
+        outputs = self.forward_deformable_layers(feature_maps[self.num_fpn_levels:])[::-1]
+
+        for lateral, output_conv in zip(feature_maps, self.output_convs):
+            output = lateral + torch_f.interpolate(outputs[-1], lateral.shape[2:], mode=self.interpolate_mode)
+            outputs.append(output_conv(output))
+        return DecoderOutput(outputs[::-1])
+
 def main():
     bs = 2
-    M = 8
-    L = 3
-    K = 4
     sp = 3
-    dim = 256
-    spatial_shapes = torch.tensor([
-        [6] * sp,
-        [12] * sp,
+    spatial_shapes = [
+        [48] * sp,
         [24] * sp,
-    ]).cuda()
-    nq = spatial_shapes.prod(dim=1).sum().item()
-    ms_deform_sa = MultiscaleDeformableSelfAttention(dim, M, L, K, sp).cuda()
-    hidden_states = torch.randn(bs, nq, dim).cuda()
-    reference_points = torch.rand(bs, nq, L, sp).cuda() * 2 - 1
-    ms_deform_sa.forward(hidden_states, reference_points=reference_points, spatial_shapes=spatial_shapes)
+        [12] * sp,
+        [6] * sp,
+    ]
+    feature_channels = [96, 192, 384, 768]
+    feature_maps = [
+        torch.randn(bs, c, *spatial_shape, device='cuda')
+        for c, spatial_shape in zip(feature_channels, spatial_shapes)
+    ]
+    decoder = MultiscaleDeformablePixelDecoder(sp, feature_channels).cuda()
+    print(decoder)
+    decoder.forward(feature_maps, torch.tensor(0))
 
 if __name__ == '__main__':
     main()
