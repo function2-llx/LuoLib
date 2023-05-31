@@ -12,7 +12,7 @@ from monai.networks.layers import get_act_layer, get_norm_layer
 
 from luolib.models.adaptive_resampling import AdaptiveDownsampling
 from luolib.models.blocks import BasicConvLayer, get_conv_layer
-from luolib.models.init import init_linear_conv
+from luolib.models.init import init_common
 from luolib.models.layers import Act, LayerNormNd, Norm
 from .common3d import SwinLayer
 
@@ -170,7 +170,7 @@ class SwinBackbone(Backbone):
         ])
 
         self.pool = nn.AdaptiveAvgPool3d(1)
-        self.apply(init_linear_conv)
+        self.apply(init_common)
 
     def no_weight_decay(self):
         nwd = set()

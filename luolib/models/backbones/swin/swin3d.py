@@ -10,7 +10,7 @@ from torch import nn
 from monai.luolib import Backbone, BackboneOutput
 
 from luolib.models import backbone_registry
-from luolib.models.init import init_linear_conv
+from luolib.models.init import init_common
 from luolib.models.layers import LayerNormNd, Norm
 from .common3d import SwinLayer
 
@@ -95,7 +95,7 @@ class SwinBackbone(Backbone):
         ])
 
         self.pool = nn.AdaptiveAvgPool3d(1)
-        self.apply(init_linear_conv)
+        self.apply(init_common)
 
     def no_weight_decay(self):
         nwd = set()

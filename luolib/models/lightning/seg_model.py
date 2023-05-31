@@ -12,7 +12,7 @@ from monai.luolib import BackboneOutput, Decoder
 from monai.utils import MetricReduction
 
 from luolib.models import decoder_registry
-from luolib.models.init import init_linear_conv
+from luolib.models.init import init_common
 from luolib.conf import SegExpConf
 from luolib.utils import DataKey
 from .model_base import ExpModelBase
@@ -45,7 +45,7 @@ class SegModel(ExpModelBase):
         seg_head_weights = torch.tensor([0.5 ** i for i in range(conf.num_seg_heads)])
         self.seg_head_weights = nn.Parameter(seg_head_weights / seg_head_weights.sum(), requires_grad=False)
         for seg_head in self.seg_heads:
-            init_linear_conv(seg_head)
+            init_common(seg_head)
 
         if conf.multi_label:
             self.seg_loss_fn = DiceFocalLoss(

@@ -1,4 +1,3 @@
-import math
 import warnings
 from collections.abc import Sequence
 
@@ -8,8 +7,8 @@ from torch import nn
 from torch.nn import functional as torch_f
 
 from luolib.models.blocks import get_conv_layer
-from luolib.models.init import init_linear_conv
-from luolib.models.layers import Norm, Act
+from luolib.models.init import init_common
+from luolib.models.layers import Norm, Act, PositionEmbedding
 from monai.luolib import Decoder, DecoderOutput
 
 def get_spatial_pattern(spatial_shape: Sequence[int]):
@@ -21,7 +20,6 @@ def get_spatial_pattern(spatial_shape: Sequence[int]):
     }
     return spatial_pattern, spatial_dict
 
-# modified from Mask2FormerPixelDecoderEncoderMultiscaleDeformableAttention
 class MultiscaleDeformableSelfAttention(nn.Module):
     """
     Multiscale deformable attention originally proposed in Deformable DETR.
@@ -67,7 +65,7 @@ class MultiscaleDeformableSelfAttention(nn.Module):
         sampling_offsets = self.sampling_offsets(hidden_states)
         sampling_offsets = einops.rearrange(
             sampling_offsets, '... (M L K sp) -> ... M L K sp',
-            M=self.n_heads, L=self.n_levels, K=self.n_points,
+            M=self.n_heads, L=self.n_levels, K=self.n_points, sp=self.spatial_dims,
         )
         offset_normalizer = spatial_shapes
         sampling_points = einops.rearrange(reference_points, '... L sp -> ... 1 L 1 sp') \
@@ -146,42 +144,6 @@ class MultiscaleDeformablePixelDecoderLayer(nn.Module):
 
         return hidden_states
 
-# modified from transformers.models.mask2former.modeling_mask2former.Mask2FormerSinePositionEmbedding
-class PositionEmbedding(nn.Module):
-    def __init__(
-        self, feature_dim: int, spatial_dims: int, temperature: int = 10000, normalize: bool = True, scale: float | None = 2 * math.pi,
-    ):
-        super().__init__()
-        if scale is not None and normalize is False:
-            raise ValueError("normalize should be True if scale is passed")
-        assert feature_dim % spatial_dims == 0
-        self.num_pos_feats = feature_dim // spatial_dims
-        self.spatial_dims = spatial_dims
-        self.temperature = temperature
-        self.normalize = normalize
-        self.scale = 2 * math.pi if scale is None else scale
-
-    def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
-        if mask is None:
-            mask = x.new_zeros((x.shape[0], *x.shape[2:]), dtype=torch.bool)
-            # mask = torch.zeros((x.size(0), x.size(2), x.size(3)), device=x.device, dtype=torch.bool)
-        not_mask = ~mask
-        embeds = torch.stack([not_mask.cumsum(dim=i, dtype=torch.float32) for i in range(1, self.spatial_dims + 1)], dim=-1)
-        if self.normalize:
-            eps = 1e-6
-            for i in range(self.spatial_dims):
-                spatial_slice = [slice(None)] * self.spatial_dims
-                spatial_slice[i] = slice(-1, None)
-                embeds[..., i] /= (embeds[:, *spatial_slice, i] + eps)
-            embeds *= self.scale
-
-        dim_t = torch.arange(self.num_pos_feats, dtype=torch.float32, device=x.device)
-        dim_t = self.temperature ** (2 * torch.div(dim_t, 2, rounding_mode="floor") / self.num_pos_feats)
-
-        pos = embeds[..., None] / dim_t
-        pos = einops.rearrange([pos[..., 0::2].sin(), pos[..., 1::2].cos()], 'li2 n ... sp d -> n (sp d li2) ...')
-        return pos
-
 # from transformers.models.mask2former.modeling_mask2former import Mask2FormerPixelDecoder
 class MultiscaleDeformablePixelDecoder(Decoder):
     def __init__(
@@ -209,22 +171,21 @@ class MultiscaleDeformablePixelDecoder(Decoder):
             for i, backbone_feature_channel in enumerate(backbone_feature_channels)
         ])
         self.position_embedding = PositionEmbedding(feature_dim, spatial_dims)
-        self.level_embedding = nn.Parameter(torch.empty(num_feature_levels, feature_dim))
+        self.level_embedding = nn.Embedding(num_feature_levels, feature_dim)
         self.layers: Sequence[MultiscaleDeformablePixelDecoderLayer] | nn.ModuleList = nn.ModuleList([
             MultiscaleDeformablePixelDecoderLayer(spatial_dims, feature_dim, num_heads, num_feature_levels, n_points, mlp_dims)
             for _ in range(num_layers)
         ])
         self.output_convs = nn.ModuleList([
             get_conv_layer(
-                spatial_dims, feature_dim, feature_dim, kernel_size=1, bias=False,
+                spatial_dims, feature_dim, feature_dim, kernel_size=3, bias=False,
                 norm=(Norm.GROUP, {'num_groups': 32, 'num_channels': feature_dim}),
                 act=Act.RELU,
             )
             for _ in range(self.num_fpn_levels)
         ])
 
-        self.apply(init_linear_conv)
-        nn.init.trunc_normal_(self.level_embedding, std=.02)
+        self.apply(init_common)
 
     def no_weight_decay(self):
         return {'level_embedding'}

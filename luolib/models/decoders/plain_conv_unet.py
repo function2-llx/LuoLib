@@ -8,7 +8,7 @@ from torch import nn
 from monai.luolib import Decoder, DecoderOutput
 from luolib.models import decoder_registry
 from luolib.models.blocks import UNetUpLayer, get_conv_layer
-from luolib.models.init import init_linear_conv
+from luolib.models.init import init_common
 from luolib.models.layers import Act, Norm
 from luolib.types import spatial_param_seq_t
 
@@ -43,7 +43,7 @@ class PlainConvUNetDecoder(Decoder):
                 for channels, kernel_size in zip(layer_channels, lateral_kernel_sizes)
             ])
 
-        self.apply(init_linear_conv)
+        self.apply(init_common)
 
     def forward(self, backbone_feature_maps: Sequence[torch.Tensor], x_in: torch.Tensor) -> DecoderOutput:
         feature_maps = []

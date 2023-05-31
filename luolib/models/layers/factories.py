@@ -1,13 +1,9 @@
-from __future__ import annotations
-
 from typing import Type
 
 from torch import nn
 
 from monai.networks.layers import Norm, Act
 from luolib.utils import ChannelFirst, ChannelLast
-
-__all__ = ['LayerNormNd', 'Norm', 'Act']
 
 # make PyCharm come here
 Act = Act
