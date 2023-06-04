@@ -35,7 +35,7 @@ class ExpModelBase(LightningModule):
             if conf.print_shape:
                 print('backbone output shapes:')
                 for x in dummy_output.feature_maps:
-                    print(x.shape)
+                    print(x.shape[1:])
         return dummy_input, dummy_output
 
     @property

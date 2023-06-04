@@ -6,10 +6,13 @@ import torch
 from torch import nn
 from torch.nn import functional as torch_f
 
+from luolib.models import decoder_registry
 from luolib.models.blocks import get_conv_layer
 from luolib.models.init import init_common
 from luolib.models.layers import Norm, Act, PositionEmbedding
 from monai.luolib import Decoder, DecoderOutput
+
+__all__ = []
 
 def get_spatial_pattern(spatial_shape: Sequence[int]):
     spatial_dims = len(spatial_shape)
@@ -145,17 +148,18 @@ class MultiscaleDeformablePixelDecoderLayer(nn.Module):
         return hidden_states
 
 # from transformers.models.mask2former.modeling_mask2former import Mask2FormerPixelDecoder
+@decoder_registry.register_module('msdeform')
 class MultiscaleDeformablePixelDecoder(Decoder):
     def __init__(
         self,
         spatial_dims: int,
-        backbone_feature_channels: Sequence[int] = (96, 192, 384, 768),
-        feature_dim: int = 192,
-        num_layers: int = 6,
-        num_heads: int = 8,
+        backbone_feature_channels: Sequence[int],
+        feature_dim: int,
+        num_heads: int,
         num_feature_levels: int = 3,
         n_points: int = 4,
-        mlp_dims: int = 768,
+        num_layers: int = 6,
+        mlp_dims: int | None = None,
     ):
         super().__init__()
         self.spatial_dims = spatial_dims
@@ -172,6 +176,8 @@ class MultiscaleDeformablePixelDecoder(Decoder):
         ])
         self.position_embedding = PositionEmbedding(feature_dim, spatial_dims)
         self.level_embedding = nn.Embedding(num_feature_levels, feature_dim)
+        if mlp_dims is None:
+            mlp_dims = 4 * feature_dim
         self.layers: Sequence[MultiscaleDeformablePixelDecoderLayer] | nn.ModuleList = nn.ModuleList([
             MultiscaleDeformablePixelDecoderLayer(spatial_dims, feature_dim, num_heads, num_feature_levels, n_points, mlp_dims)
             for _ in range(num_layers)
@@ -224,7 +230,7 @@ class MultiscaleDeformablePixelDecoder(Decoder):
         spatial_shapes = torch.tensor([embed.shape[2:] for embed in position_embeddings], device=hidden_states.device)
         position_embeddings = torch.cat(
             [
-                einops.rearrange(pe, 'n c ... -> n (...) c') + self.level_embedding[i]
+                einops.rearrange(pe, 'n c ... -> n (...) c') + self.level_embedding.weight[i]
                 for i, pe in enumerate(position_embeddings)
             ],
             dim=1,

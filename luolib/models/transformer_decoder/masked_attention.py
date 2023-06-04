@@ -7,10 +7,11 @@ from torch import nn
 from torch.nn import functional as torch_f
 from torch.utils import checkpoint
 
+from luolib.models import transformer_decoder_registry
 from luolib.models.init import init_common
 from luolib.models.layers import PositionEmbedding
 from luolib.utils import flatten
-
+from monai.networks.layers import Conv
 
 class MaskedAttentionDecoderLayer(nn.Module):
     def __init__(
@@ -102,6 +103,7 @@ class MaskedAttentionDecoderLayer(nn.Module):
         return hidden_states
 
 # modified from transformers.models.mask2former.modeling_mask2former.Mask2FormerMaskedAttentionDecoder
+@transformer_decoder_registry.register_module(name='mask')
 class MaskedAttentionDecoder(nn.Module):
     def __init__(
         self,
@@ -118,7 +120,7 @@ class MaskedAttentionDecoder(nn.Module):
         super().__init__()
         self.interpolate_mode = 'bilinear' if spatial_dims == 2 else 'trilinear'
         self.num_attention_heads = num_attention_heads
-        hidden_dim = feature_channels
+        self.hidden_dim = hidden_dim = feature_channels
         self.dropout = dropout
         self.query_embedding = nn.Embedding(num_queries, hidden_dim)
         self.query_position_embedding = nn.Embedding(num_queries, hidden_dim)
@@ -143,6 +145,7 @@ class MaskedAttentionDecoder(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, pixel_embedding_dim),
         )
+        self.pixel_embedding_projection = Conv[Conv.CONV, spatial_dims](feature_channels, pixel_embedding_dim, 1)
 
         self.gradient_checkpointing = gradient_checkpointing
 
@@ -151,24 +154,26 @@ class MaskedAttentionDecoder(nn.Module):
     def predict_mask(
         self,
         hidden_states: torch.Tensor,
-        pixel_embeddings: torch.Tensor,
+        pixel_embedding: torch.Tensor,
         attention_mask_shape: Sequence[int] | None = None,
     ):
-        mask_query_embeddings = self.mask_query_projection(self.layer_norm(hidden_states))
-        mask_logit = einops.einsum(mask_query_embeddings, pixel_embeddings, 'n nq c, n c ... -> n nq ...')
+        mask_embeddings = self.layer_norm(hidden_states)
+        projected_mask_embeddings = self.mask_query_projection(mask_embeddings)
+        mask_logits = einops.einsum(projected_mask_embeddings, pixel_embedding, 'n nq c, n c ... -> n nq ...')
         if attention_mask_shape is None:
-            return mask_logit
+            return mask_logits
         with torch.no_grad():
-            attention_mask = torch_f.interpolate(mask_logit, attention_mask_shape, mode=self.interpolate_mode)
+            attention_mask = torch_f.interpolate(mask_logits, attention_mask_shape, mode=self.interpolate_mode)
             # `attn_mask` parameter of https://pytorch.org/docs/stable/generated/torch.nn.MultiheadAttention.html#torch.nn.MultiheadAttention.forward
+            # "For a binary mask, a True value indicates that the corresponding position is not allowed to attend."
             attention_mask = einops.rearrange((attention_mask.sigmoid() < 0.5).bool(), 'n nq ... -> n nq (...)')
             # no restriction for empty mask
             attention_mask.masked_fill_(attention_mask.all(dim=-1, keepdim=True), False)
             attention_mask = einops.repeat(attention_mask, 'n nq nk -> (n M) nq nk', M=self.num_attention_heads)
-        return mask_logit, attention_mask
+        return mask_embeddings, mask_logits, attention_mask
 
-    def forward(self, feature_maps: list[torch.Tensor], pixel_embeddings: torch.Tensor):
-        batch_size = pixel_embeddings.shape[0]
+    def forward(self, feature_maps: list[torch.Tensor], feature_map_for_pixel_embedding: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        batch_size = feature_map_for_pixel_embedding.shape[0]
         hidden_states = einops.repeat(self.query_embedding.weight, '... -> n ...', n=batch_size)
         query_position_embeddings = einops.repeat(self.query_position_embedding.weight, '... -> n ...', n=batch_size)
         key_hidden_states = [
@@ -176,8 +181,10 @@ class MaskedAttentionDecoder(nn.Module):
             for i, feature_map in enumerate(feature_maps)
         ]
         key_position_embeddings = [self.key_position_embedding(x) for x in feature_maps]
-        mask_logit, attention_mask = self.predict_mask(hidden_states, pixel_embeddings, feature_maps[0].shape[2:])
-        mask_logits = [mask_logit]
+        pixel_embedding = self.pixel_embedding_projection(feature_map_for_pixel_embedding)
+        mask_embeddings, mask_logits, attention_mask = self.predict_mask(hidden_states, pixel_embedding, feature_maps[0].shape[2:])
+        all_mask_logits = [mask_logits]
+        all_mask_embeddings = [mask_embeddings]
 
         for idx, layer in enumerate(self.layers):
             if self.training and (random.uniform(0, 1) < self.layer_drop):
@@ -194,14 +201,14 @@ class MaskedAttentionDecoder(nn.Module):
                     key_position_embeddings[level_index], attention_mask,
                 )
 
-            mask_logit, attention_mask = self.predict_mask(
+            mask_embeddings, mask_logits, attention_mask = self.predict_mask(
                 hidden_states,
-                pixel_embeddings,
+                pixel_embedding,
                 feature_maps[(idx + 1) % self.num_feature_levels].shape[2:],
             )
-            mask_logits.append(mask_logit)
+            all_mask_logits.append(mask_logits)
 
-        return hidden_states, mask_logits
+        return all_mask_embeddings, all_mask_logits
 
 def main():
     bs = 2

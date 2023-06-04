@@ -6,7 +6,6 @@ from torch import nn
 
 from luolib.utils import flatten
 
-
 # modified from transformers.models.mask2former.modeling_mask2former.Mask2FormerSinePositionEmbedding
 class PositionEmbedding(nn.Module):
     def __init__(
@@ -21,8 +20,8 @@ class PositionEmbedding(nn.Module):
         super().__init__()
         if scale is not None and normalize is False:
             raise ValueError("normalize should be True if scale is passed")
-        assert feature_dim % spatial_dims == 0
-        self.num_pos_feats = feature_dim // spatial_dims
+        self.feature_dim = feature_dim
+        self.num_pos_feats = (feature_dim - 1) // spatial_dims + 1
         self.spatial_dims = spatial_dims
         self.temperature = temperature
         self.normalize = normalize
@@ -49,5 +48,7 @@ class PositionEmbedding(nn.Module):
         pos = embeds[..., None] / dim_t
         pos = einops.rearrange([pos[..., 0::2].sin(), pos[..., 1::2].cos()], 'li2 n ... sp d -> n (sp d li2) ...')
         if self.flatten:
-            pos = flatten(pos)
+            pos = flatten(pos)[..., :self.feature_dim]
+        else:
+            pos = pos[:, :self.feature_dim]
         return pos
