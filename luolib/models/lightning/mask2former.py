@@ -155,12 +155,14 @@ class Mask2Former(ExpModelBase):
         matched_mask_labels = torch.cat(matched_mask_labels, dim=0)[:, None]
         with torch.no_grad():
             point_coordinates = self.sample_points_using_uncertainty(matched_mask_logits)
-            point_labels = sample_point(matched_mask_labels, point_coordinates)[:, 0]
-        point_logits = sample_point(matched_mask_logits, point_coordinates)[:, 0]
-        return {
-            'bce': nnf.binary_cross_entropy_with_logits(point_logits, point_labels),
-            'dice': dice_loss(point_logits, point_labels),
-        }
+            point_coordinates = 2 * point_coordinates - 1
+            point_labels = sample_point(matched_mask_labels, point_coordinates, transformed=True)[:, 0]
+        point_logits = sample_point(matched_mask_logits, point_coordinates, transformed=True)[:, 0]
+        with torch.autocast(device_type=point_logits.device.type, enabled=False):
+            return {
+                'bce': nnf.binary_cross_entropy_with_logits(point_logits, point_labels),
+                'dice': dice_loss(point_logits, point_labels),
+            }
 
     def cal_loss(self, class_logits: torch.Tensor, mask_logits: torch.Tensor, class_labels: list[torch.Tensor], mask_labels: list[torch.Tensor]):
         indices = self.match(class_logits, mask_logits, class_labels, mask_labels)
