@@ -128,6 +128,10 @@ class ExpDataModuleBase(LightningDataModule):
             *self.post_transform(stage),
         ])
 
+    def train_collate_fn(self, batch: Sequence):
+        from monai.data import list_data_collate
+        return list_data_collate(batch)
+
     def train_dataloader(self) -> TRAIN_DATALOADERS:
         conf = self.conf
         dataset = CacheDataset(
@@ -151,6 +155,7 @@ class ExpDataModuleBase(LightningDataModule):
             pin_memory=self.conf.dataloader_pin_memory,
             prefetch_factor=self.conf.dataloader_prefetch_factor,
             persistent_workers=True if self.conf.dataloader_num_workers > 0 else False,
+            collate_fn=self.train_collate_fn,
         )
 
     def build_eval_dataloader(self, eval_dataset: TorchDataset):

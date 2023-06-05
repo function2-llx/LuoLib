@@ -11,6 +11,7 @@ class Mask2FormerConf(ExpConfBase):
     eos_coef: float = 0.1
     oversample_ratio: float = 3.
     importance_sample_ratio: float = 0.75
-    cost_class: float = 5.
+    cost_class: float = 1.
     cost_dice: float = 5.
-    cost_bce: float = 2.
+    cost_bce: float = 5.
+    log_layers: tuple[int, ...] = (0, 3, 6, 9)

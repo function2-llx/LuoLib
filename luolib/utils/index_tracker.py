@@ -6,12 +6,22 @@ from matplotlib.colors import ListedColormap
 import numpy as np
 
 class IndexTracker:
-    def __init__(self, img: np.ndarray, seg: Optional[np.ndarray] = None, block: bool = True, title: str = "", choose_max: bool = False):
+    def __init__(
+        self,
+        img: np.ndarray,
+        seg: Optional[np.ndarray] = None,
+        block: bool = True, title: str = "",
+        zyx: bool = False,
+        choose_max: bool = False,
+    ):
         fig, ax = plt.subplots()
         fig: plt.Figure
         ax: plt.Axes
         ax.set_title('use scroll wheel to navigate images')
         self.ax = ax
+        if zyx:
+            img = img.transpose(2, 1, 0)
+            seg = seg.transpose(2, 1, 0)
 
         self.img = img
         self.seg = seg

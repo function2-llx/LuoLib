@@ -48,6 +48,7 @@ def get_no_weight_decay_keys(module: nn.Module):
         nn.LayerNorm,
         _BatchNorm,
         _InstanceNorm,
+        nn.GroupNorm,
         nn.Embedding,
     )
     decay = set()
@@ -65,6 +66,12 @@ def get_no_weight_decay_keys(module: nn.Module):
             elif pn.endswith('.weight') and isinstance(m, whitelist_weight_modules):
                 # weights of whitelist modules will be weight decayed
                 decay.add(pn)
+            elif isinstance(m, nn.MultiheadAttention):
+                if pn.endswith('_proj_weight'):
+                    # projection weights of MultiheadAttention modules will be weight decayed
+                    decay.add(pn)
+                elif pn.endswith('_proj_bias'):
+                    no_decay.add(pn)
             elif pn not in no_decay:
                 assert pn.endswith('.weight') and isinstance(m, blacklist_weight_modules)
                 # weights of blacklist modules will NOT be weight decayed

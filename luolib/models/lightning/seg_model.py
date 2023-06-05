@@ -1,4 +1,4 @@
-from pytorch_lightning.utilities.types import STEP_OUTPUT
+import pytorch_lightning as pl
 import torch
 from torch import nn
 from torch.nn import functional as torch_f
@@ -11,14 +11,50 @@ from monai.networks.layers import Conv
 from monai.luolib import BackboneOutput, Decoder
 from monai.utils import MetricReduction
 
-from luolib.models import decoder_registry
-from luolib.models.init import init_common
-from luolib.conf import SegExpConf
+from luolib.conf import SegExpConf, ExpConfBase, SegCommonConf
 from luolib.utils import DataKey
 from .model_base import ExpModelBase
+from ..init import init_common
+from ..registry import decoder_registry
 from ..utils import create_model
 
-class SegModel(ExpModelBase):
+class SegInferer(pl.LightningModule):
+    conf: ExpConfBase | SegCommonConf
+
+    def seg_predictor(self, x):
+        return self.forward(x)
+
+    def sw_infer(self, img: torch.Tensor, progress: bool = None, softmax: bool = False):
+        ret = sliding_window_inference(
+            img,
+            roi_size=self.conf.sample_shape,
+            sw_batch_size=self.conf.sw_batch_size,
+            predictor=self.seg_predictor,
+            overlap=self.conf.sw_overlap,
+            mode=self.conf.sw_blend_mode,
+            progress=progress,
+        )
+        if softmax:
+            ret = ret.softmax(dim=1)
+        return ret
+
+    def tta_infer(self, img: torch.Tensor, progress: bool = None, softmax: bool = False):
+        pred = self.sw_infer(img, progress, softmax)
+        for flip_idx in self.tta_flips:
+            pred += torch.flip(self.sw_infer(torch.flip(img, flip_idx), progress, softmax), flip_idx)
+        pred /= len(self.tta_flips) + 1
+        return pred
+
+    def infer(self, img: torch.Tensor, progress: bool = None, tta_softmax: bool = False):
+        if progress is None:
+            progress = self.trainer.testing if self._trainer is not None else True
+
+        if self.conf.do_tta:
+            return self.tta_infer(img, progress, tta_softmax)
+        else:
+            return self.sw_infer(img, progress)
+
+class SegModel(ExpModelBase, SegInferer):
     conf: SegExpConf
 
     def create_decoder(self) -> Decoder:
@@ -99,7 +135,7 @@ class SegModel(ExpModelBase):
         else:
             return self.seg_loss_fn(output_logits, seg_label)
 
-    def training_step(self, batch: dict, *args, **kwargs) -> STEP_OUTPUT:
+    def training_step(self, batch: dict, *args, **kwargs):
         img = batch[DataKey.IMG]
         seg_label = batch[DataKey.SEG]
         # from luolib.utils import IndexTracker
@@ -115,36 +151,6 @@ class SegModel(ExpModelBase):
         self.log('train/single_loss', single_loss)
         self.log('train/ds_loss', ds_loss)
         return ds_loss
-
-    def sw_infer(self, img: torch.Tensor, progress: bool = None, softmax: bool = False):
-        ret = sliding_window_inference(
-            img,
-            roi_size=self.conf.sample_shape,
-            sw_batch_size=self.conf.sw_batch_size,
-            predictor=self.forward,
-            overlap=self.conf.sw_overlap,
-            mode=self.conf.sw_blend_mode,
-            progress=progress,
-        )
-        if softmax:
-            ret = ret.softmax(dim=1)
-        return ret
-
-    def tta_infer(self, img: torch.Tensor, progress: bool = None, softmax: bool = False):
-        pred = self.sw_infer(img, progress, softmax)
-        for flip_idx in self.tta_flips:
-            pred += torch.flip(self.sw_infer(torch.flip(img, flip_idx), progress, softmax), flip_idx)
-        pred /= len(self.tta_flips) + 1
-        return pred
-
-    def infer(self, img: torch.Tensor, progress: bool = None, tta_softmax: bool = False):
-        if progress is None:
-            progress = self.trainer.testing if self._trainer is not None else True
-
-        if self.conf.do_tta:
-            return self.tta_infer(img, progress, tta_softmax)
-        else:
-            return self.sw_infer(img, progress)
 
     def on_validation_epoch_start(self):
         if self.conf.val_empty_cuda_cache:

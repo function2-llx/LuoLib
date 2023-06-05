@@ -140,3 +140,19 @@ class RandCenterGeneratorByLabelClassesD(monai_t.Randomizable):
         self.randomize(label, indices, image)
 
         return self.dummy_rand_cropper.centers[0]
+
+class FilterInstanceD(monai_t.Transform):
+    def __init__(self, class_key: Hashable, mask_key: Hashable):
+        self.class_key = class_key
+        self.mask_key = mask_key
+
+    def __call__(self, data: Mapping[Hashable, Any]):
+        d = dict(data)
+        class_label: torch.Tensor = d[self.class_key]
+        mask_label: torch.Tensor = d[self.mask_key]
+
+        filter_idx = mask_label.any(dim=-1)
+        filter_idx = filter_idx.view(filter_idx.shape[0], -1).any(dim=1)
+        d[self.class_key] = class_label[filter_idx]
+        d[self.mask_key] = mask_label[filter_idx]
+        return d

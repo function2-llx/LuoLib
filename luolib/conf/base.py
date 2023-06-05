@@ -168,15 +168,19 @@ class ClsExpConf(ExpConfBase):
     monitor_mode: str = 'min'
 
 @dataclass(kw_only=True)
-class SegInferConf:
+class SegCommonConf:
     sw_overlap: float = 0.25
     sw_batch_size: int = 16
     sw_blend_mode: BlendMode = BlendMode.GAUSSIAN
     export_seg_pred: bool = False
     # do_post: bool = True
+    # for multi-label task, not including background
+    num_seg_classes: int
+    multi_label: bool
+    fg_oversampling_ratio: list[float] = (2, 1)  # random vs force fg
 
 @dataclass(kw_only=True)
-class SegExpConf(SegInferConf, ExpConfBase):
+class SegExpConf(SegCommonConf, ExpConfBase):
     monitor: str = 'val/dice/avg'
     monitor_mode: str = 'max'
     max_epochs: int | None = None
@@ -184,16 +188,12 @@ class SegExpConf(SegInferConf, ExpConfBase):
     val_check_interval = 250  # nnunet default
 
     decoder: ModelConf
-    # for multi-label task, not including background
-    num_seg_classes: int
     num_seg_heads: int = 3
     spline_seg: bool = False
     self_ensemble: bool = False
     loss_include_background: bool = True
     dice_squared: bool = False
     focal_gamma: int = 0  # default is BCE
-    fg_oversampling_ratio: list[float] = (2, 1)  # random vs force fg
-    multi_label: bool
     dice_nr: float = 1e-5
     dice_dr: float = 1e-5
 

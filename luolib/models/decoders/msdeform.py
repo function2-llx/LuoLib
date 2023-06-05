@@ -159,7 +159,7 @@ class MultiscaleDeformablePixelDecoder(Decoder):
         num_feature_levels: int = 3,
         n_points: int = 4,
         num_layers: int = 6,
-        mlp_dims: int | None = None,
+        mlp_dim: int | None = None,
     ):
         super().__init__()
         self.spatial_dims = spatial_dims
@@ -176,10 +176,10 @@ class MultiscaleDeformablePixelDecoder(Decoder):
         ])
         self.position_embedding = PositionEmbedding(feature_dim, spatial_dims)
         self.level_embedding = nn.Embedding(num_feature_levels, feature_dim)
-        if mlp_dims is None:
-            mlp_dims = 4 * feature_dim
+        if mlp_dim is None:
+            mlp_dim = 4 * feature_dim
         self.layers: Sequence[MultiscaleDeformablePixelDecoderLayer] | nn.ModuleList = nn.ModuleList([
-            MultiscaleDeformablePixelDecoderLayer(spatial_dims, feature_dim, num_heads, num_feature_levels, n_points, mlp_dims)
+            MultiscaleDeformablePixelDecoderLayer(spatial_dims, feature_dim, num_heads, num_feature_levels, n_points, mlp_dim)
             for _ in range(num_layers)
         ])
         self.output_convs = nn.ModuleList([

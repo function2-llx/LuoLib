@@ -17,10 +17,10 @@ class MaskedAttentionDecoderLayer(nn.Module):
     def __init__(
         self,
         embed_dim: int,
-        num_attention_heads: int = 8,
+        num_attention_heads: int,
+        dim_feedforward: int,
         dropout: float = 0.,
         pre_norm: bool = False,
-        dim_feedforward: int | None = None,
     ):
         super().__init__()
         self.embed_dim = embed_dim
@@ -38,9 +38,6 @@ class MaskedAttentionDecoderLayer(nn.Module):
             batch_first=True,
         )
         self.self_attn_layer_norm = nn.LayerNorm(embed_dim)
-
-        if dim_feedforward is None:
-            dim_feedforward = 8 * embed_dim
         self.fc1 = nn.Linear(embed_dim, dim_feedforward)
         self.activation_fn = nn.ReLU()
         self.activation_dropout = dropout
@@ -109,12 +106,14 @@ class MaskedAttentionDecoder(nn.Module):
         self,
         spatial_dims: int,
         feature_channels: int,
+        num_attention_heads: int,
+        dim_feedforward: int | None = None,
         num_decoder_layers: int = 9,
-        num_attention_heads: int = 8,
         num_feature_levels: int = 3,
         num_queries: int = 100,
         pixel_embedding_dim: int = None,
         dropout: float = 0.,
+        pre_norm: bool = False,
         gradient_checkpointing: bool = False,
     ):
         super().__init__()
@@ -127,9 +126,11 @@ class MaskedAttentionDecoder(nn.Module):
         self.num_feature_levels = num_feature_levels
         self.level_embedding = nn.Embedding(num_feature_levels, hidden_dim)
         self.key_position_embedding = PositionEmbedding(feature_channels, spatial_dims, flatten=True)
-
+        if dim_feedforward is None:
+            dim_feedforward = feature_channels * 8
+        self.pre_norm = pre_norm
         self.layers: Sequence[MaskedAttentionDecoderLayer] | nn.ModuleList = nn.ModuleList([
-            MaskedAttentionDecoderLayer(feature_channels, num_attention_heads)
+            MaskedAttentionDecoderLayer(feature_channels, num_attention_heads, dim_feedforward, dropout, pre_norm)
             for _ in range(num_decoder_layers)
         ])
         # this is redundant for post-norm, but let's follow the reference implementation
@@ -183,8 +184,8 @@ class MaskedAttentionDecoder(nn.Module):
         key_position_embeddings = [self.key_position_embedding(x) for x in feature_maps]
         pixel_embedding = self.pixel_embedding_projection(feature_map_for_pixel_embedding)
         mask_embeddings, mask_logits, attention_mask = self.predict_mask(hidden_states, pixel_embedding, feature_maps[0].shape[2:])
-        all_mask_logits = [mask_logits]
-        all_mask_embeddings = [mask_embeddings]
+        layers_mask_logits = [mask_logits]
+        layers_mask_embeddings = [mask_embeddings]
 
         for idx, layer in enumerate(self.layers):
             if self.training and (random.uniform(0, 1) < self.layer_drop):
@@ -206,9 +207,10 @@ class MaskedAttentionDecoder(nn.Module):
                 pixel_embedding,
                 feature_maps[(idx + 1) % self.num_feature_levels].shape[2:],
             )
-            all_mask_logits.append(mask_logits)
+            layers_mask_embeddings.append(mask_embeddings)
+            layers_mask_logits.append(mask_logits)
 
-        return all_mask_embeddings, all_mask_logits
+        return layers_mask_embeddings, layers_mask_logits
 
 def main():
     bs = 2

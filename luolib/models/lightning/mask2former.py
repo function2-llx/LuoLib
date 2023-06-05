@@ -5,27 +5,28 @@ import torch
 from scipy.optimize import linear_sum_assignment
 from torch import nn
 from torch.nn import functional as nnf
-from transformers.models.mask2former.modeling_mask2former import pair_wise_sigmoid_cross_entropy_loss, \
-    pair_wise_dice_loss
+from transformers.models.mask2former.modeling_mask2former import pair_wise_sigmoid_cross_entropy_loss, pair_wise_dice_loss
 
 from monai.luolib import Decoder
 
 from luolib.utils import DataKey
-from luolib.models import ExpModelBase, create_model, decoder_registry, transformer_decoder_registry
 from luolib.conf import Mask2FormerConf
-from luolib.models.transformer_decoder.masked_attention import MaskedAttentionDecoder
+from .model_base import ExpModelBase, create_model
+from ..registry import decoder_registry, transformer_decoder_registry
+from ..transformer_decoder.masked_attention import MaskedAttentionDecoder
 
-def sample_point(feature_map: torch.Tensor, point_coordinates: torch.Tensor, **kwargs) -> torch.Tensor:
+def sample_point(feature_map: torch.Tensor, point_coordinates: torch.Tensor, transformed: bool = False, **kwargs) -> torch.Tensor:
     spatial_dims = point_coordinates.shape[-1]
     assert (dim_diff := feature_map.ndim - spatial_dims) in [1, 2]
     batched = dim_diff == 2
     if not batched:
         feature_map = feature_map[None]
         point_coordinates = point_coordinates[None]
-    point_coordinates = 2 * point_coordinates - 1
+    if not transformed:
+        point_coordinates = 2 * point_coordinates - 1
     for _ in range(add_dims := spatial_dims + 2 - point_coordinates.ndim):
         point_coordinates = point_coordinates[:, None]
-    point_features = nnf.grid_sample(feature_map, 2.0 * point_coordinates - 1.0, **kwargs)
+    point_features = nnf.grid_sample(feature_map, point_coordinates, **kwargs)
     for _ in range(add_dims):
         point_features = point_features[:, :, 0]
     if not batched:
@@ -65,11 +66,15 @@ class Mask2Former(ExpModelBase):
     def create_transformer_decoder(self) -> MaskedAttentionDecoder:
         return create_model(self.conf.transformer_decoder, transformer_decoder_registry)
 
-    def forward_pixel(self, x: torch.Tensor):
-        return self.pixel_decoder.forward(self.backbone.forward(x).feature_maps, x).feature_maps
-
-    def decode(self, feature_maps: list[torch.Tensor]):
-        return self.transformer_decoder.forward(feature_maps[1:], feature_maps[0])
+    def forward(self, x: torch.Tensor):
+        backbone_feature_maps = self.backbone.forward(x).feature_maps
+        feature_maps = self.pixel_decoder.forward(backbone_feature_maps, x).feature_maps
+        layers_mask_embeddings, layers_mask_logits = self.transformer_decoder.forward(feature_maps[1:], feature_maps[0])
+        layers_class_logits = [
+            self.class_predictor(mask_embeddings)
+            for mask_embeddings in layers_mask_embeddings
+        ]
+        return layers_class_logits, layers_mask_logits
 
     @torch.no_grad()
     def match(self, class_logits: torch.Tensor, mask_logits: torch.Tensor, class_labels: list[torch.Tensor], mask_labels: list[torch.Tensor]):
@@ -85,15 +90,17 @@ class Mask2Former(ExpModelBase):
                 cost_class = -class_pred_probs[:, class_labels[i]]
                 # Sample the same set of points for ground truth and predicted masks
                 point_coordinates = torch.rand(conf.num_train_points, conf.spatial_dims, device=mask_logits.device)
-                sampled_mask_logits = sample_point(mask_logits[i], point_coordinates)
-                sampled_mask_labels = sample_point(mask_labels[i], point_coordinates)
+                point_coordinates = 2 * point_coordinates - 1
+                sampled_mask_logits = sample_point(mask_logits[i], point_coordinates, transformed=True)
+                sampled_mask_labels = sample_point(mask_labels[i], point_coordinates, transformed=True)
 
                 # compute the cross entropy loss between each mask pairs -> shape (num_queries, num_labels)
-                cost_mask = pair_wise_sigmoid_cross_entropy_loss(sampled_mask_logits, sampled_mask_labels)
-                # Compute the dice loss betwen each mask pairs -> shape (num_queries, num_labels)
-                cost_dice = pair_wise_dice_loss(sampled_mask_logits, sampled_mask_labels)
+                with torch.autocast(device_type=sampled_mask_logits.device.type, enabled=False):
+                    cost_bce = pair_wise_sigmoid_cross_entropy_loss(sampled_mask_logits, sampled_mask_labels)
+                    # Compute the dice loss betwen each mask pairs -> shape (num_queries, num_labels)
+                    cost_dice = pair_wise_dice_loss(sampled_mask_logits, sampled_mask_labels)
                 # final cost matrix
-                cost_matrix = conf.cost_bce * cost_mask + conf.cost_class * cost_class + conf.cost_dice * cost_dice
+                cost_matrix = conf.cost_bce * cost_bce + conf.cost_class * cost_class + conf.cost_dice * cost_dice
                 # do the assigmented using the hungarian algorithm in scipy
                 assigned_indices: tuple[np.ndarray, np.ndarray] = linear_sum_assignment(cost_matrix.cpu())
                 indices.append(assigned_indices)
@@ -134,10 +141,11 @@ class Mask2Former(ExpModelBase):
         for i, (pred_idx, label_idx) in enumerate(indices):
             target_classes[i, pred_idx] = class_labels[i][label_idx]
         class_loss = conf.cost_class * self.cls_loss_fn(class_logits.view(-1, class_logits.shape[-1]), target_classes.view(-1))
-        return class_loss
+        return {
+            'class': class_loss,
+        }
 
     def cal_mask_loss(self, mask_logits: torch.Tensor, mask_labels: list[torch.Tensor], indices: list[tuple[np.ndarray, np.ndarray]]):
-        conf = self.conf
         matched_mask_logits = []
         matched_mask_labels = []
         for i, (pred_idx, label_idx) in enumerate(indices):
@@ -149,33 +157,40 @@ class Mask2Former(ExpModelBase):
             point_coordinates = self.sample_points_using_uncertainty(matched_mask_logits)
             point_labels = sample_point(matched_mask_labels, point_coordinates)[:, 0]
         point_logits = sample_point(matched_mask_logits, point_coordinates)[:, 0]
-
-        mask_loss = conf.cost_bce * nnf.binary_cross_entropy_with_logits(point_logits, point_labels) + \
-            conf.cost_dice * dice_loss(point_logits, point_labels)
-        return mask_loss
+        return {
+            'bce': nnf.binary_cross_entropy_with_logits(point_logits, point_labels),
+            'dice': dice_loss(point_logits, point_labels),
+        }
 
     def cal_loss(self, class_logits: torch.Tensor, mask_logits: torch.Tensor, class_labels: list[torch.Tensor], mask_labels: list[torch.Tensor]):
         indices = self.match(class_logits, mask_logits, class_labels, mask_labels)
-        class_loss = self.cal_class_loss(class_logits, class_labels, indices)
-        mask_loss = self.cal_mask_loss(mask_logits, mask_labels, indices)
-        return class_loss + mask_loss
+        return {
+            **self.cal_class_loss(class_logits, class_labels, indices),
+            **self.cal_mask_loss(mask_logits, mask_labels, indices),
+        }
+
+    def combine_loss(self, loss_dict: dict):
+        return torch.stack([
+            v * getattr(self.conf, f'cost_{k}')
+            for k, v in loss_dict.items()
+        ]).sum()
 
     def training_step(self, batch):
-        feature_maps = self.forward_pixel(batch[DataKey.IMG])
-        layers_mask_embeddings, layers_mask_logits = self.decode(feature_maps)
-        layers_class_logits = [
-            self.class_predictor(mask_embeddings)
-            for mask_embeddings in layers_mask_embeddings
-        ]
+        layers_class_logits, layers_mask_logits = self.forward(batch[DataKey.IMG])
         class_labels = batch[DataKey.CLS]
         mask_labels = batch[DataKey.SEG]
-        loss = torch.stack([
+        loss_dicts = [
             self.cal_loss(class_logits, mask_logits, class_labels, mask_labels)
             for class_logits, mask_logits in zip(layers_class_logits, layers_mask_logits)
-        ]).sum()
+        ]
+        for i in self.conf.log_layers:
+            for k, v in loss_dicts[i].items():
+                self.log(f'train/layer-{i}/{k}', v)
+        loss = torch.stack([self.combine_loss(loss_dict) for loss_dict in loss_dicts]).mean()
+        self.log('train/loss', loss)
         return loss
 
-def main():
+def test():
     from omegaconf import OmegaConf
     from luolib.conf import ModelConf
     conf: Mask2FormerConf = OmegaConf.structured(Mask2FormerConf)
@@ -218,6 +233,3 @@ def main():
         ]
     }
     model.training_step(batch)
-
-if __name__ == '__main__':
-    main()
