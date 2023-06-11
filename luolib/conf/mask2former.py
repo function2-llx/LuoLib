@@ -1,9 +1,9 @@
 from dataclasses import dataclass
 
-from .base import ExpConfBase, ModelConf
+from .base import ModelConf, SegCommonConf, ExpConfBase
 
 @dataclass(kw_only=True)
-class Mask2FormerConf(ExpConfBase):
+class Mask2FormerConf(ExpConfBase, SegCommonConf):
     pixel_decoder: ModelConf
     transformer_decoder: ModelConf
     num_fg_classes: int

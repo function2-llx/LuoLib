@@ -13,6 +13,20 @@ from monai.utils import BlendMode
 
 from luolib.types import tuple2_t
 
+__all__ = [
+    'OptimizerConf',
+    'SchedulerConf',
+    'ModelConf',
+    'ExpConfBase',
+    'CrossValConf',
+    'ClsExpConf',
+    'SegCommonConf',
+    'SegExpConf',
+    'parse_node',
+    'parse_cli',
+    'parse_exp_conf',
+]
+
 # omegaconf: Unions of containers are not supported
 @dataclass(kw_only=True)
 class AugConf:
@@ -68,8 +82,8 @@ class SchedulerConf:
 
 @dataclass(kw_only=True)
 class FitConf(DataConf, AugConf):
-    monitor: str | None = None
-    monitor_mode: str | None
+    monitor: str
+    monitor_mode: str
     max_epochs: int | None
     max_steps: int
     val_check_interval: int | None = None
@@ -120,14 +134,14 @@ class ModelConf:
 
 @dataclass(kw_only=True)
 class BackboneOptimConf:
-    lr: float = II('optimizer.lr')
-    weight_decay: float = II('optimizer.weight_decay')
+    lr: float = II('..optimizer.lr')
+    weight_decay: float = II('..optimizer.weight_decay')
     layer_decay: float = 1.
 
 @dataclass(kw_only=True)
 class ExpConfBase(FitConf, RuntimeConf):
     backbone: ModelConf
-    backbone_optim: BackboneOptimConf = field(default_factory=BackboneOptimConf)    # TODO: make it better?
+    backbone_optim: BackboneOptimConf = OmegaConf.structured(BackboneOptimConf)
     num_input_channels: int
     sample_shape: tuple  # tuple2_t[int] | tuple3_t[int]
     conf_root: Path = Path('conf')
@@ -155,7 +169,7 @@ class ExpConfBase(FitConf, RuntimeConf):
         OmegaConf.save(self, conf_save_path)
 
 @dataclass(kw_only=True)
-class CrossValConf:
+class CrossValConf(ExpConfBase):
     num_folds: int = 5
     fold_ids: list[int]
 
@@ -172,15 +186,15 @@ class SegCommonConf:
     sw_overlap: float = 0.25
     sw_batch_size: int = 16
     sw_blend_mode: BlendMode = BlendMode.GAUSSIAN
+    output_logit: bool = True
     export_seg_pred: bool = False
-    # do_post: bool = True
-    # for multi-label task, not including background
+    # for multi-label task: equivalent to the number of foreground classes
     num_seg_classes: int
     multi_label: bool
     fg_oversampling_ratio: list[float] = (2, 1)  # random vs force fg
 
 @dataclass(kw_only=True)
-class SegExpConf(SegCommonConf, ExpConfBase):
+class SegExpConf(ExpConfBase, SegCommonConf):
     monitor: str = 'val/dice/avg'
     monitor_mode: str = 'max'
     max_epochs: int | None = None
@@ -198,7 +212,7 @@ class SegExpConf(SegCommonConf, ExpConfBase):
     dice_dr: float = 1e-5
 
 T = TypeVar('T')
-def parse_node(conf_path: PathLike, conf_type: type[T] = Any) -> T:
+def parse_node(conf_path: PathLike, conf_type: type[T] | None = None) -> T:
     conf_path = Path(conf_path)
     conf_dir = conf_path.parent
 
@@ -221,21 +235,35 @@ def parse_node(conf_path: PathLike, conf_type: type[T] = Any) -> T:
                 raise ValueError
 
     conf = OmegaConf.unsafe_merge(*base_confs, conf)
-    if conf_type != Any:
-        conf = OmegaConf.structured(conf_type(**conf))
+    if conf_type is not None:
+        # unsafe_merge will crash: https://github.com/omry/omegaconf/issues/1087
+        conf = OmegaConf.merge(OmegaConf.structured(conf_type), conf)
     return conf
 
-exp_conf_t = TypeVar('exp_conf_t', bound=ExpConfBase)
-def parse_exp_conf(conf_type: type[exp_conf_t]) -> exp_conf_t:
+def parse_cli(conf_type: type[T] | None = None) -> tuple[T, Path]:
     argv = sys.argv[1:]
     conf_path = Path(argv[0])
-    conf: ExpConfBase | DictConfig = OmegaConf.structured(conf_type)
-    conf.merge_with(parse_node(conf_path))
+    conf = parse_node(conf_path, conf_type)
     conf.merge_with_dotlist(argv[1:])
-    if OmegaConf.is_missing(conf, 'output_dir'):
-        if OmegaConf.is_missing(conf, 'exp_name'):
-            conf.exp_name = conf_path.relative_to(conf.conf_root).with_suffix('')
-        conf.output_dir = conf.output_root / conf.exp_name
-    elif OmegaConf.is_missing(conf, 'exp_name'):
-        conf.exp_name = conf.output_dir.relative_to(conf.output_root).with_suffix('')
-    return conf
+    return conf, conf_path
+
+exp_conf_t = TypeVar('exp_conf_t', bound=ExpConfBase)
+def parse_exp_conf(
+    conf_type: type[exp_conf_t], 
+    conf_path: Path | None = None,
+    conf: DictConfig | None = None,
+) -> exp_conf_t:
+    if conf is None:
+        if conf_path is None:
+            exp_conf, conf_path = parse_cli(conf_type)
+        else:
+            exp_conf = parse_node(conf_path, conf_type)
+    else:
+        exp_conf: exp_conf_t = OmegaConf.merge(OmegaConf.structured(conf_type), conf)
+    if OmegaConf.is_missing(exp_conf, 'output_dir'):
+        if OmegaConf.is_missing(exp_conf, 'exp_name') and conf_path is not None:
+            exp_conf.exp_name = conf_path.relative_to(exp_conf.conf_root).with_suffix('')
+        exp_conf.output_dir = exp_conf.output_root / exp_conf.exp_name
+    elif OmegaConf.is_missing(exp_conf, 'exp_name'):
+        exp_conf.exp_name = exp_conf.output_dir.relative_to(exp_conf.output_root).with_suffix('')
+    return exp_conf
