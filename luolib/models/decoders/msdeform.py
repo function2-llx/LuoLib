@@ -4,7 +4,8 @@ from collections.abc import Sequence
 import einops
 import torch
 from torch import nn
-from torch.nn import functional as torch_f
+from torch.nn import functional as nnf
+from torch.utils import checkpoint
 
 from luolib.models import decoder_registry
 from luolib.models.blocks import get_conv_layer
@@ -84,7 +85,7 @@ class MultiscaleDeformableSelfAttention(nn.Module):
                 f'n ({spatial_pattern}) M d -> (n M) d {spatial_pattern}',
                 **spatial_dict,
             )
-            sampling_value = torch_f.grid_sample(
+            sampling_value = nnf.grid_sample(
                 level_value,
                 einops.rearrange(
                     sampling_points[:, :, :, level_id],
@@ -127,16 +128,16 @@ class MultiscaleDeformablePixelDecoderLayer(nn.Module):
     ) -> torch.Tensor:
         residual = hidden_states
         hidden_states = self.ms_deform_sa(hidden_states, position_embeddings, reference_points, spatial_shapes)
-        hidden_states = torch_f.dropout(hidden_states, p=self.dropout, training=self.training)
+        hidden_states = nnf.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
         # following the post-norm used by deformable detr
         hidden_states = self.self_attn_layer_norm(hidden_states)
 
         residual = hidden_states
         hidden_states = self.activation_fn(self.fc1(hidden_states))
-        hidden_states = torch_f.dropout(hidden_states, p=self.activation_dropout, training=self.training)
+        hidden_states = nnf.dropout(hidden_states, p=self.activation_dropout, training=self.training)
         hidden_states = self.fc2(hidden_states)
-        hidden_states = torch_f.dropout(hidden_states, p=self.dropout, training=self.training)
+        hidden_states = nnf.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
         hidden_states = self.final_layer_norm(hidden_states)
 
@@ -160,6 +161,7 @@ class MultiscaleDeformablePixelDecoder(Decoder):
         n_points: int = 4,
         num_layers: int = 6,
         mlp_dim: int | None = None,
+        gradient_checkpointing: bool = False,
     ):
         super().__init__()
         self.spatial_dims = spatial_dims
@@ -190,6 +192,8 @@ class MultiscaleDeformablePixelDecoder(Decoder):
             )
             for _ in range(self.num_fpn_levels)
         ])
+
+        self.gradient_checkpointing = gradient_checkpointing
 
         self.apply(init_common)
 
@@ -236,8 +240,18 @@ class MultiscaleDeformablePixelDecoder(Decoder):
             dim=1,
         )
         reference_points = self.get_reference_points(spatial_shapes, hidden_states.shape[0])
+
         for layer in self.layers:
-            hidden_states = layer.forward(hidden_states, position_embeddings, reference_points, spatial_shapes)
+            if self.training and self.gradient_checkpointing:
+                hidden_states = checkpoint.checkpoint(
+                    layer,
+                    hidden_states,
+                    position_embeddings,
+                    reference_points,
+                    spatial_shapes,
+                )
+            else:
+                hidden_states = layer.forward(hidden_states, position_embeddings, reference_points, spatial_shapes)
         return [
             einops.rearrange(x, f'n ({spatial_pattern}) d -> n d {spatial_pattern}', **spatial_dict)
             for x, (spatial_pattern, spatial_dict) in zip(
@@ -254,7 +268,7 @@ class MultiscaleDeformablePixelDecoder(Decoder):
         outputs = self.forward_deformable_layers(feature_maps[self.num_fpn_levels:])[::-1]
 
         for lateral, output_conv in zip(feature_maps, self.output_convs):
-            output = lateral + torch_f.interpolate(outputs[-1], lateral.shape[2:], mode=self.interpolate_mode)
+            output = lateral + nnf.interpolate(outputs[-1], lateral.shape[2:], mode=self.interpolate_mode)
             outputs.append(output_conv(output))
         return DecoderOutput(outputs[::-1])
 

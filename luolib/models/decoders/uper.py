@@ -4,10 +4,10 @@ from typing import Sequence
 
 import torch
 from torch import nn
-from torch.nn import functional as torch_f
+from torch.nn import functional as nnf
 
 from monai.networks.blocks import Convolution
-from monai.umei import Decoder, DecoderOutput
+from monai.luolib import Decoder, DecoderOutput
 
 class UPerHead(Decoder):
     def __init__(self, in_channels: Sequence[int], channels: int, pool_scales: Sequence[int]):
@@ -48,7 +48,7 @@ class UPerHead(Decoder):
 
     def psp_forward(self, x: torch.Tensor):
         psp_outs = [
-            torch_f.interpolate(module(x), x.shape[2:], mode='trilinear')
+            nnf.interpolate(module(x), x.shape[2:], mode='trilinear')
             for module in self.psp_modules
         ]
         psp_outs.append(x)
@@ -63,7 +63,7 @@ class UPerHead(Decoder):
         laterals.append(self.psp_forward(hidden_states[-1]))
 
         for i in range(len(laterals) - 1, 0, -1):
-            laterals[i - 1] += torch_f.interpolate(laterals[i], laterals[i - 1].shape[2:], mode='trilinear')
+            laterals[i - 1] += nnf.interpolate(laterals[i], laterals[i - 1].shape[2:], mode='trilinear')
 
         fpn_outs = [
             conv(lateral)
@@ -71,6 +71,6 @@ class UPerHead(Decoder):
         ]
         fpn_outs.append(laterals[-1])
         for i in range(1, len(fpn_outs)):
-            fpn_outs[i] = torch_f.interpolate(fpn_outs[i], size=fpn_outs[0].shape[2:], mode='trilinear')
+            fpn_outs[i] = nnf.interpolate(fpn_outs[i], size=fpn_outs[0].shape[2:], mode='trilinear')
         output = self.fpn_bottleneck(torch.cat(fpn_outs, dim=1))
         return DecoderOutput([output])

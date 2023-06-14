@@ -44,6 +44,7 @@ def dice_loss(logits: torch.Tensor, labels: torch.Tensor):
 
 class Mask2Former(ExpModelBase):
     conf: Mask2FormerConf
+    class_loss_weight: torch.Tensor
 
     def __init__(self, conf: Mask2FormerConf):
         super().__init__(conf)
@@ -58,7 +59,7 @@ class Mask2Former(ExpModelBase):
             for feature_map in feature_maps:
                 print(feature_map.shape[1:])
         self.class_predictor = nn.Linear(self.transformer_decoder.hidden_dim, conf.num_fg_classes + 1)
-        self.cls_loss_fn = nn.CrossEntropyLoss(torch.tensor([conf.eos_coef, *it.repeat(1, conf.num_fg_classes)]))
+        self.register_buffer('class_loss_weight', torch.tensor([conf.eos_coef, *it.repeat(1, conf.num_fg_classes)]))
 
     def create_pixel_decoder(self) -> Decoder:
         return create_model(self.conf.pixel_decoder, decoder_registry)
@@ -66,10 +67,18 @@ class Mask2Former(ExpModelBase):
     def create_transformer_decoder(self) -> MaskedAttentionDecoder:
         return create_model(self.conf.transformer_decoder, transformer_decoder_registry)
 
-    def forward(self, x: torch.Tensor):
+    def forward_mask(self, x, manual_mask):
         backbone_feature_maps = self.backbone.forward(x).feature_maps
         feature_maps = self.pixel_decoder.forward(backbone_feature_maps, x).feature_maps
-        layers_mask_embeddings, layers_mask_logits = self.transformer_decoder.forward(feature_maps[1:], feature_maps[0])
+        layers_mask_embeddings, layers_mask_logits = self.transformer_decoder.forward(
+            feature_maps[1:],
+            feature_maps[0],
+            manual_mask,
+        )
+        return layers_mask_embeddings, layers_mask_logits
+
+    def forward(self, x: torch.Tensor, manual_mask: torch.Tensor | None = None):
+        layers_mask_embeddings, layers_mask_logits = self.forward_mask(x, manual_mask)
         layers_class_logits = [
             self.class_predictor(mask_embeddings)
             for mask_embeddings in layers_mask_embeddings
@@ -136,13 +145,15 @@ class Mask2Former(ExpModelBase):
         return point_coordinates
 
     def cal_class_loss(self, class_logits: torch.Tensor, class_labels: list[torch.Tensor], indices: list[tuple[np.ndarray, np.ndarray]]):
-        conf = self.conf
         target_classes = class_logits.new_zeros(class_logits.shape[:2], dtype=torch.long)
         for i, (pred_idx, label_idx) in enumerate(indices):
             target_classes[i, pred_idx] = class_labels[i][label_idx]
-        class_loss = conf.cost_class * self.cls_loss_fn(class_logits.view(-1, class_logits.shape[-1]), target_classes.view(-1))
         return {
-            'class': class_loss,
+            'class': nnf.cross_entropy(
+                class_logits.view(-1, class_logits.shape[-1]),
+                target_classes.view(-1),
+                self.class_loss_weight,
+            )
         }
 
     def cal_mask_loss(self, mask_logits: torch.Tensor, mask_labels: list[torch.Tensor], indices: list[tuple[np.ndarray, np.ndarray]]):

@@ -1,7 +1,7 @@
 from einops import rearrange
 import torch
 from torch import nn
-from torch.nn import functional as torch_f
+from torch.nn import functional as nnf
 
 from monai.networks.blocks import get_output_padding, get_padding
 
@@ -31,7 +31,7 @@ class AdaptiveDownsampling(nn.Conv3d):
         spatial_shape = x.shape[2:]
         if spatial_shape[-1] * 2 > spatial_shape[0]:
             return super().forward(x)
-        x = torch_f.conv2d(
+        x = nnf.conv2d(
             rearrange(x, 'n c h w d -> (n d) c h w').contiguous(),
             self.weight[..., self.kernel_size[-1] >> 1],
             self.bias,
@@ -69,7 +69,7 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
         if upsample_z:
             return super().forward(x)
         batch_size = x.shape[0]
-        x = torch_f.conv_transpose2d(
+        x = nnf.conv_transpose2d(
             rearrange(x, 'n c h w d -> (n d) c h w').contiguous(),
             self.weight[..., self.kernel_size[-1] >> 1],
             self.bias,

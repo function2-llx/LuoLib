@@ -3,7 +3,7 @@ from typing import Hashable, Mapping
 import einops
 import numpy as np
 import torch
-from torch.nn import functional as torch_f
+from torch.nn import functional as nnf
 
 from monai import transforms as monai_t
 from monai.config import KeysCollection
@@ -32,9 +32,9 @@ class SimulateLowResolutionD(monai_t.RandomizableTransform, monai_t.MapTransform
 
             downsample_shape = (spatial_shape * zoom_factor).astype(np.int16)
             x = x[None]
-            x = torch_f.interpolate(x, tuple(downsample_shape), mode='nearest-exact')
+            x = nnf.interpolate(x, tuple(downsample_shape), mode='nearest-exact')
             # no tricubic at PyTorch 2.0, use linear interpolation for both 2D & 3D
-            x = torch_f.interpolate(x, tuple(spatial_shape), mode='bilinear' if len(spatial_shape) == 2 else 'trilinear')
+            x = nnf.interpolate(x, tuple(spatial_shape), mode='bilinear' if len(spatial_shape) == 2 else 'trilinear')
             x = x[0]
             if self.dummy_dim is not None:
                 x = einops.rearrange(x, '(c d) ... -> c d ...', d=dummy_size)

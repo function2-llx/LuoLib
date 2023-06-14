@@ -24,7 +24,8 @@ def check_tuple(obj, n: int, t: type):
 
 # set total=False to comfort IDE
 class ParamGroup(TypedDict, total=False):
-    params: Required[Iterable[nn.Parameter]]
+    params: list[nn.Parameter] | None
+    param_names: Required[list[str]]
     lr_scale: float  # inserted by timm
     lr: float
     weight_decay: float

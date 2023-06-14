@@ -4,7 +4,7 @@ from typing import Callable, Hashable, Mapping, Sequence
 from einops import rearrange
 import numpy as np
 import torch
-from torch.nn import functional as torch_f
+from torch.nn import functional as nnf
 
 from monai import transforms as monai_t
 from monai.config import KeysCollection, SequenceStr
@@ -114,7 +114,7 @@ class RandAffineCropD(monai_t.Randomizable, monai_t.MapTransform):
                 if padding_mode == GridSamplePadMode.ZEROS:
                     min_v = x.amin(dim=tuple(range(1, x.ndim)), keepdim=True)
                     x -= min_v
-                x = torch_f.grid_sample(x[None], patch_grid, mode, padding_mode, align_corners=False)[0]
+                x = nnf.grid_sample(x[None], patch_grid, mode, padding_mode, align_corners=False)[0]
                 if padding_mode == GridSamplePadMode.ZEROS:
                     x += min_v
                 if self.dummy_dim is not None:

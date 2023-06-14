@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 import torch
 from torch import nn
-from torch.nn import functional as torch_f
+from torch.nn import functional as nnf
 
 from monai.inferers import sliding_window_inference
 from monai.losses import DiceCELoss, DiceFocalLoss
@@ -113,20 +113,20 @@ class SegModel(ExpModelBase, SegInferer):
         feature_maps = self.decoder.forward(output.feature_maps, x).feature_maps
         if self.conf.self_ensemble:
             return torch.stack([
-                torch_f.interpolate(seg_head(fm), x.shape[2:], mode=self.interpolate_mode)
+                nnf.interpolate(seg_head(fm), x.shape[2:], mode=self.interpolate_mode)
                 for fm, seg_head in zip(reversed(feature_maps), self.seg_heads)
             ]).mean(dim=0)
         else:
             ret = self.seg_heads[0](feature_maps[-1])
             if ret.shape[2:] != x.shape[2:]:
-                ret = torch_f.interpolate(ret, x.shape[2:], mode=self.interpolate_mode)
+                ret = nnf.interpolate(ret, x.shape[2:], mode=self.interpolate_mode)
             return ret
 
     def compute_loss(self, output_logits: list[torch.Tensor] | torch.Tensor, seg_label: torch.Tensor):
         if isinstance(output_logits, list):
             seg_loss = torch.stack([
                 self.seg_loss_fn(
-                    torch_f.interpolate(output_logit, seg_label.shape[2:], mode=self.interpolate_mode),
+                    nnf.interpolate(output_logit, seg_label.shape[2:], mode=self.interpolate_mode),
                     seg_label,
                 )
                 for output_logit in output_logits
@@ -163,7 +163,7 @@ class SegModel(ExpModelBase, SegInferer):
         img = batch[DataKey.IMG]
         seg = batch[DataKey.SEG]
         pred_logit = self.sw_infer(img)
-        pred_logit = torch_f.interpolate(pred_logit, seg.shape[2:], mode=self.interpolate_mode)
+        pred_logit = nnf.interpolate(pred_logit, seg.shape[2:], mode=self.interpolate_mode)
         loss = self.compute_loss(pred_logit, seg)
         self.log('val/loss', loss, sync_dist=True)
 

@@ -1,7 +1,7 @@
 from pathlib import Path
 
+import cytoolz
 from pytorch_lightning import LightningModule
-from timm.optim.optim_factory import param_groups_layer_decay
 from timm.scheduler.scheduler import Scheduler
 import torch
 from torch.optim import Optimizer
@@ -12,7 +12,7 @@ from monai.utils import ensure_tuple
 from luolib.conf import ExpConfBase
 from luolib.types import ParamGroup
 from luolib.utils import partition_by_predicate
-from luolib.optim import create_optimizer
+from luolib.optim import create_optimizer, param_groups_layer_decay
 from luolib.scheduler import create_scheduler
 from ..registry import backbone_registry
 from ..utils import create_model, get_no_weight_decay_keys
@@ -87,11 +87,14 @@ class ExpModelBase(LightningModule):
             backbone_optim.layer_decay,
         )
         for param_group in backbone_param_groups:
-            param_group['lr'] = backbone_optim.lr * param_group.pop('lr_scale')
+            param_group['lr'] = backbone_optim.lr * param_group['lr_scale']
         param_groups.extend(backbone_param_groups)
 
-        others_decay_params, others_no_decay_params = map(
-            lambda nps: map(lambda np: np[1], nps),  # remove names
+        others_decay_param_group, others_no_decay_param_group = map(
+            lambda named_parameters: {
+                'param_names': [n for n, _ in named_parameters],
+                'param': [p for p, _ in named_parameters],
+            },
             partition_by_predicate(
                 lambda np: np[0] in others_no_decay_keys,
                 filter(lambda np: not np[0].startswith('backbone.'), self.named_parameters()),
@@ -100,11 +103,11 @@ class ExpModelBase(LightningModule):
 
         param_groups.extend([
             {
-                'params': others_decay_params,
+                **others_decay_param_group,
                 'weight_decay': optim.weight_decay,
             },
             {
-                'params': others_no_decay_params,
+                **others_no_decay_param_group,
                 'weight_decay': 0.,
             }
         ])
@@ -113,7 +116,13 @@ class ExpModelBase(LightningModule):
 
     def configure_optimizers(self):
         conf = self.conf
-        optimizer = create_optimizer(conf.optimizer, self.get_param_groups())
+        param_groups = self.get_param_groups()
+        named_parameters = dict(self.named_parameters())
+        for param_group in param_groups:
+            if 'params' not in param_group:
+                param_group['params'] = list(cytoolz.get(param_group['param_names'], named_parameters))
+
+        optimizer = create_optimizer(conf.optimizer, param_groups)
         scheduler = create_scheduler(conf.scheduler, optimizer)
         return {
             'optimizer': optimizer,

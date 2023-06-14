@@ -49,6 +49,9 @@ class ClsModel(ExpModelBase):
             logit /= len(self.tta_flips) + 1
         return logit
 
+    def infer_logit(self, batch: dict):
+        return self.cal_logit(batch, self.conf.do_tta)
+
     def training_step(self, batch, _batch_idx: int):
         logit = self.cal_logit(batch)
         loss = self.cls_loss_fn(logit, batch[DataKey.CLS])

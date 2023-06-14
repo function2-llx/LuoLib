@@ -9,7 +9,7 @@ import numpy as np
 from timm.models.layers import trunc_normal_
 import torch
 from torch import nn
-from torch.nn import functional as torch_f
+from torch.nn import functional as nnf
 from torch.utils import checkpoint
 
 from monai.networks.blocks import MLPBlock
@@ -275,7 +275,7 @@ class SwinLayer(nn.Module):
         window_size = np.minimum(self.max_window_size, spatial_shape)
         relative_position_index = compute_relative_position_index(tuple(window_size))
         pad_size = (window_size - spatial_shape % window_size) % window_size
-        x = torch_f.pad(x, tuple(np.ravel([np.zeros_like(pad_size), np.flip(pad_size)], 'F')))
+        x = nnf.pad(x, tuple(np.ravel([np.zeros_like(pad_size), np.flip(pad_size)], 'F')))
 
         img_mask = torch.zeros_like(x[0, 0], dtype=torch.int8)
         if np.any(pad_size):
@@ -303,7 +303,7 @@ class SwinLayer(nn.Module):
             it.cycle([np.zeros_like(shift_size), shift_size]),
             it.cycle([attn_mask, shift_attn_mask]),
         ):
-            if self.use_checkpoint:
+            if self.training and self.use_checkpoint:
                 x = checkpoint.checkpoint(block, x, window_size, block_shift_size, block_attn_mask, relative_position_index)
             else:
                 x = block.forward(x, window_size, block_shift_size, block_attn_mask, relative_position_index)
