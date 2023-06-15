@@ -25,6 +25,7 @@ __all__ = [
     'parse_node',
     'parse_cli',
     'parse_exp_conf',
+    'resolve_output_dir'
 ]
 
 # omegaconf: Unions of containers are not supported
@@ -248,8 +249,17 @@ def parse_cli(conf_type: type[T] | None = None) -> tuple[T, Path]:
     return conf, conf_path
 
 exp_conf_t = TypeVar('exp_conf_t', bound=ExpConfBase)
+def resolve_output_dir(exp_conf: exp_conf_t, conf_path: Path | None):
+    if OmegaConf.is_missing(exp_conf, 'output_dir'):
+        if OmegaConf.is_missing(exp_conf, 'exp_name') and conf_path is not None:
+            exp_conf.exp_name = conf_path.relative_to(exp_conf.conf_root).with_suffix('')
+        exp_conf.output_dir = exp_conf.output_root / exp_conf.exp_name
+    elif OmegaConf.is_missing(exp_conf, 'exp_name'):
+        exp_conf.exp_name = exp_conf.output_dir.relative_to(exp_conf.output_root).with_suffix('')
+    return exp_conf
+
 def parse_exp_conf(
-    conf_type: type[exp_conf_t], 
+    conf_type: type[exp_conf_t],
     conf_path: Path | None = None,
     conf: DictConfig | None = None,
 ) -> exp_conf_t:
@@ -260,10 +270,5 @@ def parse_exp_conf(
             exp_conf = parse_node(conf_path, conf_type)
     else:
         exp_conf: exp_conf_t = OmegaConf.merge(OmegaConf.structured(conf_type), conf)
-    if OmegaConf.is_missing(exp_conf, 'output_dir'):
-        if OmegaConf.is_missing(exp_conf, 'exp_name') and conf_path is not None:
-            exp_conf.exp_name = conf_path.relative_to(exp_conf.conf_root).with_suffix('')
-        exp_conf.output_dir = exp_conf.output_root / exp_conf.exp_name
-    elif OmegaConf.is_missing(exp_conf, 'exp_name'):
-        exp_conf.exp_name = exp_conf.output_dir.relative_to(exp_conf.output_root).with_suffix('')
+    resolve_output_dir(exp_conf, conf_path)
     return exp_conf

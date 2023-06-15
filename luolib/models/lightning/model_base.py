@@ -26,16 +26,16 @@ class ExpModelBase(LightningModule):
     def create_backbone(self) -> Backbone:
         return create_model(self.conf.backbone, backbone_registry)
 
+    @torch.no_grad()
     def backbone_dummy(self):
         conf = self.conf
-        with torch.no_grad():
-            self.backbone.eval()
-            dummy_input = torch.zeros(1, conf.num_input_channels, *conf.sample_shape)
-            dummy_output = self.backbone.forward(dummy_input)
-            if conf.print_shape:
-                print('backbone output shapes:')
-                for x in dummy_output.feature_maps:
-                    print(x.shape[1:])
+        self.backbone.eval()
+        dummy_input = torch.zeros(1, conf.num_input_channels, *conf.sample_shape)
+        dummy_output = self.backbone.forward(dummy_input)
+        if conf.print_shape:
+            print('backbone output shapes:')
+            for x in dummy_output.feature_maps:
+                print(x.shape[1:])
         return dummy_input, dummy_output
 
     @property
