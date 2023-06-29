@@ -1,5 +1,8 @@
+import itertools as it
+import warnings
 from typing import Sequence
 
+import einops
 import numpy as np
 import torch
 from torch import nn
@@ -163,3 +166,87 @@ class UNetUpLayer(nn.Module):
         x = self.upsample(x)
         x = torch.cat([x, skip], dim=1)
         return self.conv(x)
+
+class InflatableConv3d(nn.Conv3d):
+    def __init__(self, *args, d_inflation: str | None = None, **kwargs):
+        super().__init__(*args, **kwargs)
+        d = self.kernel_size[0]
+        if d_inflation is None:
+            # even kernel size is usually for downsampling
+            d_inflation = 'center' if d & 1 else 'average'
+        assert d_inflation in ['average', 'center']
+        self.inflation = d_inflation
+        if d_inflation == 'average' and d & 1 == 0:
+            warnings.warn('use center inflation for even size?')
+
+    def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
+        weight_key = f'{prefix}weight'
+        weight = state_dict.get(weight_key)
+        if weight is not None and weight.ndim + 1 == self.weight.ndim:
+            d = self.kernel_size[0]
+            match self.inflation:
+                case 'average':
+                    weight = einops.repeat(weight / d, 'co ci ... -> co ci d ...', d=d)
+                case 'center':
+                    new_weight = weight.new_zeros(*weight.shape[:2], d, *weight.shape[2:])
+                    new_weight[:, :, d >> 1] = weight
+                    weight = new_weight
+                case _:
+                    raise ValueError
+            state_dict[weight_key] = weight
+        return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
+class InflatableInputConv3d(InflatableConv3d):
+    def __init__(self, *args, force: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.force = force
+
+    def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
+        if (weight := state_dict.get(weight_key := f'{prefix}weight')) is not None \
+        and (weight.shape[1] != (ci := self.weight.shape[1]) or self.force):
+            state_dict[weight_key] = einops.repeat(
+                einops.reduce(weight, 'co ci ... -> co ...', 'sum') / ci,
+                'co ... -> co ci ...', ci=ci,
+            )
+        return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
+# RGB to grayscale ref: https://www.itu.int/rec/R-REC-BT.601
+class InflatableOutputConv3d(InflatableConv3d):
+    def __init__(self, *args, force: bool = False, c_inflation: str = 'RGB_L', **kwargs):
+        super().__init__(*args, **kwargs)
+        self.force = force
+        assert c_inflation in ['RGB_L', 'average']
+        if c_inflation == 'RGB_L':
+            assert self.out_channels == 1
+        self.c_inflation = c_inflation
+
+    def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
+        if (weight := state_dict.get(weight_key := f'{prefix}weight')) is not None \
+        and (weight.shape[0] != (co := self.weight.shape[0]) or self.force):
+            match self.c_inflation:
+                case 'average':
+                    weight = einops.repeat(
+                        einops.reduce(weight, 'co ci ... -> ci ...', 'sum') / co,
+                        'ci ... -> co ci ...', co=co,
+                    )
+                case 'RGB_L':
+                    assert weight.shape[0] == 3
+                    weight = einops.einsum(
+                        weight.new_tensor([0.299, 0.587, 0.114]), weight,
+                        'c, c ... -> ...'
+                    )[None]
+
+            state_dict[weight_key] = weight
+
+        if (bias := state_dict.get(bias_key := f'{prefix}bias')) is not None \
+        and (bias.shape[0] != (co := self.bias.shape[0]) or self.force):
+            match self.c_inflation:
+                case 'average':
+                    bias = einops.repeat(
+                        einops.reduce(bias, 'co -> ', 'sum') / co,
+                        ' -> co', co=co,
+                    )
+                case 'RGB_L':
+                    bias = torch.dot(bias.new_tensor([0.299, 0.587, 0.114]), bias)[None]
+            state_dict[bias_key] = bias
+        return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)

@@ -4,6 +4,7 @@ import torch
 from torch import nn
 from torch.nn import functional as nnf
 
+from luolib.models.blocks import InflatableConv3d
 from monai.utils import ensure_tuple_rep
 from monai.networks.blocks import get_output_padding, get_padding
 
@@ -85,22 +86,11 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
         return rearrange(x, '(n d) c h w -> n c h w d', n=batch_size).contiguous()
 
 class AdaptiveDownsample(nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int | None = None,
-        kernel_size: param3_t[int] = 2,
-        groups: int = 1,
-    ):
+    def __init__(self, in_channels: int, out_channels: int | None = None, kernel_size: param3_t[int] = 2):
         super().__init__()
         if out_channels is None:
             out_channels = in_channels
-        self.kernel_size = ensure_tuple_rep(kernel_size, 3)
-        self.out_channels = out_channels
-        self.groups = groups
-
-        self.weight = nn.Parameter(torch.empty(out_channels, in_channels, *self.kernel_size))
-        self.bias = nn.Parameter(torch.empty(out_channels))
+        self.conv = InflatableConv3d(in_channels, out_channels, kernel_size)
 
     def forward(self, x: torch.Tensor, spacing: torch.Tensor):
         if x.shape[0] != 1:
@@ -109,9 +99,9 @@ class AdaptiveDownsample(nn.Module):
         downsample_mask = spacing < 2 * spacing.amin()
         stride = [2 if downsample else 1 for downsample in downsample_mask]
         if not downsample_mask.all():
-            weight = self.weight.sum(dim=[i + 2 for i, downsample in enumerate(downsample_mask) if not downsample], keepdim=True)
+            weight = self.conv.weight.sum(dim=[i + 2 for i, downsample in enumerate(downsample_mask) if not downsample], keepdim=True)
         else:
-            weight = self.weight
+            weight = self.conv.weight
         pad = [
             (0, 0) if s == 1
             else (k - 2 >> 1, k - 1 >> 1)
@@ -119,7 +109,7 @@ class AdaptiveDownsample(nn.Module):
         ]
         pad = list(cytoolz.concat(pad[::-1]))
         x = nnf.pad(x, pad)
-        x = nnf.conv3d(x, weight, self.bias, stride, groups=self.groups)
+        x = nnf.conv3d(x, weight, self.conv.bias, stride)
         new_spacing = spacing.clone()
         new_spacing[downsample_mask] *= 2
         return x, new_spacing[None], downsample_mask[None]
@@ -129,7 +119,7 @@ class AdaptiveUpsample(nn.Module):
         super().__init__()
         if out_channels is None:
             out_channels = in_channels
-        self.conv = nn.Conv3d(in_channels, out_channels, kernel_size=3, padding=1)
+        self.conv = InflatableConv3d(in_channels, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x: torch.Tensor, upsample_mask: torch.Tensor):
         if x.shape[0] != 1:
