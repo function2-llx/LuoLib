@@ -90,7 +90,7 @@ class AdaptiveDownsample(nn.Module):
         super().__init__()
         if out_channels is None:
             out_channels = in_channels
-        self.conv = InflatableConv3d(in_channels, out_channels, kernel_size)
+        self.conv = InflatableConv3d(in_channels, out_channels, kernel_size, d_inflation='average')
 
     def forward(self, x: torch.Tensor, spacing: torch.Tensor):
         if x.shape[0] != 1:
@@ -114,6 +114,7 @@ class AdaptiveDownsample(nn.Module):
         new_spacing[downsample_mask] *= 2
         return x, new_spacing[None], downsample_mask[None]
 
+# following VQGAN implementation
 class AdaptiveUpsample(nn.Module):
     def __init__(self, in_channels: int, out_channels: int | None = None):
         super().__init__()

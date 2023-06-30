@@ -1,6 +1,6 @@
 import itertools as it
 import warnings
-from typing import Sequence
+from typing import Sequence, Literal
 
 import einops
 import numpy as np
@@ -168,7 +168,7 @@ class UNetUpLayer(nn.Module):
         return self.conv(x)
 
 class InflatableConv3d(nn.Conv3d):
-    def __init__(self, *args, d_inflation: str | None = None, **kwargs):
+    def __init__(self, *args, d_inflation: Literal['average', 'center'] | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         d = self.kernel_size[0]
         if d_inflation is None:
@@ -212,7 +212,7 @@ class InflatableInputConv3d(InflatableConv3d):
 
 # RGB to grayscale ref: https://www.itu.int/rec/R-REC-BT.601
 class InflatableOutputConv3d(InflatableConv3d):
-    def __init__(self, *args, force: bool = False, c_inflation: str = 'RGB_L', **kwargs):
+    def __init__(self, *args, force: bool = False, c_inflation: Literal['RGB_L', 'average'] = 'RGB_L', **kwargs):
         super().__init__(*args, **kwargs)
         self.force = force
         assert c_inflation in ['RGB_L', 'average']
