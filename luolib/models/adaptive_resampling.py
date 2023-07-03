@@ -4,10 +4,9 @@ import torch
 from torch import nn
 from torch.nn import functional as nnf
 
-from luolib.models.blocks import InflatableConv3d
-from monai.utils import ensure_tuple_rep
 from monai.networks.blocks import get_output_padding, get_padding
 
+from luolib.models.blocks import InflatableConv3d
 from luolib.types import param3_t
 
 class AdaptiveDownsampling(nn.Conv3d):
@@ -123,9 +122,12 @@ class AdaptiveUpsample(nn.Module):
         self.conv = InflatableConv3d(in_channels, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x: torch.Tensor, upsample_mask: torch.Tensor):
-        if x.shape[0] != 1:
-            raise NotImplementedError('only support batch size of 1')
-        upsample_mask = upsample_mask[0]
+        if upsample_mask.ndim == 2:
+            if upsample_mask.shape[0] != 1:
+                assert x.shape[0] == upsample_mask.shape[0]
+                if not (upsample_mask[0:1] == upsample_mask).all():
+                    raise NotImplementedError('only support consistent mask')
+            upsample_mask = upsample_mask[0]
         scale_factor = tuple(2. if upsample else 1. for upsample in upsample_mask)
         x = nnf.interpolate(x, scale_factor=scale_factor, mode="nearest-exact")
         x = self.conv(x)

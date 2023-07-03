@@ -6,7 +6,7 @@ from torch import nn
 
 from luolib.conf import ModelConf
 
-def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | None, key_prefix: str):
+def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | None = None, key_prefix: str = ''):
     if ckpt_path is None:
         return
     ckpt = torch.load(ckpt_path, map_location='cpu')
@@ -15,7 +15,7 @@ def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | No
             state_dict_key = 'state_dict'
         elif 'model' in ckpt:
             state_dict_key = 'model'
-    from timm.models.helpers import clean_state_dict
+    from timm.models import clean_state_dict
     state_dict = clean_state_dict(ckpt if state_dict_key is None else ckpt[state_dict_key])
     state_dict = {
         k[len(key_prefix):]: v

@@ -216,8 +216,6 @@ class InflatableOutputConv3d(InflatableConv3d):
         super().__init__(*args, **kwargs)
         self.force = force
         assert c_inflation in ['RGB_L', 'average']
-        if c_inflation == 'RGB_L':
-            assert self.out_channels == 1
         self.c_inflation = c_inflation
 
     def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
@@ -230,7 +228,7 @@ class InflatableOutputConv3d(InflatableConv3d):
                         'ci ... -> co ci ...', co=co,
                     )
                 case 'RGB_L':
-                    assert weight.shape[0] == 3
+                    assert weight.shape[0] == 3 and self.out_channels == 1
                     weight = einops.einsum(
                         weight.new_tensor([0.299, 0.587, 0.114]), weight,
                         'c, c ... -> ...'
