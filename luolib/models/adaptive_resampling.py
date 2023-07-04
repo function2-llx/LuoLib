@@ -91,6 +91,55 @@ class AdaptiveDownsample(nn.Module):
             out_channels = in_channels
         self.conv = InflatableConv3d(in_channels, out_channels, kernel_size, d_inflation='average')
 
+    @property
+    def in_channels(self):
+        return self.conv.out_channels
+
+    @property
+    def out_channels(self):
+        return self.conv.out_channels
+
+    @property
+    def kernel_size(self):
+        return self.conv.kernel_size
+
+    def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
+        def gaussian_kernel(sigma: float):
+            kernel = torch.tensor(1)
+            for size in self.kernel_size:
+                if size == 1:
+                    continue
+                dist = torch.linspace(-(size - 1) / 2, (size - 1) / 2, size)
+                exp = torch.exp(-dist ** 2 / (2 * sigma ** 2))
+                kernel = kernel.view(-1).outer(exp)
+            kernel = kernel.view(self.kernel_size)
+            kernel /= kernel.sum()
+            kf = kernel.flatten()
+            diff = (kf[0::2].sum() - kf[1::2].sum()).abs()
+            return kernel, diff
+
+        if len(state_dict) == 0 and self.in_channels == self.out_channels:
+            # find a gaussian kernel balance the weights for odd and even positions
+            # maybe there's a better way to solve it, but this is fast enough and I don't have time to find it
+            low, high = 0, 10
+            for _ in range(200):
+                m1 = low + (high - low) / 3
+                m2 = low + (high - low) / 3 * 2
+                k1, d1 = gaussian_kernel(m1)
+                k2, d2 = gaussian_kernel(m2)
+                if d1 < d2:
+                    high = m2
+                    kernel = k1
+                else:
+                    low = m1
+                    kernel = k2
+            weight = torch.zeros_like(self.conv.weight)
+            weight[torch.eye(self.out_channels, dtype=torch.bool, device=weight.device)] = kernel.to(weight)
+            state_dict[f'{prefix}conv.weight'] = weight
+            state_dict[f'{prefix}conv.bias'] = torch.zeros_like(self.conv.bias)
+
+        return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
     def forward(self, x: torch.Tensor, spacing: torch.Tensor):
         if x.shape[0] != 1:
             raise NotImplementedError('only support batch size of 1')
@@ -113,13 +162,30 @@ class AdaptiveDownsample(nn.Module):
         new_spacing[downsample_mask] *= 2
         return x, new_spacing[None], downsample_mask[None]
 
-# following VQGAN implementation
+# following VQGAN's implementation
 class AdaptiveUpsample(nn.Module):
     def __init__(self, in_channels: int, out_channels: int | None = None):
         super().__init__()
         if out_channels is None:
             out_channels = in_channels
         self.conv = InflatableConv3d(in_channels, out_channels, kernel_size=3, padding=1)
+
+    @property
+    def in_channels(self):
+        return self.conv.out_channels
+
+    @property
+    def out_channels(self):
+        return self.conv.out_channels
+
+    def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
+        if len(state_dict) == 0 and self.in_channels == self.out_channels:
+            # identity
+            weight = torch.zeros_like(self.conv.weight)
+            weight[:, :, *(k - 1 >> 1 for k in self.conv.kernel_size)] = torch.eye(self.out_channels)
+            state_dict[f'{prefix}conv.weight'] = weight
+            state_dict[f'{prefix}conv.bias'] = torch.zeros_like(self.conv.bias)
+        return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def forward(self, x: torch.Tensor, upsample_mask: torch.Tensor):
         if upsample_mask.ndim == 2:
@@ -129,6 +195,6 @@ class AdaptiveUpsample(nn.Module):
                     raise NotImplementedError('only support consistent mask')
             upsample_mask = upsample_mask[0]
         scale_factor = tuple(2. if upsample else 1. for upsample in upsample_mask)
-        x = nnf.interpolate(x, scale_factor=scale_factor, mode="nearest-exact")
+        x = nnf.interpolate(x, scale_factor=scale_factor, mode='nearest-exact')
         x = self.conv(x)
         return x

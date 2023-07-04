@@ -181,8 +181,7 @@ class InflatableConv3d(nn.Conv3d):
 
     def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
         weight_key = f'{prefix}weight'
-        weight = state_dict.get(weight_key)
-        if weight is not None and weight.ndim + 1 == self.weight.ndim:
+        if (weight := state_dict.get(weight_key)) is not None and weight.ndim + 1 == self.weight.ndim:
             d = self.kernel_size[0]
             match self.inflation:
                 case 'average':
