@@ -170,14 +170,13 @@ class UNetUpLayer(nn.Module):
 class InflatableConv3d(nn.Conv3d):
     def __init__(self, *args, d_inflation: Literal['average', 'center'] | None = None, **kwargs):
         super().__init__(*args, **kwargs)
-        d = self.kernel_size[0]
         if d_inflation is None:
-            # even kernel size is usually for downsampling
-            d_inflation = 'center' if d & 1 else 'average'
+            if self.stride[0] == 2 and self.kernel_size[0] == 3:
+                d_inflation = 'average'
+            else:
+                d_inflation = 'center'
         assert d_inflation in ['average', 'center']
         self.inflation = d_inflation
-        if d_inflation == 'average' and d & 1 == 0:
-            warnings.warn('use center inflation for even size?')
 
     def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
         weight_key = f'{prefix}weight'
@@ -188,7 +187,10 @@ class InflatableConv3d(nn.Conv3d):
                     weight = einops.repeat(weight / d, 'co ci ... -> co ci d ...', d=d)
                 case 'center':
                     new_weight = weight.new_zeros(*weight.shape[:2], d, *weight.shape[2:])
-                    new_weight[:, :, d >> 1] = weight
+                    if d & 1:
+                        new_weight[:, :, d >> 1] = weight
+                    else:
+                        new_weight[:, :, [d - 1 >> 1, d >> 1]] = weight[:, :, None] / 2
                     weight = new_weight
                 case _:
                     raise ValueError

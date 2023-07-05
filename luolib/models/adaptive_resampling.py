@@ -1,3 +1,5 @@
+from typing import Literal
+
 import cytoolz
 from einops import rearrange
 import torch
@@ -85,11 +87,18 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
         return rearrange(x, '(n d) c h w -> n c h w d', n=batch_size).contiguous()
 
 class AdaptiveDownsample(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int | None = None, kernel_size: param3_t[int] = 2):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int | None = None,
+        kernel_size: param3_t[int] = 2,
+        conv_t: type[InflatableConv3d] = InflatableConv3d,
+        d_inflation: Literal['average', 'center'] | None = None,
+    ):
         super().__init__()
         if out_channels is None:
             out_channels = in_channels
-        self.conv = InflatableConv3d(in_channels, out_channels, kernel_size, d_inflation='average')
+        self.conv = conv_t(in_channels, out_channels, kernel_size, stride=2, d_inflation=d_inflation)
 
     @property
     def in_channels(self):
@@ -104,21 +113,26 @@ class AdaptiveDownsample(nn.Module):
         return self.conv.kernel_size
 
     def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
-        def gaussian_kernel(sigma: float):
-            kernel = torch.tensor(1)
-            for size in self.kernel_size:
-                if size == 1:
-                    continue
-                dist = torch.linspace(-(size - 1) / 2, (size - 1) / 2, size)
-                exp = torch.exp(-dist ** 2 / (2 * sigma ** 2))
-                kernel = kernel.view(-1).outer(exp)
-            kernel = kernel.view(self.kernel_size)
-            kernel /= kernel.sum()
-            kf = kernel.flatten()
-            diff = (kf[0::2].sum() - kf[1::2].sum()).abs()
-            return kernel, diff
+        if (weight := state_dict.pop(f'{prefix}weight', None)) is not None:
+            state_dict[f'{prefix}conv.weight'] = weight
+            if (bias := state_dict.pop(f'{prefix}bias', None)) is None:
+                bias = torch.zeros_like(self.conv.bias)
+            state_dict[f'{prefix}conv.bias'] = bias
 
         if len(state_dict) == 0 and self.in_channels == self.out_channels:
+            def gaussian_kernel(sigma: float):
+                kernel = torch.tensor(1)
+                for size in self.kernel_size:
+                    if size == 1:
+                        continue
+                    dist = torch.linspace(-(size - 1) / 2, (size - 1) / 2, size)
+                    exp = torch.exp(-dist ** 2 / (2 * sigma ** 2))
+                    kernel = kernel.view(-1).outer(exp)
+                kernel = kernel.view(self.kernel_size)
+                kernel /= kernel.sum()
+                kf = kernel.flatten()
+                diff = (kf[0::2].sum() - kf[1::2].sum()).abs()
+                return kernel, diff
             # find a gaussian kernel balance the weights for odd and even positions
             # maybe there's a better way to solve it, but this is fast enough and I don't have time to find it
             low, high = 0, 10

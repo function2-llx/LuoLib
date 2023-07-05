@@ -1,7 +1,7 @@
 import importlib
+from collections.abc import Mapping
 
-from omegaconf import OmegaConf
-
+from luolib.conf import parse_node
 from luolib.utils import PathLike
 
 def get_obj_from_str(string: str, reload: bool = False):
@@ -11,7 +11,8 @@ def get_obj_from_str(string: str, reload: bool = False):
         importlib.reload(module_imp)
     return getattr(importlib.import_module(module, package=None), cls)
 
-def instantiate_from_conf(conf: dict | PathLike):
+def instantiate_from_conf(conf: Mapping | PathLike):
     if isinstance(conf, PathLike):
-        conf = OmegaConf.load(conf)
-    return get_obj_from_str(conf['target'])(**conf.get('kwargs', dict()))
+        conf = parse_node(conf)
+    target_cls = get_obj_from_str(conf.target)
+    return target_cls(**conf.get('kwargs', dict()))
