@@ -168,13 +168,10 @@ class UNetUpLayer(nn.Module):
         return self.conv(x)
 
 class InflatableConv3d(nn.Conv3d):
-    def __init__(self, *args, d_inflation: Literal['average', 'center'] | None = None, **kwargs):
+    def __init__(self, *args, d_inflation: Literal['average', 'center'] = 'center', **kwargs):
         super().__init__(*args, **kwargs)
         if d_inflation is None:
-            if self.stride[0] == 2 and self.kernel_size[0] == 3:
-                d_inflation = 'average'
-            else:
-                d_inflation = 'center'
+            d_inflation = 'center'
         assert d_inflation in ['average', 'center']
         self.inflation = d_inflation
 
@@ -196,6 +193,19 @@ class InflatableConv3d(nn.Conv3d):
                     raise ValueError
             state_dict[weight_key] = weight
         return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.shape[2] == 1 and self.kernel_size[0] & 1 == 0:
+            shape = list(self.weight.shape)
+            shape[2] -= 1
+            weight = self.weight.new_zeros(*shape)
+            mid = shape[2] >> 1
+            weight[:, :, :mid] = self.weight[:, :, :mid]
+            weight[:, :, mid] = self.weight[:, :, mid:mid + 2].sum(dim=2)
+            weight[:, :, mid + 1:] = self.weight[:, :, mid + 2:]
+        else:
+            weight = self.weight
+        return self._conv_forward(x, weight, self.bias)
 
 class InflatableInputConv3d(InflatableConv3d):
     def __init__(self, *args, force: bool = False, **kwargs):

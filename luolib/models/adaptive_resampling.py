@@ -93,12 +93,13 @@ class AdaptiveDownsample(nn.Module):
         out_channels: int | None = None,
         kernel_size: param3_t[int] = 2,
         conv_t: type[InflatableConv3d] = InflatableConv3d,
-        d_inflation: Literal['average', 'center'] | None = None,
+        bias: bool = True,
+        d_inflation: Literal['average', 'center'] = 'center',
     ):
         super().__init__()
         if out_channels is None:
             out_channels = in_channels
-        self.conv = conv_t(in_channels, out_channels, kernel_size, stride=2, d_inflation=d_inflation)
+        self.conv = conv_t(in_channels, out_channels, kernel_size, stride=2, bias=bias, d_inflation=d_inflation)
 
     @property
     def in_channels(self):
@@ -115,9 +116,8 @@ class AdaptiveDownsample(nn.Module):
     def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
         if (weight := state_dict.pop(f'{prefix}weight', None)) is not None:
             state_dict[f'{prefix}conv.weight'] = weight
-            if (bias := state_dict.pop(f'{prefix}bias', None)) is None:
-                bias = torch.zeros_like(self.conv.bias)
-            state_dict[f'{prefix}conv.bias'] = bias
+            if (bias := state_dict.pop(f'{prefix}bias', None)) is not None:
+                state_dict[f'{prefix}conv.bias'] = bias
 
         if len(state_dict) == 0 and self.in_channels == self.out_channels:
             def gaussian_kernel(sigma: float):
@@ -150,7 +150,8 @@ class AdaptiveDownsample(nn.Module):
             weight = torch.zeros_like(self.conv.weight)
             weight[torch.eye(self.out_channels, dtype=torch.bool, device=weight.device)] = kernel.to(weight)
             state_dict[f'{prefix}conv.weight'] = weight
-            state_dict[f'{prefix}conv.bias'] = torch.zeros_like(self.conv.bias)
+            if self.conv.bias is not None:
+                state_dict[f'{prefix}conv.bias'] = torch.zeros_like(self.conv.bias)
 
         return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
