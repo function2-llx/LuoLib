@@ -33,7 +33,11 @@ class ParamGroup(TypedDict, total=False):
 class LRSchedulerConfig(LRSchedulerConfigBase):
     scheduler: dict  # bypass jsonargparse check
 
-Tr = TypeVar('Tr', bound=int | float)
-class RangeTuple(NamedTuple, Generic[Tr]):
-    min: Tr
-    max: Tr
+@dataclass
+class RangeTuple:
+    min: float | int
+    max: float | int
+
+    def __iter__(self):
+        yield self.min
+        yield self.max

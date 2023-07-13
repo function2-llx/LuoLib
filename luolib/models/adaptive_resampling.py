@@ -1,15 +1,20 @@
+import abc
+from collections.abc import Sequence
 from typing import Literal
 
 import cytoolz
 from einops import rearrange
+import numpy as np
 import torch
 from torch import nn
 from torch.nn import functional as nnf
 
 from monai.networks.blocks import get_output_padding, get_padding
+from monai import transforms as mt
 
 from luolib.models.blocks import InflatableConv3d
 from luolib.types import param3_t
+from monai.utils import InterpolateMode
 
 class AdaptiveDownsampling(nn.Conv3d):
     STRIDE = 2
@@ -86,7 +91,36 @@ class AdaptiveUpsampling(nn.ConvTranspose3d):
         )
         return rearrange(x, '(n d) c h w -> n c h w d', n=batch_size).contiguous()
 
-class AdaptiveDownsample(nn.Module):
+class AdaptiveDownsample(nn.Module, abc.ABC):
+    def forward(self, x: torch.Tensor, spacing: torch.Tensor):
+        if x.shape[0] != 1:
+            raise NotImplementedError('only support batch size of 1')
+        spacing = spacing[0]
+        downsample_mask = spacing < 2 * spacing.amin()
+        stride = [2 if downsample else 1 for downsample in downsample_mask]
+        x = self.downsample(x, downsample_mask, stride)
+        new_spacing = spacing.clone()
+        new_spacing[downsample_mask] *= 2
+        return x, new_spacing[None], downsample_mask[None]
+
+    @abc.abstractmethod
+    def downsample(self, x: torch.Tensor, downsample_mask: torch.BoolTensor, stride: list[int]):
+        pass
+
+class AdaptiveInterpolateDownsample(AdaptiveDownsample):
+    def __init__(self, mode: InterpolateMode = InterpolateMode.AREA):
+        super().__init__()
+        self.mode = mode
+
+    def downsample(self, x: torch.Tensor, _downsample_mask: torch.BoolTensor, stride: list[int]):
+        resizer = mt.Resize(
+            np.array(x.shape[2:]) // np.array(stride),
+            mode=self.mode,
+            anti_aliasing=True,
+        )
+        return resizer(x[0])[None]
+
+class AdaptiveConvDownsample(AdaptiveDownsample):
     def __init__(
         self,
         in_channels: int,
@@ -112,6 +146,20 @@ class AdaptiveDownsample(nn.Module):
     @property
     def kernel_size(self):
         return self.conv.kernel_size
+
+    def downsample(self, x: torch.Tensor, downsample_mask: torch.BoolTensor, stride: list[int]):
+        if not downsample_mask.all():
+            weight = self.conv.weight.sum(dim=[i + 2 for i, downsample in enumerate(downsample_mask) if not downsample], keepdim=True)
+        else:
+            weight = self.conv.weight
+        pad = [
+            (0, 0) if s == 1
+            else (k - 2 >> 1, k - 1 >> 1)
+            for k, s in zip(weight.shape[2:], stride)
+        ]
+        pad = list(cytoolz.concat(pad[::-1]))
+        x = nnf.pad(x, pad)
+        return nnf.conv3d(x, weight, self.conv.bias, stride)
 
     def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
         if (weight := state_dict.pop(f'{prefix}weight', None)) is not None:
@@ -155,32 +203,29 @@ class AdaptiveDownsample(nn.Module):
 
         return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
-    def forward(self, x: torch.Tensor, spacing: torch.Tensor):
-        if x.shape[0] != 1:
-            raise NotImplementedError('only support batch size of 1')
-        spacing = spacing[0]
-        downsample_mask = spacing < 2 * spacing.amin()
-        stride = [2 if downsample else 1 for downsample in downsample_mask]
-        if not downsample_mask.all():
-            weight = self.conv.weight.sum(dim=[i + 2 for i, downsample in enumerate(downsample_mask) if not downsample], keepdim=True)
-        else:
-            weight = self.conv.weight
-        pad = [
-            (0, 0) if s == 1
-            else (k - 2 >> 1, k - 1 >> 1)
-            for k, s in zip(weight.shape[2:], stride)
-        ]
-        pad = list(cytoolz.concat(pad[::-1]))
-        x = nnf.pad(x, pad)
-        x = nnf.conv3d(x, weight, self.conv.bias, stride)
-        new_spacing = spacing.clone()
-        new_spacing[downsample_mask] *= 2
-        return x, new_spacing[None], downsample_mask[None]
+class AdaptiveUpsample(nn.Module):
+    def __init__(self, mode: InterpolateMode = InterpolateMode.TRILINEAR):
+        super().__init__()
+        self.mode = mode
+
+    def upsample(self, x: torch.Tensor, upsample_mask: torch.Tensor):
+        if upsample_mask.ndim == 2:
+            if upsample_mask.shape[0] != 1:
+                assert x.shape[0] == upsample_mask.shape[0]
+                if not (upsample_mask[0:1] == upsample_mask).all():
+                    raise NotImplementedError('only support consistent mask')
+            upsample_mask = upsample_mask[0]
+        scale_factor = tuple(2. if upsample else 1. for upsample in upsample_mask)
+        x = nnf.interpolate(x, scale_factor=scale_factor, mode=self.mode)
+        return x
+
+    def forward(self, x: torch.Tensor, upsample_mask: torch.Tensor):
+        return self.upsample(x, upsample_mask)
 
 # following VQGAN's implementation
-class AdaptiveUpsample(nn.Module):
-    def __init__(self, in_channels: int, out_channels: int | None = None):
-        super().__init__()
+class AdaptiveConvUpsample(AdaptiveUpsample):
+    def __init__(self, in_channels: int, out_channels: int | None = None, mode: InterpolateMode = InterpolateMode.NEAREST_EXACT):
+        super().__init__(mode)
         if out_channels is None:
             out_channels = in_channels
         self.conv = InflatableConv3d(in_channels, out_channels, kernel_size=3, padding=1)
@@ -193,6 +238,11 @@ class AdaptiveUpsample(nn.Module):
     def out_channels(self):
         return self.conv.out_channels
 
+    def forward(self, x: torch.Tensor, upsample_mask: torch.Tensor):
+        x = self.upsample(x, upsample_mask)
+        x = self.conv(x)
+        return x
+
     def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
         if len(state_dict) == 0 and self.in_channels == self.out_channels:
             # identity
@@ -201,15 +251,3 @@ class AdaptiveUpsample(nn.Module):
             state_dict[f'{prefix}conv.weight'] = weight
             state_dict[f'{prefix}conv.bias'] = torch.zeros_like(self.conv.bias)
         return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
-
-    def forward(self, x: torch.Tensor, upsample_mask: torch.Tensor):
-        if upsample_mask.ndim == 2:
-            if upsample_mask.shape[0] != 1:
-                assert x.shape[0] == upsample_mask.shape[0]
-                if not (upsample_mask[0:1] == upsample_mask).all():
-                    raise NotImplementedError('only support consistent mask')
-            upsample_mask = upsample_mask[0]
-        scale_factor = tuple(2. if upsample else 1. for upsample in upsample_mask)
-        x = nnf.interpolate(x, scale_factor=scale_factor, mode='nearest-exact')
-        x = self.conv(x)
-        return x
