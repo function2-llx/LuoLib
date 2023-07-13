@@ -14,8 +14,7 @@ from luolib.types import ParamGroup
 from luolib.utils import partition_by_predicate
 from luolib.optim import create_optimizer, param_groups_layer_decay
 from luolib.scheduler import create_scheduler
-from ..registry import backbone_registry
-from ..utils import create_model, get_no_weight_decay_keys
+from ..utils import get_no_weight_decay_keys
 
 class ExpModelBase(LightningModule):
     def __init__(self, conf: ExpConfBase):

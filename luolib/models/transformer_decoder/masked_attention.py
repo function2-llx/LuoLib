@@ -7,11 +7,11 @@ from torch import nn
 from torch.nn import functional as nnf
 from torch.utils import checkpoint
 
-from luolib.models import transformer_decoder_registry
-from luolib.models.init import init_common
-from luolib.models.layers import PositionEmbedding
-from luolib.utils import flatten
 from monai.networks.layers import Conv
+
+from luolib.utils import flatten
+from ..init import init_common
+from ..layers import PositionEmbedding
 
 class MaskedAttentionDecoderLayer(nn.Module):
     def __init__(
@@ -100,7 +100,6 @@ class MaskedAttentionDecoderLayer(nn.Module):
         return hidden_states
 
 # modified from transformers.models.mask2former.modeling_mask2former.Mask2FormerMaskedAttentionDecoder
-@transformer_decoder_registry.register_module(name='mask')
 class MaskedAttentionDecoder(nn.Module):
     def __init__(
         self,

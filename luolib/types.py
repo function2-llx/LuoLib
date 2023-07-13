@@ -1,10 +1,9 @@
-from __future__ import annotations
-
-from collections.abc import Iterable, Sequence
-from typing import TypeVar, TypedDict
-from typing_extensions import Required
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import TypeVar, TypedDict, NamedTuple, Generic
 
 from torch import nn
+from lightning.pytorch.utilities.types import LRSchedulerConfig as LRSchedulerConfigBase
 
 T = TypeVar('T')
 tuple2_t = tuple[T, T]
@@ -25,7 +24,16 @@ def check_tuple(obj, n: int, t: type):
 # set total=False to comfort IDE
 class ParamGroup(TypedDict, total=False):
     params: list[nn.Parameter] | None
-    param_names: Required[list[str]]
+    names: list[str]
     lr_scale: float  # inserted by timm
     lr: float
     weight_decay: float
+
+@dataclass
+class LRSchedulerConfig(LRSchedulerConfigBase):
+    scheduler: dict  # bypass jsonargparse check
+
+Tr = TypeVar('Tr', bound=int | float)
+class RangeTuple(NamedTuple, Generic[Tr]):
+    min: Tr
+    max: Tr

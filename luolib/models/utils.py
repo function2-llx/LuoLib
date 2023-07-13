@@ -1,10 +1,10 @@
+from collections.abc import Iterable
 from pathlib import Path
 
-from mmengine import Registry
 import torch
 from torch import nn
 
-from luolib.conf import ModelConf
+from luolib.types import ParamGroup
 
 def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | None = None, key_prefix: str = ''):
     if ckpt_path is None:
@@ -26,14 +26,6 @@ def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | No
     print("Loaded {} from checkpoint '{}'".format(state_dict_key, ckpt_path))
     print('missing keys:', missing_keys)
     print('unexpected keys:', unexpected_keys)
-
-# TODO: filter kwargs
-def create_model(conf: ModelConf, registry: Registry, **kwargs):
-    create_fn = registry.get(conf.name)
-    model = create_fn(**conf.kwargs, **kwargs)
-    load_ckpt(model, conf.ckpt_path, conf.state_dict_key, conf.key_prefix)
-
-    return model
 
 def get_no_weight_decay_keys(module: nn.Module):
     # modify from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py, `configure_optimizers`
@@ -80,3 +72,20 @@ def get_no_weight_decay_keys(module: nn.Module):
     inter_params = decay & no_decay
     assert len(inter_params) == 0, f"parameters {inter_params} made it into both decay/no_decay sets!"
     return no_decay
+
+def split_by_weight_decay(named_parameters: Iterable[tuple[str, nn.Parameter]], no_weight_decay_keys: set[str]) -> list[ParamGroup]:
+    no_decay_group, decay_group = [], []
+    for name, param in named_parameters:
+        if name in no_weight_decay_keys:
+            no_decay_group.append(param)
+        else:
+            decay_group.append(param)
+    return [
+        {
+            'params': no_decay_group,
+            'weight_decay': 0.,
+        },
+        {
+            'params': decay_group,
+        }
+    ]

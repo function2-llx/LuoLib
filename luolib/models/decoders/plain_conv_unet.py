@@ -6,15 +6,14 @@ import torch
 from torch import nn
 
 from monai.luolib import Decoder, DecoderOutput
-from luolib.models import decoder_registry
-from luolib.models.blocks import UNetUpLayer, get_conv_layer
-from luolib.models.init import init_common
-from luolib.models.layers import Act, Norm
+
 from luolib.types import spatial_param_seq_t
+from ..blocks import UNetUpLayer, get_conv_layer
+from ..init import init_common
+from ..layers import Act, Norm
 
 __all__ = []
 
-@decoder_registry.register_module('unet')
 class PlainConvUNetDecoder(Decoder):
     def __init__(
         self,

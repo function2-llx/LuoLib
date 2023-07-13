@@ -11,8 +11,7 @@ from monai.luolib import Decoder
 
 from luolib.utils import DataKey
 from luolib.conf import Mask2FormerConf
-from .model_base import ExpModelBase, create_model
-from ..registry import decoder_registry, transformer_decoder_registry
+from .model_base import ExpModelBase
 from ..transformer_decoder.masked_attention import MaskedAttentionDecoder
 
 def sample_point(feature_map: torch.Tensor, point_coordinates: torch.Tensor, transformed: bool = False, **kwargs) -> torch.Tensor:

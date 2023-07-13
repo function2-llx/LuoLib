@@ -9,14 +9,12 @@ from torch import nn
 
 from monai.luolib import Backbone, BackboneOutput
 
-from luolib.models import backbone_registry
 from luolib.models.init import init_common
 from luolib.models.layers import LayerNormNd, Norm
 from .common3d import SwinLayer
 
 __all__ = []
 
-@backbone_registry.register_module(name='swin3d')
 class SwinBackbone(Backbone):
     """
     Modify from MONAI implementation, support 3D only

@@ -7,7 +7,6 @@ from torch import nn
 from torch.nn import functional as nnf
 from torch.utils import checkpoint
 
-from luolib.models import decoder_registry
 from luolib.models.blocks import get_conv_layer
 from luolib.models.init import init_common
 from luolib.models.layers import Norm, Act, PositionEmbedding
@@ -149,7 +148,6 @@ class MultiscaleDeformablePixelDecoderLayer(nn.Module):
         return hidden_states
 
 # from transformers.models.mask2former.modeling_mask2former import Mask2FormerPixelDecoder
-@decoder_registry.register_module('msdeform')
 class MultiscaleDeformablePixelDecoder(Decoder):
     def __init__(
         self,

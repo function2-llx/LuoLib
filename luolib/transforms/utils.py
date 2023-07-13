@@ -3,13 +3,13 @@ from typing import Any, Hashable, Mapping, Sequence
 import numpy as np
 import torch
 
-from monai import transforms as monai_t
+from monai import transforms as mt
 from monai.config import DtypeLike, NdarrayOrTensor
 from monai.transforms import Randomizable
 
 from luolib.types import tuple2_t
 
-class SpatialRangeGenerator(monai_t.Randomizable):
+class SpatialRangeGenerator(mt.Randomizable):
     def __init__(
         self,
         rand_range: Sequence[tuple2_t[float]] | tuple2_t[float],
@@ -65,7 +65,7 @@ class SpatialRangeGenerator(monai_t.Randomizable):
             ret = ret.astype(self.dtype)
         return ret
 
-class RandSpatialCenterGeneratorD(monai_t.Randomizable):
+class RandSpatialCenterGeneratorD(mt.Randomizable):
     def __init__(
         self,
         ref_key: str,
@@ -75,7 +75,7 @@ class RandSpatialCenterGeneratorD(monai_t.Randomizable):
         random_size: bool = False,
     ):
         self.ref_key = ref_key
-        self.dummy_rand_cropper = monai_t.RandSpatialCrop(roi_size, max_roi_size, random_center, random_size)
+        self.dummy_rand_cropper = mt.RandSpatialCrop(roi_size, max_roi_size, random_center, random_size)
 
     def set_random_state(self, seed: int | None = None, state: np.random.RandomState | None = None) -> Randomizable:
         super().set_random_state(seed, state)
@@ -91,13 +91,13 @@ class RandSpatialCenterGeneratorD(monai_t.Randomizable):
         if self.dummy_rand_cropper.random_center:
             slices = self.dummy_rand_cropper._slices
         else:
-            slices = monai_t.CenterSpatialCrop(self.dummy_rand_cropper._size).compute_slices(spatial_size)
+            slices = mt.CenterSpatialCrop(self.dummy_rand_cropper._size).compute_slices(spatial_size)
         return tuple(
             s.start + s.stop >> 1
             for s in slices
         )
 
-class RandCenterGeneratorByLabelClassesD(monai_t.Randomizable):
+class RandCenterGeneratorByLabelClassesD(mt.Randomizable):
     def __init__(
         self,
         label_key: str,
@@ -113,7 +113,7 @@ class RandCenterGeneratorByLabelClassesD(monai_t.Randomizable):
         self.label_key = label_key
         self.image_key = image_key
         self.indices_key = indices_key
-        self.dummy_rand_cropper = monai_t.RandCropByLabelClasses(
+        self.dummy_rand_cropper = mt.RandCropByLabelClasses(
             roi_size,
             ratios,
             num_classes=num_classes,
@@ -141,7 +141,7 @@ class RandCenterGeneratorByLabelClassesD(monai_t.Randomizable):
 
         return self.dummy_rand_cropper.centers[0]
 
-class FilterInstanceD(monai_t.Transform):
+class FilterInstanceD(mt.Transform):
     def __init__(self, class_key: Hashable, mask_key: Hashable):
         self.class_key = class_key
         self.mask_key = mask_key

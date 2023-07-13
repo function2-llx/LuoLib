@@ -4,13 +4,15 @@ import matplotlib
 from matplotlib import pyplot as plt
 from matplotlib.colors import ListedColormap
 import numpy as np
+from numpy import typing as npt
 
 class IndexTracker:
     def __init__(
         self,
-        img: np.ndarray,
-        seg: Optional[np.ndarray] = None,
-        block: bool = True, title: str = "",
+        img: npt.NDArray,
+        seg: Optional[npt.NDArray] = None,
+        block: bool = True,
+        title: str = "",
         zyx: bool = False,
         choose_max: bool = False,
     ):
@@ -21,7 +23,8 @@ class IndexTracker:
         self.ax = ax
         if zyx:
             img = img.transpose(2, 1, 0)
-            seg = seg.transpose(2, 1, 0)
+            if seg is not None:
+                seg = seg.transpose(2, 1, 0)
 
         self.img = img
         self.seg = seg

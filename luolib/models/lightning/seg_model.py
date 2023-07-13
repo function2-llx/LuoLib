@@ -15,8 +15,6 @@ from luolib.conf import SegExpConf, ExpConfBase, SegCommonConf
 from luolib.utils import DataKey
 from .model_base import ExpModelBase
 from ..init import init_common
-from ..registry import decoder_registry
-from ..utils import create_model
 
 class SegInferer(pl.LightningModule):
     conf: ExpConfBase | SegCommonConf
