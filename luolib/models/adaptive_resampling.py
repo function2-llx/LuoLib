@@ -1,5 +1,4 @@
 import abc
-from collections.abc import Sequence
 from typing import Literal
 
 import cytoolz
@@ -9,6 +8,7 @@ import torch
 from torch import nn
 from torch.nn import functional as nnf
 
+from monai.data import MetaTensor
 from monai.networks.blocks import get_output_padding, get_padding
 from monai import transforms as mt
 
@@ -118,7 +118,10 @@ class AdaptiveInterpolateDownsample(AdaptiveDownsample):
             mode=self.mode,
             anti_aliasing=True,
         )
-        return resizer(x[0])[None]
+        x = resizer(x[0])
+        if isinstance(x, MetaTensor):
+            x = x.as_tensor()
+        return x[None]
 
 class AdaptiveConvDownsample(AdaptiveDownsample):
     def __init__(
