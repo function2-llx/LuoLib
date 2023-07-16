@@ -6,10 +6,13 @@ from torch import nn
 
 from luolib.types import ParamGroup
 
-def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | None = None, key_prefix: str = ''):
-    if ckpt_path is None:
+def load_ckpt(model: nn.Module, ckpt_or_path: dict | Path | None, state_dict_key: str | None = None, key_prefix: str = ''):
+    if ckpt_or_path is None:
         return
-    ckpt = torch.load(ckpt_path, map_location='cpu')
+    if isinstance(ckpt_or_path, Path):
+        ckpt: dict = torch.load(ckpt_or_path, map_location='cpu')
+    else:
+        ckpt = ckpt_or_path
     if state_dict_key is None and isinstance(ckpt, dict):
         if 'state_dict' in ckpt:
             state_dict_key = 'state_dict'
@@ -23,7 +26,8 @@ def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | No
         if k.startswith(key_prefix)
     }
     missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
-    print("Loaded {} from checkpoint '{}'".format(state_dict_key, ckpt_path))
+    if isinstance(ckpt_or_path, Path):
+        print(f'Loaded {state_dict_key} from checkpoint {ckpt_or_path}')
     print('missing keys:', missing_keys)
     print('unexpected keys:', unexpected_keys)
 
