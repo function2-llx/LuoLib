@@ -27,7 +27,7 @@ def load_ckpt(model: nn.Module, ckpt_path: Path | None, state_dict_key: str | No
     print('missing keys:', missing_keys)
     print('unexpected keys:', unexpected_keys)
 
-def get_no_weight_decay_keys(module: nn.Module):
+def split_weight_decay_keys(module: nn.Module):
     # modify from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py, `configure_optimizers`
     from torch.nn.modules.conv import _ConvNd
     whitelist_weight_modules = (
@@ -71,14 +71,14 @@ def get_no_weight_decay_keys(module: nn.Module):
 
     inter_params = decay & no_decay
     assert len(inter_params) == 0, f"parameters {inter_params} made it into both decay/no_decay sets!"
-    return no_decay
+    return decay, no_decay
 
-def split_by_weight_decay(named_parameters: Iterable[tuple[str, nn.Parameter]], no_weight_decay_keys: set[str]) -> list[ParamGroup]:
+def create_param_groups(named_parameters: Iterable[tuple[str, nn.Parameter]], decay_keys: set[str], no_decay_keys: set[str]) -> list[ParamGroup]:
     no_decay_group, decay_group = [], []
     for name, param in named_parameters:
-        if name in no_weight_decay_keys:
+        if name in no_decay_keys:
             no_decay_group.append(param)
-        else:
+        elif name in decay_keys:
             decay_group.append(param)
     return [
         {

@@ -1,9 +1,9 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TypeVar, TypedDict, NamedTuple, Generic
+from typing import Any, TypeVar, TypedDict
 
-from torch import nn
 from lightning.pytorch.utilities.types import LRSchedulerConfig as LRSchedulerConfigBase
+from torch import nn
 
 T = TypeVar('T')
 tuple2_t = tuple[T, T]
@@ -31,7 +31,7 @@ class ParamGroup(TypedDict, total=False):
 
 @dataclass
 class LRSchedulerConfig(LRSchedulerConfigBase):
-    scheduler: dict  # bypass jsonargparse check
+    scheduler: dict | Any  # bypass jsonargparse check
 
 @dataclass
 class RangeTuple:
