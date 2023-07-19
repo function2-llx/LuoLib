@@ -5,13 +5,13 @@ import numpy as np
 import torch
 from torch.nn import functional as nnf
 
-from monai import transforms as monai_t
+from monai import transforms as mt
 from monai.config import KeysCollection
 
-class SimulateLowResolutionD(monai_t.RandomizableTransform, monai_t.MapTransform):
+class SimulateLowResolutionD(mt.RandomizableTransform, mt.MapTransform):
     def __init__(self, keys: KeysCollection, zoom_range: tuple[float, float], prob: float, dummy_dim: int | None = None, allow_missing: bool = False):
-        monai_t.RandomizableTransform.__init__(self, prob)
-        monai_t.MapTransform.__init__(self, keys, allow_missing)
+        mt.RandomizableTransform.__init__(self, prob)
+        mt.MapTransform.__init__(self, keys, allow_missing)
         self.zoom_range = zoom_range
         self.dummy_dim = dummy_dim
 

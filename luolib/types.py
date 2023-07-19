@@ -41,3 +41,5 @@ class RangeTuple:
     def __iter__(self):
         yield self.min
         yield self.max
+
+from typing import NamedTuple

@@ -16,7 +16,7 @@ from monai.transforms import Randomizable, create_rotate, create_scale, create_t
 from monai.utils import GridSamplePadMode, TransformBackends, ensure_tuple_rep, get_equivalent_dtype
 
 from luolib.types import param3_t, spatial_param_t, tuple2_t
-from .utils import SpatialRangeGenerator
+from luolib.transforms.utils import SpatialRangeGenerator
 
 class RandAffineCropD(mt.Randomizable, mt.MapTransform):
     def __init__(
