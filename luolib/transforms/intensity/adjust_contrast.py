@@ -25,6 +25,5 @@ class RandAdjustContrastD(mt.RandomizableTransform, mt.MapTransform):
         for key in self.key_iterator(d):
             x = d[key]
             mean = x.mean(dim=reduce_dims, keepdim=True)
-            x = x * factor + mean * (1 - factor)
-            d[key] = x
+            x.mul_(factor).add_(mean, alpha=1 - factor).clamp_(0, 1)
         return d

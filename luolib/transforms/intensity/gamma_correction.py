@@ -7,14 +7,6 @@ from monai import transforms as mt
 from monai.config import KeysCollection, NdarrayOrTensor
 from monai.utils import TransformBackends
 
-def gamma_correction(img: torch.Tensor, gamma: float, invert: bool = False):
-    if invert:
-        img = 1 - img
-    ret = img ** gamma
-    if invert:
-        ret = 1 - ret
-    return ret
-
 class RandGammaCorrectionD(mt.RandomizableTransform, mt.MapTransform):
     backend = [TransformBackends.TORCH]
 
@@ -42,5 +34,10 @@ class RandGammaCorrectionD(mt.RandomizableTransform, mt.MapTransform):
         self.randomize(None)
         if self._do_transform:
             for key in self.key_iterator(data):
-                data[key] = gamma_correction(data[key], self.gamma_value, self.invert_image)
+                x = data[key]
+                if self.invert_image:
+                    x.neg_().add_(1)
+                x.pow_(self.gamma_value)
+                if self.invert_image:
+                    x.neg_().add_(1)
         return data
