@@ -42,4 +42,5 @@ class RangeTuple:
         yield self.min
         yield self.max
 
-from typing import NamedTuple
+class NoWeightDecayParameter(nn.Parameter):
+    pass

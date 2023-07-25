@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 from torch import nn
 
-from luolib.types import ParamGroup
+from luolib.types import NoWeightDecayParameter, ParamGroup
 
 def load_ckpt(model: nn.Module, ckpt_or_path: dict | Path | None, state_dict_key: str | None = None, key_prefix: str = ''):
     if ckpt_or_path is None:
@@ -46,6 +46,7 @@ def split_weight_decay_keys(module: nn.Module):
         _InstanceNorm,
         nn.GroupNorm,
         nn.Embedding,
+        NoWeightDecayParameter,
     )
     decay = set()
     no_decay = set()
