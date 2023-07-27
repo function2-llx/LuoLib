@@ -47,7 +47,6 @@ def split_weight_decay_keys(module: nn.Module):
         _InstanceNorm,
         nn.GroupNorm,
         nn.Embedding,
-        NoWeightDecayParameter,
     )
     decay = set()
     no_decay = set()
@@ -58,7 +57,9 @@ def split_weight_decay_keys(module: nn.Module):
         for pn, p in m.named_parameters(prefix=mn, recurse=False):
             if not p.requires_grad:
                 continue
-            if pn.endswith('.bias'):
+            if isinstance(p, NoWeightDecayParameter):
+                no_decay.add(pn)
+            elif pn.endswith('.bias'):
                 # all biases will not be decayed
                 no_decay.add(pn)
             elif pn.endswith('.weight') and isinstance(m, whitelist_weight_modules):
