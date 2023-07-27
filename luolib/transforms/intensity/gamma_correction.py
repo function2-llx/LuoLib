@@ -1,8 +1,6 @@
 # Fix name for MONAI: https://github.com/Project-MONAI/MONAI/discussions/6027
 from collections.abc import Hashable, Mapping
 
-import torch
-
 from monai import transforms as mt
 from monai.config import KeysCollection, NdarrayOrTensor
 from monai.utils import TransformBackends
