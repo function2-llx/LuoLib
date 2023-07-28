@@ -2,6 +2,7 @@ import numpy as np
 from torch import nn
 
 def init_common(m: nn.Module):
+    # normalization layers (e.g., BatchNorm, LayerNorm) are usually initialized themselves
     match m:
         case nn.Linear():
             nn.init.trunc_normal_(m.weight, std=.02)
