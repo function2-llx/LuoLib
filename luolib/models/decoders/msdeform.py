@@ -10,7 +10,6 @@ from torch.utils import checkpoint
 from luolib.models.blocks import get_conv_layer
 from luolib.models.init import init_common
 from luolib.models.layers import Norm, Act, PositionEmbedding
-from monai.luolib import Decoder, DecoderOutput
 
 __all__ = []
 
@@ -148,7 +147,7 @@ class MultiscaleDeformablePixelDecoderLayer(nn.Module):
         return hidden_states
 
 # from transformers.models.mask2former.modeling_mask2former import Mask2FormerPixelDecoder
-class MultiscaleDeformablePixelDecoder(Decoder):
+class MultiscaleDeformablePixelDecoder(nn.Module):
     def __init__(
         self,
         spatial_dims: int,
@@ -258,7 +257,7 @@ class MultiscaleDeformablePixelDecoder(Decoder):
             )
         ]
 
-    def forward(self, backbone_feature_maps: list[torch.Tensor], x_in: torch.Tensor) -> DecoderOutput:
+    def forward(self, backbone_feature_maps: list[torch.Tensor]):
         feature_maps = [
             projection(feature_map)
             for projection, feature_map in zip(self.input_projections, backbone_feature_maps)
@@ -268,7 +267,7 @@ class MultiscaleDeformablePixelDecoder(Decoder):
         for lateral, output_conv in zip(feature_maps, self.output_convs):
             output = lateral + nnf.interpolate(outputs[-1], lateral.shape[2:], mode=self.interpolate_mode)
             outputs.append(output_conv(output))
-        return DecoderOutput(outputs[::-1])
+        return outputs[::-1]
 
 def main():
     bs = 2

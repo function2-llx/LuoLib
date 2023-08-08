@@ -1,12 +1,11 @@
 from pathlib import Path
 
 import cytoolz
-from pytorch_lightning import LightningModule
+from lightning import LightningModule
 from timm.scheduler.scheduler import Scheduler
 import torch
 from torch.optim import Optimizer
 
-from monai.luolib import Backbone
 from monai.utils import ensure_tuple
 
 from luolib.conf import ExpConfBase
@@ -22,7 +21,7 @@ class ExpModelBase(LightningModule):
         self.conf = conf
         self.backbone = self.create_backbone()
 
-    def create_backbone(self) -> Backbone:
+    def create_backbone(self):
         return create_model(self.conf.backbone, backbone_registry)
 
     @torch.no_grad()

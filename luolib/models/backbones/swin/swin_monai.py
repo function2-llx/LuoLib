@@ -52,7 +52,7 @@ class PatchEmbed(PatchEmbedBase):
             )
 
 
-class SwinTransformer(Backbone):
+class SwinTransformer(nn.Module):
     """
     Modify from MONAI implementation, support 3D only
     Swin Transformer based on: "Liu et al.,

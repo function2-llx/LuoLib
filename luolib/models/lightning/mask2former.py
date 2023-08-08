@@ -7,8 +7,6 @@ from torch import nn
 from torch.nn import functional as nnf
 from transformers.models.mask2former.modeling_mask2former import pair_wise_sigmoid_cross_entropy_loss, pair_wise_dice_loss
 
-from monai.luolib import Decoder
-
 from luolib.utils import DataKey
 from luolib.conf import Mask2FormerConf
 from .model_base import ExpModelBase
@@ -60,7 +58,7 @@ class Mask2Former(ExpModelBase):
         self.class_predictor = nn.Linear(self.transformer_decoder.hidden_dim, conf.num_fg_classes + 1)
         self.register_buffer('class_loss_weight', torch.tensor([conf.eos_coef, *it.repeat(1, conf.num_fg_classes)]))
 
-    def create_pixel_decoder(self) -> Decoder:
+    def create_pixel_decoder(self):
         return create_model(self.conf.pixel_decoder, decoder_registry)
 
     def create_transformer_decoder(self) -> MaskedAttentionDecoder:

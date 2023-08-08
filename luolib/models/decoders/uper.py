@@ -7,9 +7,8 @@ from torch import nn
 from torch.nn import functional as nnf
 
 from monai.networks.blocks import Convolution
-from monai.luolib import Decoder, DecoderOutput
 
-class UPerHead(Decoder):
+class UPerHead(nn.Module):
     def __init__(self, in_channels: Sequence[int], channels: int, pool_scales: Sequence[int]):
         super().__init__()
 
@@ -73,4 +72,4 @@ class UPerHead(Decoder):
         for i in range(1, len(fpn_outs)):
             fpn_outs[i] = nnf.interpolate(fpn_outs[i], size=fpn_outs[0].shape[2:], mode='trilinear')
         output = self.fpn_bottleneck(torch.cat(fpn_outs, dim=1))
-        return DecoderOutput([output])
+        return [output]

@@ -1,4 +1,4 @@
-import pytorch_lightning as pl
+from lightning import LightningModule
 import torch
 from torch import nn
 from torch.nn import functional as nnf
@@ -8,7 +8,6 @@ from monai.losses import DiceCELoss, DiceFocalLoss
 from monai.metrics import DiceMetric
 from monai.networks import one_hot
 from monai.networks.layers import Conv
-from monai.luolib import BackboneOutput, Decoder
 from monai.utils import MetricReduction
 
 from luolib.conf import SegExpConf, ExpConfBase, SegCommonConf
@@ -16,7 +15,7 @@ from luolib.utils import DataKey
 from .model_base import ExpModelBase
 from ..init import init_common
 
-class SegInferer(pl.LightningModule):
+class SegInferer(LightningModule):
     conf: ExpConfBase | SegCommonConf
 
     def seg_predictor(self, x):
@@ -55,7 +54,7 @@ class SegInferer(pl.LightningModule):
 class SegModel(ExpModelBase, SegInferer):
     conf: SegExpConf
 
-    def create_decoder(self) -> Decoder:
+    def create_decoder(self):
         return create_model(self.conf.decoder, decoder_registry)
 
     def __init__(self, conf: SegExpConf):

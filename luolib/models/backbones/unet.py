@@ -4,10 +4,9 @@ import torch
 from torch import nn
 
 from monai.networks.blocks import UnetBasicBlock
-from monai.luolib import Backbone, BackboneOutput
 from luolib.models.layers import Act, Norm
 
-class UNetBackbone(Backbone):
+class UNetBackbone(nn.Module):
     def __init__(
         self,
         in_channels: int,

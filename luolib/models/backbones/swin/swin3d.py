@@ -7,15 +7,13 @@ import numpy as np
 import torch
 from torch import nn
 
-from monai.luolib import Backbone, BackboneOutput
-
 from luolib.models.init import init_common
 from luolib.models.layers import LayerNormNd, Norm
 from .common3d import SwinLayer
 
 __all__ = []
 
-class SwinBackbone(Backbone):
+class SwinBackbone(nn.Module):
     """
     Modify from MONAI implementation, support 3D only
     Swin Transformer based on: "Liu et al.,
@@ -116,7 +114,7 @@ class SwinBackbone(Backbone):
 
         return feature_maps
 
-    def forward(self, x: torch.Tensor, *args) -> BackboneOutput:
+    def forward(self, x: torch.Tensor):
         feature_maps = []
         x = self.patch_embed(x)
         for layer, norm, downsampling in zip(it.chain(self.layers), self.norms, self.downsamplings):
@@ -125,7 +123,4 @@ class SwinBackbone(Backbone):
             feature_maps.append(x)
             x = downsampling(x)
 
-        return BackboneOutput(
-            cls_feature=self.pool(feature_maps[-1]),
-            feature_maps=feature_maps,
-        )
+        return feature_maps

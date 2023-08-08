@@ -6,9 +6,8 @@ import torch
 from torch import nn
 
 from monai.networks.blocks import UnetResBlock, UnetrUpBlock
-from monai.umei import Decoder, DecoderOutput
 
-class SwinUnetrDecoder(Decoder):
+class SwinUnetrDecoder(nn.Module):
     def __init__(
         self,
         in_channels: Optional[int] = None,

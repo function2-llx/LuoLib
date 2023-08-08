@@ -1,21 +1,18 @@
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
 import torch
 from torch import nn
 
-from monai.luolib import Decoder, DecoderOutput
-
-from luolib.conf import ModelConf
 from luolib.types import spatial_param_seq_t
 from ..blocks import BasicConvLayer, UNetUpLayer
 from ..layers import Act, Norm
 
-__all__ = []
+__all__ = ['FullResAdapter']
 
-class FullResAdapter(Decoder):
+class FullResAdapter(nn.Module):
     def __init__(
         self,
-        inner_decoder_conf: Mapping,
+        inner: nn.Module,
         spatial_dims: int,
         num_input_channels: int,
         layer_channels: Sequence[int],
@@ -29,8 +26,7 @@ class FullResAdapter(Decoder):
         num_layers = len(layer_channels) - 1
         if layer_blocks is None:
             layer_blocks = [1] * num_layers
-        # complement default values
-        self.inner_decoder = create_model(ModelConf(**inner_decoder_conf), decoder_registry)
+        self.inner = inner
         self.encode_layers = nn.ModuleList([
             BasicConvLayer(
                 spatial_dims=spatial_dims,
@@ -50,13 +46,12 @@ class FullResAdapter(Decoder):
             for i in range(num_layers)
         ])
 
-    def forward(self, backbone_feature_maps: list[torch.Tensor], x_in: torch.Tensor) -> DecoderOutput:
-        output = self.inner_decoder.forward(backbone_feature_maps, x_in)
+    def forward(self, backbone_feature_maps: list[torch.Tensor], x_in: torch.Tensor):
+        ret: list[torch.Tensor] = self.inner(backbone_feature_maps)
         encodes = []
         for encode_layer in self.encode_layers:
             x_in = encode_layer(x_in)
             encodes.append(x_in)
         for decode_layer, skip in zip(self.decode_layers[::-1], encodes[::-1]):
-            output.feature_maps.append(decode_layer(output.feature_maps[-1], skip))
-
-        return output
+            ret.append(decode_layer(ret[-1], skip))
+        return ret

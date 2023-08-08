@@ -7,7 +7,6 @@ import numpy as np
 import torch
 from torch import nn
 
-from monai.luolib import Backbone, BackboneOutput
 from monai.networks.layers import get_act_layer, get_norm_layer
 
 from luolib.models.adaptive_resampling import AdaptiveDownsampling
@@ -16,7 +15,7 @@ from luolib.models.init import init_common
 from luolib.models.layers import Act, LayerNormNd, Norm
 from .common3d import SwinLayer
 
-class SwinBackbone(Backbone):
+class SwinBackbone(nn.Module):
     """
     Modify from MONAI implementation, support 3D only
     Swin Transformer based on: "Liu et al.,
