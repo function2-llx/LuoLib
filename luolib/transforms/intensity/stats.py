@@ -8,9 +8,12 @@ class CleverStatsD(mt.MapTransform):
         data = dict(data)
         for key in self.key_iterator(data):
             x: MetaTensor = data[key]
-            v = x[x > 0]
-            x.meta['stats'] = {
-                'mean': v.mean(),
-                'std': v.std(),
-            }
+            mean = x.new_empty((x.shape[0], ))
+            std = x.new_empty((x.shape[0], ))
+            for i, v in enumerate(x):
+                v = v[v > 0]
+                mean[i] = v.mean()
+                std[i] = v.std()
+            x.meta['mean'] = mean
+            x.meta['std'] = std
         return data

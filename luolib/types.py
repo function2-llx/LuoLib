@@ -31,7 +31,7 @@ class ParamGroup(TypedDict, total=False):
 
 @dataclass
 class LRSchedulerConfig(LRSchedulerConfigBase):
-    scheduler: dict | Any  # bypass jsonargparse check
+    scheduler: Any = None  # bypass jsonargparse check
 
 @dataclass
 class RangeTuple:
