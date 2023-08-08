@@ -33,6 +33,7 @@ class RandGammaCorrectionD(mt.RandomizableTransform, mt.MapTransform):
         if self._do_transform:
             for key in self.key_iterator(data):
                 x = data[key]
+                x.clamp_(0, 1)
                 if self.invert_image:
                     x.neg_().add_(1)
                 x.pow_(self.gamma_value)
