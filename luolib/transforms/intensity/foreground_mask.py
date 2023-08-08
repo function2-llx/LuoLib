@@ -10,3 +10,4 @@ class CreateForegroundMaskD(mt.Transform):
     def __call__(self, data: Mapping[Hashable, ...]):
         data = dict(data)
         data[self.fg_mask_key] = data[self.ref_key] > 0
+        return data
