@@ -91,6 +91,7 @@ class LightningCLI(LightningCLIBase):
 
     def instantiate_classes(self) -> None:
         super().instantiate_classes()
-        self.model.optimizer = self.config[self.subcommand].optimizer
-        self.model.lr_scheduler_config = self.config[self.subcommand].lr_scheduler_config
-        self.model.lr_scheduler_config.scheduler = self.config[self.subcommand].lr_scheduler
+        if self.subcommand == 'fit':
+            self.model.optimizer = self.config.fit.optimizer
+            self.model.lr_scheduler_config = self.config.fit.lr_scheduler_config
+            self.model.lr_scheduler_config.scheduler = self.config.fit.lr_scheduler
