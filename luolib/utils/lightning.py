@@ -2,7 +2,6 @@ from collections.abc import Mapping
 from functools import cached_property
 from pathlib import Path
 
-from jsonargparse import Namespace
 from lightning import LightningModule as LightningModuleBase, Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint as ModelCheckpointBase
 from lightning.pytorch.cli import (
@@ -51,7 +50,7 @@ class LightningModule(LightningModuleBase):
 
 class SaveConfigCallback(SaveConfigCallbackBase):
     @rank_zero_only
-    def setup(self, trainer: Trainer, model: LightningModule, **kwargs):
+    def setup(self, trainer: Trainer, model: LightningModule, *args, **kwargs):
         assert not self.already_saved
         save_dir = model.run_dir
         save_dir.mkdir(parents=True, exist_ok=True)
@@ -86,10 +85,9 @@ class LightningCLI(LightningCLIBase):
         parser.add_dataclass_arguments(LRSchedulerConfig, 'lr_scheduler_config')
 
     def before_instantiate_classes(self):
-        if self.subcommand == 'fit':
-            # https://github.com/wandb/wandb/issues/714#issuecomment-565870686
-            save_dir = self.config.fit.trainer.logger.init_args.save_dir
-            Path(save_dir).mkdir(exist_ok=True, parents=True)
+        # https://github.com/wandb/wandb/issues/714#issuecomment-565870686
+        save_dir = self.config[self.subcommand].trainer.logger.init_args.save_dir
+        Path(save_dir).mkdir(exist_ok=True, parents=True)
 
     def instantiate_classes(self) -> None:
         super().instantiate_classes()
