@@ -24,7 +24,7 @@ class LightningModule(LightningModuleBase):
     def run_dir(self) -> Path:
         logger: WandbLogger = self.logger
         if self.trainer.is_global_zero:
-            run_dir = Path(logger.save_dir) / Path(logger.experiment.dir).parent.name
+            run_dir = Path(logger.save_dir) / logger.experiment.name / f'{Path(logger.experiment.dir).parent.name}'
         else:
             run_dir = None
         run_dir = self.trainer.strategy.broadcast(run_dir)
