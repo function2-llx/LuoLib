@@ -2,12 +2,12 @@ from collections.abc import Sequence
 
 import numpy as np
 
-from luolib.conf import ClsExpConf
+# from luolib.conf import ClsExpConf
 from luolib.utils import DataKey
 from .base import ExpDataModuleBase, DataSeq
 
 class ClsDataModule(ExpDataModuleBase):
-    conf: ClsExpConf
+    # conf: ClsExpConf
 
     def classes_counting_data(self) -> DataSeq:
         return self.train_data()

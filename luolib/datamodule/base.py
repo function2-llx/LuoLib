@@ -3,9 +3,9 @@ from functools import cached_property
 from typing import Callable, Sequence, TypeAlias
 
 import numpy as np
-from pytorch_lightning import LightningDataModule
-from pytorch_lightning.trainer.states import RunningStage
-from pytorch_lightning.utilities.types import TRAIN_DATALOADERS
+from lightning import LightningDataModule
+from lightning.pytorch.trainer.states import RunningStage
+from lightning.pytorch.utilities.types import TRAIN_DATALOADERS
 import torch
 from torch.utils.data import Dataset as TorchDataset, RandomSampler
 
@@ -13,15 +13,15 @@ from monai import transforms as monai_t
 from monai.config import PathLike
 from monai.data import CacheDataset, DataLoader, Dataset, partition_dataset_classes, select_cross_validation_folds
 
-from luolib.conf import CrossValConf, ExpConfBase
+# from luolib.conf import CrossValConf, ExpConfBase
 from luolib.utils import DataKey, DataSplit
 
 DataSeq: TypeAlias = Sequence[dict]
 
 class ExpDataModuleBase(LightningDataModule):
-    def __init__(self, conf: ExpConfBase):
-        super().__init__()
-        self.conf = conf
+    # def __init__(self, conf: ExpConfBase):
+    #     super().__init__()
+    #     self.conf = conf
 
     # # all data for fit (including train & val)
     # def fit_data(self) -> DataSeq:
@@ -192,10 +192,10 @@ class ExpDataModuleBase(LightningDataModule):
         ))
 
 class CrossValDataModule(ExpDataModuleBase):
-    conf: CrossValConf | ExpConfBase
+    # conf: CrossValConf | ExpConfBase
 
-    def __init__(self, conf):
-        super().__init__(conf)
+    def __init__(self):
+        # super().__init__(conf)
         self.val_id = None
 
     @property

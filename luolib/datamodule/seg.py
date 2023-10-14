@@ -1,18 +1,19 @@
 import itertools as it
 
-from pytorch_lightning.trainer.states import RunningStage
+from lightning.pytorch.trainer.states import RunningStage
 
 from monai import transforms as mt
 from monai.utils import GridSampleMode, PytorchPadMode
 
-from luolib.conf import SegExpConf
-from luolib.transforms import SimulateLowResolutionD, RandAdjustContrastD, RandAffineCropD, RandGammaCorrectionD
+# from luolib.conf import SegExpConf
+# from luolib.transforms import SimulateLowResolutionD, RandAdjustContrastD, RandAffineCropD, RandGammaCorrectionD
+from luolib import transforms as lt
 from luolib.transforms.utils import RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD
 from luolib.utils import DataKey
 from .base import ExpDataModuleBase
 
 class SegDataModule(ExpDataModuleBase):
-    conf: SegExpConf
+    # conf: SegExpConf
 
     def load_data_transform(self, stage: RunningStage) -> list:
         match stage:
@@ -52,30 +53,30 @@ class SegDataModule(ExpDataModuleBase):
     def aug_transform(self):
         conf = self.conf
         return [
-            RandAffineCropD(
-                [DataKey.IMG, DataKey.SEG],
-                conf.sample_shape,
-                [GridSampleMode.BILINEAR, GridSampleMode.NEAREST],
-                conf.rotate_range,
-                conf.rotate_p,
-                conf.scale_range,
-                conf.scale_p,
-                conf.spatial_dims,
-                conf.dummy_dim,
-                center_generator=mt.OneOf(
-                    [
-                        RandSpatialCenterGeneratorD(DataKey.IMG, conf.sample_shape),
-                        RandCenterGeneratorByLabelClassesD(
-                            DataKey.SEG,
-                            conf.sample_shape,
-                            list(it.repeat(1, conf.num_seg_classes)) if conf.multi_label
-                            else [0, *it.repeat(1, conf.num_seg_classes - 1)],
-                            conf.num_seg_classes,
-                        )
-                    ],
-                    conf.fg_oversampling_ratio,
-                ),
-            ),
+            # RandAffineCropD(
+            #     [DataKey.IMG, DataKey.SEG],
+            #     conf.sample_shape,
+            #     [GridSampleMode.BILINEAR, GridSampleMode.NEAREST],
+            #     conf.rotate_range,
+            #     conf.rotate_p,
+            #     conf.scale_range,
+            #     conf.scale_p,
+            #     conf.spatial_dims,
+            #     conf.dummy_dim,
+            #     center_generator=mt.OneOf(
+            #         [
+            #             RandSpatialCenterGeneratorD(DataKey.IMG, conf.sample_shape),
+            #             RandCenterGeneratorByLabelClassesD(
+            #                 DataKey.SEG,
+            #                 conf.sample_shape,
+            #                 list(it.repeat(1, conf.num_seg_classes)) if conf.multi_label
+            #                 else [0, *it.repeat(1, conf.num_seg_classes - 1)],
+            #                 conf.num_seg_classes,
+            #             )
+            #         ],
+            #         conf.fg_oversampling_ratio,
+            #     ),
+            # ),
             mt.RandGaussianNoiseD(
                 DataKey.IMG,
                 prob=conf.gaussian_noise_p,
@@ -87,13 +88,13 @@ class SegDataModule(ExpDataModuleBase):
                 conf.gaussian_smooth_std_range,
                 conf.gaussian_smooth_std_range,
                 prob=conf.gaussian_smooth_p,
-                isotropic_prob=conf.gaussian_smooth_isotropic_prob,
+                # isotropic_prob=conf.gaussian_smooth_isotropic_prob,
             ),
             mt.RandScaleIntensityD(DataKey.IMG, factors=conf.scale_intensity_factor, prob=conf.scale_intensity_p),
             mt.RandShiftIntensityD(DataKey.IMG, offsets=conf.shift_intensity_offset, prob=conf.shift_intensity_p),
-            RandAdjustContrastD(DataKey.IMG, conf.adjust_contrast_range, conf.adjust_contrast_p),
-            SimulateLowResolutionD(DataKey.IMG, conf.simulate_low_res_zoom_range, conf.simulate_low_res_p, conf.dummy_dim),
-            RandGammaCorrectionD(DataKey.IMG, conf.gamma_p, conf.gamma_range),
+            lt.RandAdjustContrastD(DataKey.IMG, conf.adjust_contrast_range, conf.adjust_contrast_p),
+            lt.SimulateLowResolutionD(DataKey.IMG, conf.simulate_low_res_zoom_range, conf.simulate_low_res_p, conf.dummy_dim),
+            lt.RandGammaCorrectionD(DataKey.IMG, conf.gamma_p, conf.gamma_range),
             *[
                 mt.RandFlipD([DataKey.IMG, DataKey.SEG], prob=conf.flip_p, spatial_axis=i)
                 for i in range(conf.spatial_dims)
