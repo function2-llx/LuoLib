@@ -1,6 +1,6 @@
-from collections.abc import Hashable
+from collections.abc import Callable, Hashable, Iterable
 import os
-from typing import Callable, Iterable, Union
+from typing import TypeVar
 
 import cytoolz
 import einops
@@ -11,7 +11,7 @@ import torch
 from .enums import DataSplit, DataKey
 from .index_tracker import IndexTracker
 
-PathLike = Union[str, bytes, os.PathLike]
+PathLike = str | bytes | os.PathLike
 
 class ChannelFirst(Rearrange):
     def __init__(self):
@@ -30,9 +30,11 @@ def channel_last(x: torch.Tensor) -> torch.Tensor:
 def flatten(x: torch.Tensor) -> torch.Tensor:
     return einops.rearrange(x, 'n c ... -> n (...) c')
 
-def partition_by_predicate(pred: Callable | Hashable, seq: Iterable):
-    groups = cytoolz.groupby(pred, seq)
-    return tuple(groups.get(k, []) for k in [False, True])
+T = TypeVar('T')
+def partition_by_predicate(pred: Callable[[T], bool] | Hashable, seq: Iterable[T]) -> tuple[list[T], list[T]]:
+    groups: dict[bool, list] = cytoolz.groupby(pred, seq)
+    assert set(groups.keys()).issubset({False, True})
+    return groups.get(False, []), groups.get(True, [])
 
 class SimpleReprMixin(object):
     """A mixin implementing a simple __repr__."""
@@ -42,3 +44,7 @@ class SimpleReprMixin(object):
             id=id(self) & 0xFFFFFF,
             attrs=", ".join("{}={!r}".format(k, v) for k, v in self.__dict__.items()),
         )
+
+U = TypeVar('U')
+def fall_back_none(x: T | None, default: U) -> T | U:
+    return default if x is None else x

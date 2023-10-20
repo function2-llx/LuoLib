@@ -1,71 +1,98 @@
-from collections.abc import Iterable, Sequence
+from typing import Callable, Iterable, TypedDict
 
-from timm.models import group_parameters
-from timm.optim import create_optimizer_v2
-from timm.optim.optim_factory import _layer_map
-import torch
 from torch import nn
+from torch.optim import Optimizer
 
-from luolib.conf import OptimizerConf
-from luolib.types import ParamGroup
+from luolib.types import NoWeightDecayParameter
+from luolib.utils import partition_by_predicate
 
-# modified from `timm.optim.optim_factory.param_groups_layer_decay`, add param_names in results
-def param_groups_layer_decay(
-    model: nn.Module,
-    weight_decay: float = 0.05,
-    no_weight_decay_list: Sequence[str] = (),
-    layer_decay: float = .75,
-) -> list[ParamGroup]:
+__all__ = [
+    'OptimizerCallable',
+    'infer_weight_decay_keys',
+    'NamedParamGroup',
+    'normalize_param_groups',
+]
 
-    no_weight_decay_list = set(no_weight_decay_list)
-    param_group_names = {}  # NOTE for debugging
-    param_groups = {}
+OptimizerCallable = Callable[[Iterable], Optimizer]
 
-    if hasattr(model, 'group_matcher'):
-        # FIXME interface needs more work
-        layer_map = group_parameters(model, model.group_matcher(coarse=False), reverse=True)
-    else:
-        # fallback
-        layer_map = _layer_map(model)
-    num_layers = max(layer_map.values()) + 1
-    layer_max = num_layers - 1
-    layer_scales = list(layer_decay ** (layer_max - i) for i in range(num_layers))
-
-    for name, param in model.named_parameters():
-        if not param.requires_grad:
-            continue
-
-        # no decay: all 1D parameters and model specific ones
-        if param.ndim == 1 or name in no_weight_decay_list:
-            g_decay = "no_decay"
-            this_decay = 0.
-        else:
-            g_decay = "decay"
-            this_decay = weight_decay
-
-        layer_id = layer_map.get(name, layer_max)
-        group_name = "layer_%d_%s" % (layer_id, g_decay)
-
-        if group_name not in param_groups:
-            this_scale = layer_scales[layer_id]
-            param_groups[group_name] = {
-                "param_names": [],
-                "params": [],
-                "lr_scale": this_scale,
-                "weight_decay": this_decay,
-            }
-
-        param_groups[group_name]["param_names"].append(name)
-        param_groups[group_name]["params"].append(param)
-
-    return list(param_groups.values())
-
-def create_optimizer(conf: OptimizerConf, param_groups: list[ParamGroup] | Iterable[torch.Tensor]):
-    # timm's typing is really not so great
-    return create_optimizer_v2(
-        param_groups,
-        conf.name,
-        conf.lr,
-        conf.weight_decay,
-        **conf.kwargs,
+def infer_weight_decay_keys(module: nn.Module):
+    # modify from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py, `configure_optimizers`
+    from torch.nn.modules.conv import _ConvNd
+    whitelist_weight_modules = (
+        nn.Linear,
+        _ConvNd,
     )
+    from torch.nn.modules.batchnorm import _BatchNorm
+    from torch.nn.modules.instancenorm import _InstanceNorm
+    blacklist_weight_modules = (
+        nn.LayerNorm,
+        _BatchNorm,
+        _InstanceNorm,
+        nn.GroupNorm,
+        nn.Embedding,
+    )
+    decay = set()
+    no_decay = set()
+    grad_params = []
+    for mn, m in module.named_modules():
+        if hasattr(m, 'no_weight_decay'):
+            no_decay |= {f'{mn}.{pn}' if mn else pn for pn in m.no_weight_decay()}
+        for pn, p in m.named_parameters(prefix=mn, recurse=False):
+            if not p.requires_grad:
+                continue
+            grad_params.append(pn)
+            if isinstance(p, NoWeightDecayParameter):
+                no_decay.add(pn)
+            elif pn.endswith('.bias'):
+                # all biases will not be decayed
+                no_decay.add(pn)
+            elif pn.endswith('.weight') and isinstance(m, whitelist_weight_modules):
+                # weights of whitelist modules will be weight decayed
+                decay.add(pn)
+            elif isinstance(m, nn.MultiheadAttention):
+                if pn.endswith('_proj_weight'):
+                    # projection weights of MultiheadAttention modules will be weight decayed
+                    decay.add(pn)
+                elif pn.endswith('_proj_bias'):
+                    no_decay.add(pn)
+            elif pn not in no_decay:
+                assert pn.endswith('.weight') and isinstance(m, blacklist_weight_modules)
+                # weights of blacklist modules will NOT be weight decayed
+                no_decay.add(pn)
+
+    inter_params = decay & no_decay
+    assert len(inter_params) == 0, f'parameters {inter_params} made it into both decay/no_decay sets!'
+    diff_params = set(grad_params) - (decay | no_decay)
+    assert len(diff_params) == 0, f'parameters {diff_params} were not separated into either decay/no_decay set!'
+    return decay
+
+class NamedParamGroup(TypedDict, total=False):
+    # set total=False to comfort IDE
+    params: list[tuple[str, nn.Parameter]]
+    lr: float
+    weight_decay: float
+    lr_scale: float  # inserted by timm
+
+def normalize_param_groups(param_groups: list[NamedParamGroup], decay_keys: set[str]) -> list[dict]:
+    normalized_param_groups = []
+    for param_group in param_groups:
+        params = param_group.pop('params')
+        no_decay_params, decay_params = partition_by_predicate(lambda np: np[0] in decay_keys, params)
+        if no_decay_params:
+            normalized_param_groups.append(
+                {
+                    'params': no_decay_params,
+                    **param_group,
+                    'weight_decay': 0,
+                }
+            )
+        if decay_params:
+            normalized_param_groups.append(
+                {
+                    'params': no_decay_params,
+                    **param_group,
+                }
+            )
+    for param_group in normalized_param_groups:
+        param_group['params'] = [p for _, p in param_group.pop('params')]
+    return normalized_param_groups

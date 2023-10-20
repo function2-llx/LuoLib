@@ -8,7 +8,6 @@ from monai.config import PathLike
 from monai.data import ImageReader, is_supported_format, NumpyReader
 from monai.utils import ensure_tuple
 
-
 class PyTorchReader(ImageReader):
     def __init__(self, channel_dim: str | int | None = None, **kwargs):
         self.channel_dim = channel_dim

@@ -4,12 +4,12 @@ import numpy as np
 
 # from luolib.conf import ClsExpConf
 from luolib.utils import DataKey
-from .base import ExpDataModuleBase, DataSeq
+from .base import ExpDataModuleBase
 
 class ClsDataModule(ExpDataModuleBase):
     # conf: ClsExpConf
 
-    def classes_counting_data(self) -> DataSeq:
+    def classes_counting_data(self):
         return self.train_data()
 
     def count_classes(self) -> np.ndarray:

@@ -1,11 +1,27 @@
+from dataclasses import dataclass
+from typing import Callable
+
+from lightning.pytorch.cli import ReduceLROnPlateau
+from lightning.pytorch.utilities.types import LRSchedulerConfig as LRSchedulerConfigBase
+from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 from torch.optim import Optimizer
+from torch.optim.lr_scheduler import LRScheduler as TorchLRScheduler
 
-from luolib.conf import SchedulerConf
-from luolib.utils import SimpleReprMixin
+__all__ = [
+    'LRScheduler',
+    'LRSchedulerCallable',
+    'LRSchedulerConfig',
+    'LRSchedulerConfigWithCallable',
+]
 
-def create_scheduler(conf: SchedulerConf, optimizer: Optimizer):
-    from timm.scheduler import create_scheduler_v2
-    scheduler = create_scheduler_v2(optimizer, conf.name, **conf.kwargs)
-    if type(scheduler).__repr__ == object.__repr__:
-        type(scheduler).__repr__ = SimpleReprMixin.__repr__
-    return scheduler
+LRScheduler = TorchLRScheduler | ReduceLROnPlateau | TIMMScheduler
+LRSchedulerCallable = Callable[[Optimizer], LRScheduler]
+
+@dataclass
+class LRSchedulerConfig(LRSchedulerConfigBase):
+    scheduler: LRScheduler
+    interval: str = 'step'
+
+@dataclass
+class LRSchedulerConfigWithCallable(LRSchedulerConfig):
+    scheduler: LRSchedulerCallable

@@ -1,14 +1,8 @@
-import itertools as it
-
 from lightning.pytorch.trainer.states import RunningStage
 
 from monai import transforms as mt
 from monai.utils import GridSampleMode, PytorchPadMode
-
-# from luolib.conf import SegExpConf
-# from luolib.transforms import SimulateLowResolutionD, RandAdjustContrastD, RandAffineCropD, RandGammaCorrectionD
 from luolib import transforms as lt
-from luolib.transforms.utils import RandCenterGeneratorByLabelClassesD, RandSpatialCenterGeneratorD
 from luolib.utils import DataKey
 from .base import ExpDataModuleBase
 
