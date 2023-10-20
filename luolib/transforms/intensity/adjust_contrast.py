@@ -1,29 +1,49 @@
-from typing import Hashable, Mapping
+import itertools as it
 
 import torch
 
 from monai import transforms as mt
-from monai.config import KeysCollection
+from monai.config import NdarrayOrTensor
+from monai.data import get_track_meta
+from monai.utils import convert_to_tensor
 
 from luolib.types import tuple2_t
 
-class RandAdjustContrastD(mt.RandomizableTransform, mt.MapTransform):
-    def __init__(self, keys: KeysCollection, contrast_range: tuple2_t[float], prob: float, allow_missing: bool = False):
-        mt.RandomizableTransform.__init__(self, prob)
-        mt.MapTransform.__init__(self, keys, allow_missing)
-        self.contrast_range = contrast_range
+__all__ = [
+    'RandAdjustContrast',
+]
 
-    def __call__(self, data: Mapping[Hashable, torch.Tensor]):
-        self.randomize(None)
+class RandAdjustContrast(mt.RandomizableTransform):
+    def __init__(
+        self,
+        prob: float,
+        contrast_range: tuple2_t[float],
+        preserve_intensity_range: bool = True,
+    ):
+        mt.RandomizableTransform.__init__(self, prob)
+        self.contrast_range = contrast_range
+        self.preserve_intensity_range = preserve_intensity_range
+
+    def randomize(self, num_channels: int):
+        super().randomize(None)
         if not self._do_transform:
-            return data
-        factor = self.R.uniform(*self.contrast_range)
-        d = dict(data)
-        sample_x = d[self.first_key(d)]
-        spatial_dims = sample_x.ndim - 1
-        reduce_dims = tuple(range(1, spatial_dims + 1))
-        for key in self.key_iterator(d):
-            x = d[key]
-            mean = x.mean(dim=reduce_dims, keepdim=True)
-            x.mul_(factor).add_(mean, alpha=1 - factor).clamp_(0, 1)
-        return d
+            return
+        self.factor = self.R.uniform(*self.contrast_range, (num_channels, 1))
+
+    def __call__(self, img_in: NdarrayOrTensor, randomize: bool = True):
+        img: torch.Tensor = convert_to_tensor(img_in, track_meta=get_track_meta())
+        num_channels = img.shape[0]
+        if randomize:
+            self.randomize(num_channels)
+        if not self._do_transform:
+            return img
+        spatial_size = img.shape[1:]
+        img = img.view(num_channels, -1)
+        factor = img.new_tensor(self.factor)
+        min_v = img.min(1, True)
+        max_v = img.max(1, True)
+        mean = img.mean(1, True)
+        img.mul_(factor).add_(mean, alpha=1 - factor)
+        if self.preserve_intensity_range:
+            img.clamp_(min_v, max_v)
+        return img.view(num_channels, *spatial_size)

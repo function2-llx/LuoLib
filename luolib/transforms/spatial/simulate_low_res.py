@@ -1,43 +1,88 @@
-from typing import Hashable, Mapping
+from collections.abc import Sequence
 
-import einops
 import numpy as np
 import torch
-from torch.nn import functional as nnf
 
 from monai import transforms as mt
-from monai.config import KeysCollection
 
-class SimulateLowResolutionD(mt.RandomizableTransform, mt.MapTransform):
-    def __init__(self, keys: KeysCollection, zoom_range: tuple[float, float], prob: float, dummy_dim: int | None = None, allow_missing: bool = False):
-        mt.RandomizableTransform.__init__(self, prob)
-        mt.MapTransform.__init__(self, keys, allow_missing)
+from luolib.data import track_meta
+
+__all__ = [
+    'RandSimulateLowResolution',
+]
+
+from monai.config import NdarrayOrTensor
+
+from monai.utils import convert_to_tensor
+
+class RandSimulateLowResolution(mt.RandomizableTransform):
+
+    backend = mt.Affine.backend
+
+    def __init__(
+        self,
+        prob: float = 0.25,
+        prob_per_channel: float = 0.25,
+        downsample_mode: str | int = 0,
+        upsample_mode: str | int = 3,
+        zoom_range: Sequence[float] = (0.5, 1.0),
+    ):
+        """
+        Args:
+            prob: probability of performing this augmentation
+            downsample_mode: interpolation mode for downsampling operation
+            upsample_mode: interpolation mode for upsampling operation
+            zoom_range: range from which the random zoom factor for the downsampling and upsampling operation is
+            sampled. It determines the shape of the downsampled tensor.
+        """
+        super().__init__(prob)
+
+        self.downsample_mode = downsample_mode
+        self.upsample_mode = upsample_mode
         self.zoom_range = zoom_range
-        self.dummy_dim = dummy_dim
+        self.prob_per_channel = prob_per_channel
 
-    def __call__(self, data: Mapping[Hashable, torch.Tensor]):
-        self.randomize(None)
+    def randomize(self, img: torch.Tensor) -> None:
+        super().randomize(img)
         if not self._do_transform:
-            return data
-        d = dict(data)
-        zoom_factor = self.R.uniform(*self.zoom_range)
-        for key in self.key_iterator(d):
-            x = d[key]
-            spatial_shape = np.array(x.shape[1:])
-            if self.dummy_dim is not None:
-                dummy_size = spatial_shape[self.dummy_dim]
-                spatial_shape = np.delete(spatial_shape, self.dummy_dim)
-                x = x.movedim(self.dummy_dim + 1, 1)
-                x = einops.rearrange(x, 'c d ... -> (c d) ...')
+            return
+        self.zoom_factor = [
+            self.R.uniform(self.zoom_range[0], self.zoom_range[1]) if self.prob_per_channel < self.R.uniform()
+            else None
+        ]
 
-            downsample_shape = (spatial_shape * zoom_factor).astype(np.int16)
-            x = x[None]
-            x = nnf.interpolate(x, tuple(downsample_shape), mode='nearest-exact')
-            # no tricubic at PyTorch 2.0, use linear interpolation for both 2D & 3D
-            x = nnf.interpolate(x, tuple(spatial_shape), mode='bilinear' if len(spatial_shape) == 2 else 'trilinear')
-            x = x[0]
-            if self.dummy_dim is not None:
-                x = einops.rearrange(x, '(c d) ... -> c d ...', d=dummy_size)
-                x = x.movedim(1, self.dummy_dim + 1)
-            d[key] = x
-        return d
+    def __call__(self, img_in: NdarrayOrTensor, randomize: bool = True):
+        """
+        Args:
+            img: shape must be (num_channels, H, W[, D]),
+            randomize: whether to execute `randomize()` function first, defaults to True.
+        """
+        img: torch.Tensor = convert_to_tensor(img_in)
+        if randomize:
+            self.randomize(img)
+
+        if self._do_transform:
+            input_shape = img.shape[1:]
+            target_shape = np.round(np.array(input_shape) * self.zoom_factor).astype(np.int32)
+            with track_meta(False):
+                for ci, zoom_factor in enumerate(self.zoom_factor):
+                    if zoom_factor is None:
+                        continue
+                    downsample = mt.Affine(
+                        scale_params=np.full(len(input_shape), zoom_factor),
+                        spatial_size=target_shape,
+                        mode=self.downsample_mode,
+                        image_only=True,
+                    )
+                    upsample = mt.Affine(
+                        scale_params=np.full(len(input_shape), 1 / zoom_factor),
+                        spatial_size=input_shape,
+                        mode=self.upsample_mode,
+                        image_only=True,
+                    )
+                    # temporarily disable metadata tracking, since we do not want to invert the two Resize functions during
+                    # post-processing
+                    with track_meta(False):
+                        img_downsampled = downsample(img[ci:ci + 1])
+                        img[ci:ci + 1] = upsample(img_downsampled)
+        return img

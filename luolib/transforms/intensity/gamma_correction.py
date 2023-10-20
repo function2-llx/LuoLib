@@ -1,42 +1,68 @@
-# Fix name for MONAI: https://github.com/Project-MONAI/MONAI/discussions/6027
-from collections.abc import Hashable, Mapping
+# MONAI seems to have an unconventional name for gamma correction
+# https://github.com/Project-MONAI/MONAI/discussions/6027
+# ref: batchgenerators
+
+import numpy as np
+import torch
 
 from monai import transforms as mt
-from monai.config import KeysCollection, NdarrayOrTensor
-from monai.utils import TransformBackends
+from monai.config import NdarrayOrTensor
+from monai.data import get_track_meta
+from monai.utils import convert_to_tensor
 
-class RandGammaCorrectionD(mt.RandomizableTransform, mt.MapTransform):
-    backend = [TransformBackends.TORCH]
+from luolib.types import tuple2_t
 
+__all__ = [
+    'RandGammaCorrection',
+]
+
+class RandGammaCorrection(mt.RandomizableTransform):
     def __init__(
         self,
-        keys: KeysCollection,
-        prob: float = 0.1,
-        gamma: tuple[float, float] | float = (0.5, 4.5),
-        invert_image: bool = False,
-        allow_missing_keys: bool = False,
+        prob: float,
+        gamma_range: tuple2_t[float],
+        prob_invert: float,
+        retain_stats: bool,
+        eps: float = 1e-7,
     ) -> None:
         mt.RandomizableTransform.__init__(self, prob)
-        mt.MapTransform.__init__(self, keys, allow_missing_keys)
-        self.gamma = gamma
-        self.gamma_value = None
-        self.invert_image = invert_image
+        self.gamma_range = gamma_range
+        self.prob_invert = prob_invert
+        self.retain_stats = retain_stats
+        self.eps = eps
 
-    def randomize(self, _) -> None:
+    def randomize(self, num_channels: int):
         super().randomize(None)
-        if self._do_transform:
-            self.gamma_value = self.R.uniform(low=self.gamma[0], high=self.gamma[1])
+        if not self._do_transform:
+            return
+        self.gamma = np.empty((num_channels, 1))
+        for i in range(num_channels):
+            if self.gamma_range[0] < 1 and self.R.uniform() < 0.5:
+                self.gamma[i] = self.R.uniform(self.gamma_range[0], 1)
+            else:
+                self.gamma[i] = self.R.uniform(max(self.gamma_range[0], 1), self.gamma_range[1])
+        self.invert = self.R.uniform() < self.prob_invert
 
-    def __call__(self, data: Mapping[Hashable, NdarrayOrTensor]) -> dict[Hashable, NdarrayOrTensor]:
-        data = dict(data)
-        self.randomize(None)
-        if self._do_transform:
-            for key in self.key_iterator(data):
-                x = data[key]
-                x.clamp_(0, 1)
-                if self.invert_image:
-                    x.neg_().add_(1)
-                x.pow_(self.gamma_value)
-                if self.invert_image:
-                    x.neg_().add_(1)
-        return data
+    def __call__(self, img_in: NdarrayOrTensor):
+        img: torch.Tensor = convert_to_tensor(img_in, track_meta=get_track_meta())
+        self.randomize(img.shape[0])
+        if not self._do_transform:
+            return img
+        spatial_shape = img.shape[1:]
+        img = img.view(img.shape[0], -1)
+        if self.invert:
+            img = -img
+        if self.retain_stats:
+            mean = img.mean(1, True)
+            std = img.std(1, keepdim=True, correction=True)
+        min_v = img.min(1, True)
+        range_v = img.max(1, True) - min_v + self.eps
+        img = ((img - min_v) / range_v).pow(self.gamma)
+        if self.retain_stats:
+            img = (img - img.mean(1, True)) / (img.std(1, True) + 1e-8)
+            img = img * std + mean
+        else:
+            img = img * range_v + min_v
+        if self.invert:
+            img = -img
+        return img.view(img.shape[0], *spatial_shape)
