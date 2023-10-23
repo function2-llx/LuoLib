@@ -7,11 +7,18 @@ from torch import nn
 from torch.nn import functional as nnf
 from torch.utils import checkpoint
 
+from monai.networks.blocks import MLPBlock
 from monai.networks.layers import Conv
 
 from luolib.utils import flatten
-from ..init import init_common
+from ..blocks import MemoryEfficientAttention
 from ..layers import PositionEmbedding
+from ..init import init_common
+
+def apply_pe(x: torch.Tensor, pe: torch.Tensor | None):
+    if pe is None:
+        return x
+    return x + pe
 
 class MaskedAttentionDecoderLayer(nn.Module):
     def __init__(
@@ -19,29 +26,27 @@ class MaskedAttentionDecoderLayer(nn.Module):
         embed_dim: int,
         num_attention_heads: int,
         dim_feedforward: int,
-        dropout: float = 0.,
-        pre_norm: bool = False,
+        pre_norm: bool = True,
+        attn_drop: float = 0.,
+        proj_drop: float = 0.,
+        ffn_drop: float = 0.,
     ):
         super().__init__()
         self.embed_dim = embed_dim
         self.pre_norm = pre_norm
-        self.dropout = dropout
-
-        self.cross_attn = nn.MultiheadAttention(embed_dim, num_attention_heads, dropout, batch_first=True)
+        self.cross_attn = MemoryEfficientAttention(
+            embed_dim, num_attention_heads, False,
+            attn_drop=attn_drop, proj_drop=proj_drop,
+        )
         self.cross_attn_layer_norm = nn.LayerNorm(embed_dim)
-
-        self.self_attn = nn.MultiheadAttention(
-            embed_dim=self.embed_dim,
-            num_heads=num_attention_heads,
-            dropout=dropout,
-            add_bias_kv=True,   # follow the reference implementation,
-            batch_first=True,
+        # set qkv_bias=True following the reference implementation
+        self.self_attn = MemoryEfficientAttention(
+            embed_dim, num_attention_heads, True,
+            attn_drop=attn_drop, proj_drop=proj_drop,
         )
         self.self_attn_layer_norm = nn.LayerNorm(embed_dim)
-        self.fc1 = nn.Linear(embed_dim, dim_feedforward)
-        self.activation_fn = nn.ReLU()
-        self.activation_dropout = dropout
-        self.fc2 = nn.Linear(dim_feedforward, embed_dim)
+
+        self.mlp = MLPBlock(embed_dim, dim_feedforward, ffn_drop)
         self.final_layer_norm = nn.LayerNorm(embed_dim)
 
     @property
@@ -51,22 +56,21 @@ class MaskedAttentionDecoderLayer(nn.Module):
     def forward(
         self,
         hidden_states: torch.Tensor,
-        query_position_embeddings: torch.Tensor,
         key_hidden_states: torch.Tensor,
-        key_position_embeddings: torch.Tensor,
-        attention_mask: torch.Tensor,
+        query_position_embeddings: torch.Tensor | None = None,
+        key_position_embeddings: torch.Tensor | None = None,
+        attention_bias: torch.Tensor | None = None,
     ):
         residual = hidden_states
         if self.pre_norm:
             hidden_states = self.cross_attn_layer_norm(hidden_states)
-        hidden_states, cross_attn_weights = self.cross_attn.forward(
-            query=hidden_states + query_position_embeddings,
-            key=key_hidden_states + key_position_embeddings,
+
+        hidden_states = self.cross_attn(
+            query=apply_pe(hidden_states, query_position_embeddings),
+            key=apply_pe(key_hidden_states, key_position_embeddings),
             value=key_hidden_states,
-            attn_mask=attention_mask,
-            key_padding_mask=None,
+            attention_bias=attention_bias,
         )
-        hidden_states = nnf.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
         if self.post_norm:
             hidden_states = self.cross_attn_layer_norm(hidden_states)
@@ -75,12 +79,10 @@ class MaskedAttentionDecoderLayer(nn.Module):
         residual = hidden_states
         if self.pre_norm:
             hidden_states = self.self_attn_layer_norm(hidden_states)
-        hidden_states, self_attn_weights = self.self_attn.forward(
-            query=(query := hidden_states + query_position_embeddings),
-            key=query,
+        hidden_states = self.self_attn(
+            query=apply_pe(hidden_states, query_position_embeddings),
             value=hidden_states,
         )
-        hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
         if self.post_norm:
             hidden_states = self.self_attn_layer_norm(hidden_states)
@@ -89,10 +91,7 @@ class MaskedAttentionDecoderLayer(nn.Module):
         residual = hidden_states
         if self.pre_norm:
             hidden_states = self.final_layer_norm(hidden_states)
-        hidden_states = self.activation_fn(self.fc1(hidden_states))
-        hidden_states = nn.functional.dropout(hidden_states, p=self.activation_dropout, training=self.training)
-        hidden_states = self.fc2(hidden_states)
-        hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
+        hidden_states = self.mlp(hidden_states)
         hidden_states = residual + hidden_states
         if self.post_norm:
             hidden_states = self.final_layer_norm(hidden_states)

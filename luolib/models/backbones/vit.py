@@ -8,13 +8,12 @@ import torch
 from torch import nn
 from torch.nn import functional as nnf
 from torch.utils import checkpoint
-from xformers import ops as xops
 
-from luolib.models import load_ckpt, sac
-from luolib.types import NoWeightDecayParameter, param3_t, tuple2_t, tuple3_t
 from monai.utils import ensure_tuple_rep
 
-from luolib.models.rope import SpatialRotaryEmbedding
+from luolib.models import load_ckpt
+from luolib.models.blocks import sac, MemoryEfficientAttention, SpatialRotaryEmbedding
+from luolib.types import NoWeightDecayParameter, param3_t, tuple2_t, tuple3_t
 
 class PatchEmbed(nn.Module):
     def __init__(self, patch_size: param3_t[int] = 16, in_chans: int = 3, embed_dim: int = 768, adaptive: bool = True, flatten: bool = True):
@@ -29,76 +28,6 @@ class PatchEmbed(nn.Module):
         x = self.proj(x)
         if flatten:
             x = einops.rearrange(x, 'n c ... -> n (...) c')
-        return x
-
-class Attention(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        num_heads: int = 8,
-        qkv_bias: bool = False,
-        qk_scale: float = None,
-        proj_drop: float = 0.,
-        sub_ln: bool = False,
-        rope: SpatialRotaryEmbedding | None = None,
-    ):
-        super().__init__()
-        self.num_heads = num_heads
-        self.head_dim, _rem = divmod(dim, num_heads)
-        assert _rem == 0
-        self.scale = qk_scale or self.head_dim ** -0.5
-
-        self.sub_ln = sub_ln
-        if self.sub_ln:
-            self.q_proj = nn.Linear(dim, dim, bias=False)
-            self.k_proj = nn.Linear(dim, dim, bias=False)
-            self.v_proj = nn.Linear(dim, dim, bias=False)
-        else:
-            self.qkv = nn.Linear(dim, dim * 3, bias=False)
-
-        if qkv_bias:
-            self.q_bias = NoWeightDecayParameter(torch.zeros(dim))
-            self.v_bias = NoWeightDecayParameter(torch.zeros(dim))
-        else:
-            self.register_parameter('q_bias', None)
-            self.register_parameter('v_bias', None)
-
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop, inplace=True)
-
-        self.rope = rope
-
-    def expand_head(self, x: torch.Tensor):
-        return einops.rearrange(x, 'n l (nh d) -> n l nh d', nh=self.num_heads)
-
-    def apply_rope(self, x: torch.Tensor):
-        if self.rope is not None:
-            x = torch.cat([x[:, :1], self.rope(x[:, 1:])], dim=1)
-        return x
-
-    def forward(self, x: torch.Tensor):
-        if self.sub_ln:
-            q = self.expand_head(nnf.linear(x, self.q_proj.weight, self.q_bias))
-            k = self.expand_head(nnf.linear(x, self.k_proj.weight))
-            v = self.expand_head(nnf.linear(x, self.v_proj.weight, self.v_bias))
-        else:
-            qkv_bias = None
-            if self.q_bias is not None:
-                qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias))
-            qkv = einops.rearrange(
-                nnf.linear(input=x, weight=self.qkv.weight, bias=qkv_bias),
-                'n l (qkv nh d) -> qkv n nh l d', qkv=3,
-            )
-            q, k, v = qkv[0], qkv[1], qkv[2]
-        q = self.apply_rope(q)
-        k = self.apply_rope(k)
-        x = einops.rearrange(
-            # if using amp, v.dtype here will be the autocast dtype
-            xops.memory_efficient_attention(q.type_as(v), k.type_as(v), v),
-            'n l nh d -> n l (nh d)',
-        )
-        x = self.proj(x)
-        x = self.proj_drop(x)
         return x
 
 class SwiGLU(nn.Module):
@@ -142,7 +71,7 @@ class Block(nn.Module):
     ):
         super().__init__()
         self.norm1 = nn.LayerNorm(dim)
-        self.attn = Attention(dim, num_heads, qkv_bias, qk_scale, proj_drop, sub_ln, rope=rope)
+        self.attn = MemoryEfficientAttention(dim, num_heads, qkv_bias, qk_scale, proj_drop, sub_ln, rope=rope)
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = nn.LayerNorm(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)

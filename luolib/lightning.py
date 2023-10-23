@@ -86,7 +86,6 @@ class ModelCheckpoint(ModelCheckpointBase):
     def __resolve_ckpt_dir(self, trainer: Trainer):
         return trainer.log_dir / 'checkpoint'
 
-
 class LightningCLI(LightningCLIBase):
     model: LightningModule
 

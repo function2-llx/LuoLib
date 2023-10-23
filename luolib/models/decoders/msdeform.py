@@ -7,9 +7,9 @@ from torch import nn
 from torch.nn import functional as nnf
 from torch.utils import checkpoint
 
-from luolib.models.blocks import get_conv_layer
-from luolib.models.init import init_common
-from luolib.models.layers import Norm, Act, PositionEmbedding
+from ..blocks import get_conv_layer
+from ..init import init_common
+from ..layers import Norm, Act, PositionEmbedding
 
 __all__ = []
 
