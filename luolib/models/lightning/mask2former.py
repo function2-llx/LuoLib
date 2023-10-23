@@ -8,7 +8,6 @@ from torch.nn import functional as nnf
 from transformers.models.mask2former.modeling_mask2former import pair_wise_sigmoid_cross_entropy_loss, pair_wise_dice_loss
 
 from luolib.utils import DataKey
-from luolib.conf import Mask2FormerConf
 from .model_base import ExpModelBase
 from ..transformer_decoder.masked_attention import MaskedAttentionDecoder
 

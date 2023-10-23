@@ -1,2 +1,2 @@
 from .factories import Act, Norm, LayerNormNd
-from .position_embedding import PositionEmbedding
+from .position_embedding import SpatialPositionEmbedding

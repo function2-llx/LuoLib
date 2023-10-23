@@ -4,6 +4,8 @@ from typing import TypeAlias, TypeVar
 
 from torch import nn
 
+from monai.networks.layers import Conv
+
 T = TypeVar('T')
 tuple2_t: TypeAlias = tuple[T, T]
 param2_t: TypeAlias = T | tuple2_t[T]
@@ -40,3 +42,7 @@ def call_partial(partial: partial_t[F], *args, **kwargs):
     if not isinstance(partial, tuple):
         partial = (partial, {})
     return partial[0](*args, **partial[1], **kwargs)
+
+def get_conv_t(spatial_dims) -> type[nn.Conv2d | nn.Conv3d]:
+    assert spatial_dims != 1
+    return Conv[Conv.CONV, spatial_dims]

@@ -7,9 +7,9 @@ from torch import nn
 from torch.nn import functional as nnf
 from torch.utils import checkpoint
 
-from ..blocks import get_conv_layer
+from luolib.types import get_conv_t
 from ..init import init_common
-from ..layers import Norm, Act, PositionEmbedding
+from ..layers import SpatialPositionEmbedding
 
 __all__ = []
 
@@ -89,7 +89,7 @@ class MultiscaleDeformableSelfAttention(nn.Module):
                     sampling_points[:, :, :, level_id],
                     f'n nq M K sp -> (n M){dummy_dim}nq K sp',
                 ),
-                mode='bilinear', padding_mode="zeros", align_corners=False,
+                mode='bilinear', padding_mode='zeros', align_corners=False,
             )
             sampling_value_list.append(sampling_value)
         sampling_values = einops.rearrange(sampling_value_list, f'L (n M) d{dummy_dim}nq K -> n nq M (L K) d', M=self.n_heads)
@@ -153,6 +153,7 @@ class MultiscaleDeformablePixelDecoder(nn.Module):
         spatial_dims: int,
         backbone_feature_channels: Sequence[int],
         feature_dim: int,
+        num_gn_groups: int,
         num_heads: int,
         num_feature_levels: int = 3,
         n_points: int = 4,
@@ -164,16 +165,15 @@ class MultiscaleDeformablePixelDecoder(nn.Module):
         self.spatial_dims = spatial_dims
         self.interpolate_mode = 'bilinear' if spatial_dims == 2 else 'trilinear'
         self.num_fpn_levels = len(backbone_feature_channels) - num_feature_levels
+        conv_t = get_conv_t(spatial_dims)
         self.input_projections = nn.ModuleList([
-            get_conv_layer(
-                spatial_dims, backbone_feature_channel, feature_dim, kernel_size=1,
-                norm=(Norm.GROUP, {'num_groups': 32, 'num_channels': feature_dim}),
-                act=None,
-                bias=i >= self.num_fpn_levels   # follow the reference implementation
+            nn.Sequential(
+                conv_t(backbone_feature_channel, feature_dim, 1),
+                nn.GroupNorm(num_gn_groups, feature_dim),
             )
             for i, backbone_feature_channel in enumerate(backbone_feature_channels)
         ])
-        self.position_embedding = PositionEmbedding(feature_dim, spatial_dims)
+        self.position_embedding = SpatialPositionEmbedding(feature_dim, spatial_dims)
         self.level_embedding = nn.Embedding(num_feature_levels, feature_dim)
         if mlp_dim is None:
             mlp_dim = 4 * feature_dim
@@ -181,11 +181,12 @@ class MultiscaleDeformablePixelDecoder(nn.Module):
             MultiscaleDeformablePixelDecoderLayer(spatial_dims, feature_dim, num_heads, num_feature_levels, n_points, mlp_dim)
             for _ in range(num_layers)
         ])
-        self.output_convs = nn.ModuleList([
-            get_conv_layer(
-                spatial_dims, feature_dim, feature_dim, kernel_size=3, bias=False,
-                norm=(Norm.GROUP, {'num_groups': 32, 'num_channels': feature_dim}),
-                act=Act.RELU,
+        self.fpn_output_convs = nn.ModuleList([
+            nn.Sequential(
+                # TODO: use sac
+                conv_t(feature_dim, feature_dim, 3, padding=1),
+                nn.GroupNorm(num_gn_groups, feature_dim),
+                nn.ReLU(),
             )
             for _ in range(self.num_fpn_levels)
         ])
@@ -264,7 +265,7 @@ class MultiscaleDeformablePixelDecoder(nn.Module):
         ]
         outputs = self.forward_deformable_layers(feature_maps[self.num_fpn_levels:])[::-1]
 
-        for lateral, output_conv in zip(feature_maps, self.output_convs):
+        for lateral, output_conv in zip(feature_maps, self.fpn_output_convs):
             output = lateral + nnf.interpolate(outputs[-1], lateral.shape[2:], mode=self.interpolate_mode)
             outputs.append(output_conv(output))
         return outputs[::-1]

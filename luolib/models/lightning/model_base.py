@@ -8,37 +8,36 @@ from torch.optim import Optimizer
 
 from monai.utils import ensure_tuple
 
-from luolib.conf import ExpConfBase
-from luolib.types import ParamGroup
+# from luolib.conf import ExpConfBase
+# from luolib.types import NamedParamGroup
 from luolib.utils import partition_by_predicate
 from luolib.optim import create_optimizer, param_groups_layer_decay
 from luolib.scheduler import create_scheduler
-from ..utils import split_weight_decay_keys
+from ...optim.factory import infer_weight_decay_keys
 
 class ExpModelBase(LightningModule):
-    def __init__(self, conf: ExpConfBase):
-        super().__init__()
-        self.conf = conf
-        self.backbone = self.create_backbone()
+    # def __init__(self, conf: ExpConfBase):
+    #     super().__init__()
+    #     self.conf = conf
+    #     self.backbone = self.create_backbone()
 
-    def create_backbone(self):
-        return create_model(self.conf.backbone, backbone_registry)
+    # def create_backbone(self):
+    #     return create_model(self.conf.backbone, backbone_registry)
 
-    @torch.no_grad()
-    def backbone_dummy(self):
-        conf = self.conf
-        self.backbone.eval()
-        dummy_input = torch.zeros(1, conf.num_input_channels, *conf.sample_shape)
-        dummy_output = self.backbone.forward(dummy_input)
-        if conf.print_shape:
-            print('backbone output shapes:')
-            for x in dummy_output.feature_maps:
-                print(x.shape[1:])
-        return dummy_input, dummy_output
+    # @torch.no_grad()
+    # def backbone_dummy(self):
+    #     conf = self.conf
+    #     self.backbone.eval()
+    #     dummy_input = torch.zeros(1, conf.num_input_channels, *conf.sample_shape)
+    #     dummy_output = self.backbone.forward(dummy_input)
+    #     if conf.print_shape:
+    #         print('backbone output shapes:')
+    #         for x in dummy_output.feature_maps:
+    #             print(x.shape[1:])
+    #     return dummy_input, dummy_output
 
-    @property
-    def tta_flips(self):
-        match self.conf.spatial_dims:
+    def tta_flips(self, spatial_dims: int):
+        match spatial_dims:
             case 2:
                 return [[2], [3], [2, 3]]
             case 3:
@@ -46,12 +45,12 @@ class ExpModelBase(LightningModule):
             case _:
                 raise ValueError
 
-    @property
-    def log_exp_dir(self) -> Path:
-        assert self.trainer.is_global_zero
-        from pytorch_lightning.loggers import WandbLogger
-        logger: WandbLogger = self.trainer.logger   # type: ignore
-        return Path(logger.experiment.dir)
+    # @property
+    # def log_exp_dir(self) -> Path:
+    #     assert self.trainer.is_global_zero
+    #     from lightning.pytorch.loggers import WandbLogger
+    #     logger: WandbLogger = self.trainer.logger   # type: ignore
+    #     return Path(logger.experiment.dir)
 
     def on_fit_start(self):
         if not self.trainer.is_global_zero:
@@ -66,51 +65,51 @@ class ExpModelBase(LightningModule):
             for scheduler in ensure_tuple(self.lr_schedulers()):
                 print(scheduler, file=f)
 
-    def get_param_groups(self) -> list[ParamGroup]:
-        others_no_decay_keys, backbone_no_decay_keys = map(
-            set,
-            partition_by_predicate(lambda k: k.startswith('backbone.'), split_weight_decay_keys(self)),
-        )
-        backbone_optim = self.conf.backbone_optim
-        optim = self.conf.optimizer
-        param_groups = []
-        if backbone_optim.lr == 0:
-            for p in self.backbone.parameters():
-                p.requires_grad = False
-            print('fix backbone weights')
-        backbone_param_groups: list[ParamGroup] = param_groups_layer_decay(
-            self.backbone,
-            backbone_optim.weight_decay,
-            backbone_no_decay_keys,
-            backbone_optim.layer_decay,
-        )
-        for param_group in backbone_param_groups:
-            param_group['lr'] = backbone_optim.lr * param_group['lr_scale']
-        param_groups.extend(backbone_param_groups)
-
-        others_decay_param_group, others_no_decay_param_group = map(
-            lambda named_parameters: {
-                'param_names': [n for n, _ in named_parameters],
-                'param': [p for p, _ in named_parameters],
-            },
-            partition_by_predicate(
-                lambda np: np[0] in others_no_decay_keys,
-                filter(lambda np: not np[0].startswith('backbone.'), self.named_parameters()),
-            )
-        )
-
-        param_groups.extend([
-            {
-                **others_decay_param_group,
-                'weight_decay': optim.weight_decay,
-            },
-            {
-                **others_no_decay_param_group,
-                'weight_decay': 0.,
-            }
-        ])
-
-        return param_groups
+    # def get_param_groups(self) -> list[NamedParamGroup]:
+    #     others_no_decay_keys, backbone_no_decay_keys = map(
+    #         set,
+    #         partition_by_predicate(lambda k: k.startswith('backbone.'), infer_weight_decay_keys(self)),
+    #     )
+    #     backbone_optim = self.conf.backbone_optim
+    #     optim = self.conf.optimizer
+    #     param_groups = []
+    #     if backbone_optim.lr == 0:
+    #         for p in self.backbone.parameters():
+    #             p.requires_grad = False
+    #         print('fix backbone weights')
+    #     backbone_param_groups: list[NamedParamGroup] = param_groups_layer_decay(
+    #         self.backbone,
+    #         backbone_optim.weight_decay,
+    #         backbone_no_decay_keys,
+    #         backbone_optim.layer_decay,
+    #     )
+    #     for param_group in backbone_param_groups:
+    #         param_group['lr'] = backbone_optim.lr * param_group['lr_scale']
+    #     param_groups.extend(backbone_param_groups)
+    #
+    #     others_decay_param_group, others_no_decay_param_group = map(
+    #         lambda named_parameters: {
+    #             'param_names': [n for n, _ in named_parameters],
+    #             'param': [p for p, _ in named_parameters],
+    #         },
+    #         partition_by_predicate(
+    #             lambda np: np[0] in others_no_decay_keys,
+    #             filter(lambda np: not np[0].startswith('backbone.'), self.named_parameters()),
+    #         )
+    #     )
+    #
+    #     param_groups.extend([
+    #         {
+    #             **others_decay_param_group,
+    #             'weight_decay': optim.weight_decay,
+    #         },
+    #         {
+    #             **others_no_decay_param_group,
+    #             'weight_decay': 0.,
+    #         }
+    #     ])
+    #
+    #     return param_groups
 
     def configure_optimizers(self):
         conf = self.conf

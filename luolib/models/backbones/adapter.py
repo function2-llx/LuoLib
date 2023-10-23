@@ -8,11 +8,7 @@ from torch import nn
 from .vit import ViT
 
 class SimpleViTAdapter(ViT):
-    def __init__(
-        self,
-        out_indexes: Sequence[int],
-        *args, **kwargs,
-    ):
+    def __init__(self, *args, out_indexes: Sequence[int], **kwargs):
         super().__init__(*args, **kwargs)
         dim = self.embed_dim
         patch_size = self.patch_embed.patch_size

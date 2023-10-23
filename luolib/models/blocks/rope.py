@@ -26,7 +26,7 @@ class SpatialRotaryEmbedding(nn.Module):
         # let's wish we can have nn.BufferList soon: https://github.com/pytorch/pytorch/issues/37386 https://github.com/pytorch/pytorch/issues/35735
         return [self.get_buffer(f'ω{i}') for i in range(3)]
 
-    def __init__(self,dim: int, rescale_shape: tuple3_t[int], base: tuple3_t[float], merge_hw: bool = True):
+    def __init__(self, dim: int, rescale_shape: tuple3_t[int], base: tuple3_t[float], merge_hw: bool = True):
         super().__init__()
         self.dim = dim
         self.rescale_shape = rescale_shape
@@ -72,6 +72,7 @@ class SpatialRotaryEmbedding(nn.Module):
         if visible_idx is not None:
             visible_idx = einops.repeat(visible_idx, 'n l -> n l d', d=self.dim >> 1).contiguous()
             batch_size = visible_idx.shape[0]
+
             def gather_visible(x: torch.Tensor):
                 x = einops.repeat(x, 'l d -> n l d', n=batch_size)
                 x = x.gather(dim=1, index=visible_idx)
