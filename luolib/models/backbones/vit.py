@@ -12,7 +12,8 @@ from torch.utils import checkpoint
 from monai.utils import ensure_tuple_rep
 
 from luolib.models import load_ckpt
-from luolib.models.blocks import sac, MemoryEfficientAttention, SpatialRotaryEmbedding
+from luolib.models.blocks import sac, SpatialRotaryEmbedding
+from luolib.models.blocks.transformer_utils import MemoryEfficientAttention
 from luolib.types import NoWeightDecayParameter, param3_t, tuple2_t, tuple3_t
 
 class PatchEmbed(nn.Module):

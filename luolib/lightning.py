@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from functools import cached_property
 from pathlib import Path
+from typing import Any
 
 from lightning import LightningModule as LightningModuleBase, Trainer as TrainerBase
 from lightning.pytorch.callbacks import ModelCheckpoint as ModelCheckpointBase
 from lightning.pytorch.cli import LightningCLI as LightningCLIBase
 from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.utilities.types import STEP_OUTPUT
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 
 from luolib.optim.factory import NamedParamGroup, OptimizerCallable, infer_weight_decay_keys, normalize_param_groups
@@ -22,16 +25,6 @@ class LightningModule(LightningModuleBase):
         super().__init__()
         self.optimizer_callable = optimizer
         self.lr_scheduler_config_with_callable = lr_scheduler
-
-    # @cached_property
-    # def run_dir(self) -> Path:
-    #     logger: WandbLogger = self.logger
-    #     if self.trainer.is_global_zero:
-    #         run_dir = Path(logger.save_dir) / logger.experiment.name / f'{Path(logger.experiment.dir).parent.name}'
-    #     else:
-    #         run_dir = None
-    #     run_dir = self.trainer.strategy.broadcast(run_dir)
-    #     return run_dir
 
     def grad_named_parameters(self):
         for pn, p in self.named_parameters():
@@ -59,7 +52,7 @@ class LightningModule(LightningModuleBase):
 
     def on_train_start(self) -> None:
         # https://github.com/Lightning-AI/lightning/issues/17972
-        match (scheduler := self.lr_scheduler_config.scheduler):
+        match scheduler := self.lr_scheduler_config.scheduler:
             case TIMMScheduler():
                 scheduler.step_update(0)
 
@@ -71,8 +64,11 @@ class LightningModule(LightningModuleBase):
                 super().lr_scheduler_step(scheduler, metric)
 
 class Trainer(TrainerBase):
-    @property
+    @cached_property
     def log_dir(self) -> Path:
+        """
+        You must call this on all processes. Failing to do so will cause your program to stall forever.
+        """
         logger = self.logger
         assert isinstance(logger, WandbLogger)
         if self.is_global_zero:

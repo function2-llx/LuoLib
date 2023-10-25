@@ -1,17 +1,54 @@
+from collections.abc import Callable
+
 import einops
 import torch
 from torch import nn
+
 from torch.nn import functional as nnf
 from xformers import ops as xops
 
 from luolib.models.blocks import SpatialRotaryEmbedding
 from luolib.types import NoWeightDecayParameter
+from luolib.utils import fall_back_none
 
 __all__ = [
+    'transformer_block_forward',
+    'with_pos_embed',
     'MemoryEfficientAttention',
 ]
 
-from luolib.utils import fall_back_none
+def with_pos_embed(x: torch.Tensor, pos_embed: torch.Tensor | None = None):
+    return x if pos_embed is None else x + pos_embed
+
+def transformer_block_forward(
+    hidden_states: torch.Tensor,
+    module: Callable[[torch.Tensor, ...], torch.Tensor],
+    layer_norm: nn.LayerNorm,
+    pre_norm: bool,
+    position_embeddings: torch.Tensor | None = None,
+    *,
+    args: tuple = (),
+    kwargs: dict | None = None,
+):
+    """
+    Args:
+        hidden_states:
+        module: can be CA, SA, FFN
+        layer_norm:
+        pre_norm:
+        position_embeddings: add to hidden_states before calling the module
+        args: additional positional arguments to module
+        kwargs: additional kw arguments to module
+    """
+    kwargs = fall_back_none(kwargs, {})
+    residual = hidden_states
+    if pre_norm:
+        hidden_states = layer_norm(hidden_states)
+    hidden_states = module(with_pos_embed(hidden_states, position_embeddings), *args, **kwargs)
+    hidden_states = hidden_states + residual
+    if not pre_norm:
+        hidden_states = layer_norm(hidden_states)
+    return hidden_states
 
 class MemoryEfficientAttention(nn.Module):
     def __init__(

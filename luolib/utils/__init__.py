@@ -1,4 +1,4 @@
-from collections.abc import Callable, Hashable, Iterable
+from collections.abc import Callable, Hashable, Iterable, Sequence
 import os
 from typing import TypeVar
 
@@ -29,6 +29,15 @@ def channel_last(x: torch.Tensor) -> torch.Tensor:
 
 def flatten(x: torch.Tensor) -> torch.Tensor:
     return einops.rearrange(x, 'n c ... -> n (...) c')
+
+def spatialize(x: torch.Tensor, spatial_shape: Sequence[int]) -> torch.Tensor:
+    spatial_dims = len(spatial_shape)
+    spatial_pattern = ' '.join(map(lambda i: f's{i}', range(spatial_dims)))
+    spatial_dict = {
+        f's{i}': s
+        for i, s in enumerate(spatial_shape)
+    }
+    return einops.rearrange(x, f'n ({spatial_pattern}) d -> n d {spatial_pattern}', **spatial_dict)
 
 T = TypeVar('T')
 def partition_by_predicate(pred: Callable[[T], bool] | Hashable, seq: Iterable[T]) -> tuple[list[T], list[T]]:

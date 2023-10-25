@@ -8,8 +8,8 @@ from torch.nn import functional as nnf
 from transformers.models.mask2former.modeling_mask2former import pair_wise_sigmoid_cross_entropy_loss, pair_wise_dice_loss
 
 from luolib.utils import DataKey
+from ..masked_attention_decoder import MaskedAttentionDecoder
 from .model_base import ExpModelBase
-from ..transformer_decoder.masked_attention import MaskedAttentionDecoder
 
 def sample_point(feature_map: torch.Tensor, point_coordinates: torch.Tensor, transformed: bool = False, **kwargs) -> torch.Tensor:
     spatial_dims = point_coordinates.shape[-1]
@@ -222,7 +222,7 @@ def test():
         'feature_dim': 256,
         'num_heads': 8,
     })
-    conf.transformer_decoder = ModelConf(name='mask', kwargs={'spatial_dims': 3, 'feature_channels': 256})
+    conf.mask_decoder = ModelConf(name='mask', kwargs={'spatial_dims': 3, 'feature_channels': 256})
     conf.print_shape = False
     model = Mask2Former(conf).cuda()
     batch_size = 4

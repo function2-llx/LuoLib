@@ -133,7 +133,6 @@ output
 output-omega
 pretrained/
 submit/
-test/
 
 nnUNet_data
 *.xlsx

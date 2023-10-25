@@ -16,6 +16,17 @@ __all__ = [
 OptimizerCallable = Callable[[Iterable], Optimizer]
 
 def infer_weight_decay_keys(module: nn.Module):
+    """
+        Force weight decay:
+          - weight of linear, conv
+            - including *_proj_weight in nn.MultiheadAttention
+        Force no weight decay:
+          - any bias
+          - weight (batch/instance/group/layer) norm
+          - weight of embedding
+          - explicit NoWeightDecayParameter
+          - defined in `no_weight_decay` method of a module
+    """
     # modify from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py, `configure_optimizers`
     from torch.nn.modules.conv import _ConvNd
     whitelist_weight_modules = (

@@ -46,3 +46,5 @@ def call_partial(partial: partial_t[F], *args, **kwargs):
 def get_conv_t(spatial_dims) -> type[nn.Conv2d | nn.Conv3d]:
     assert spatial_dims != 1
     return Conv[Conv.CONV, spatial_dims]
+
+spatial_shape_t: TypeAlias = tuple2_t[int] | tuple3_t[int]
