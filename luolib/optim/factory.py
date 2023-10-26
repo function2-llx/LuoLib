@@ -100,7 +100,7 @@ def normalize_param_groups(param_groups: list[NamedParamGroup], decay_keys: set[
         if decay_params:
             normalized_param_groups.append(
                 {
-                    'params': no_decay_params,
+                    'params': decay_params,
                     **param_group,
                 }
             )
