@@ -1,30 +1,33 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import cached_property
 from pathlib import Path
-from typing import Any
+from typing import Literal
 
 from lightning import LightningModule as LightningModuleBase, Trainer as TrainerBase
-from lightning.pytorch.callbacks import ModelCheckpoint as ModelCheckpointBase
-from lightning.pytorch.cli import LightningCLI as LightningCLIBase
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint as ModelCheckpointBase, ModelSummary
+from lightning.pytorch.cli import LightningArgumentParser, LightningCLI as LightningCLIBase
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.utilities.types import STEP_OUTPUT
+from lightning.pytorch.trainer.connectors.accelerator_connector import _PRECISION_INPUT
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
+import torch
 
+from luolib.datamodule import ExpDataModuleBase, CrossValDataModule
 from luolib.optim.factory import NamedParamGroup, OptimizerCallable, infer_weight_decay_keys, normalize_param_groups
 from luolib.scheduler.factory import LRScheduler, LRSchedulerConfig, LRSchedulerConfigWithCallable
+from luolib.utils import fall_back_none
+
+__all__ = [
+    'LightningModule',
+    'Trainer',
+    'ModelCheckpoint',
+    'LightningCLI',
+    'LightningCLICrossVal',
+]
 
 class LightningModule(LightningModuleBase):
     trainer: Trainer
-
-    def __init__(
-        self,
-        optimizer: OptimizerCallable | None = None,
-        lr_scheduler: LRSchedulerConfigWithCallable | None = None,
-    ):
-        super().__init__()
-        self.optimizer_callable = optimizer
-        self.lr_scheduler_config_with_callable = lr_scheduler
 
     def grad_named_parameters(self):
         for pn, p in self.named_parameters():
@@ -41,10 +44,11 @@ class LightningModule(LightningModuleBase):
     def configure_optimizers(self):
         param_groups = self.get_param_groups()
         normalized_param_groups = normalize_param_groups(param_groups, self.get_decay_keys())
-        self.optimizer = self.optimizer_callable(normalized_param_groups)
-        self.lr_scheduler_config: LRSchedulerConfig = self.lr_scheduler_config_with_callable
-        self.lr_scheduler_config.scheduler = self.lr_scheduler_config_with_callable.scheduler(self.optimizer)
-        return [self.optimizer], [self.lr_scheduler_config]
+        self.optimizer = self.trainer.optimizer_callable(normalized_param_groups)
+        self.lr_scheduler_config = LRSchedulerConfig(self.trainer.lr_scheduler_config_with_callable)
+        self.lr_scheduler_config.scheduler = self.trainer.lr_scheduler_config_with_callable.scheduler(self.optimizer)
+        # https://github.com/Lightning-AI/lightning/issues/18870
+        return [self.optimizer], [vars(self.lr_scheduler_config)]
 
     def on_fit_start(self) -> None:
         if self.trainer.is_global_zero:
@@ -64,6 +68,25 @@ class LightningModule(LightningModuleBase):
                 super().lr_scheduler_step(scheduler, metric)
 
 class Trainer(TrainerBase):
+    def __init__(
+        self,
+        *,
+        precision: _PRECISION_INPUT = '16-mixed',
+        check_val_every_n_epoch: int | None = None,
+        benchmark: bool = True,
+        optimizer: OptimizerCallable | None = None,
+        lr_scheduler: LRSchedulerConfigWithCallable | None = None,
+        **kwargs,
+    ):
+        super().__init__(
+            precision=precision,
+            check_val_every_n_epoch=check_val_every_n_epoch,
+            benchmark=benchmark,
+            **kwargs,
+        )
+        self.optimizer_callable = optimizer
+        self.lr_scheduler_config_with_callable = lr_scheduler
+
     @cached_property
     def log_dir(self) -> Path:
         """
@@ -83,20 +106,81 @@ class ModelCheckpoint(ModelCheckpointBase):
         return trainer.log_dir / 'checkpoint'
 
 class LightningCLI(LightningCLIBase):
-    model: LightningModule
+    _subcommand_preparing: str | None = None
 
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        *,
+        model_class: type[LightningModule] | Callable[..., LightningModule] | None = LightningModule,
+        datamodule_class: type[ExpDataModuleBase] | Callable[..., ExpDataModuleBase] | None = ExpDataModuleBase,
+        save_config_kwargs: dict[str, ...] | None = None,
+        trainer_class: type[Trainer] | Callable[..., Trainer] = Trainer,
+        trainer_defaults: dict[str, ...] | None = None,
+        seed_everything_default: bool | int = 42,
+        parser_kwargs: dict[str, ...] | dict[str, dict[str, ...]] | None = None,
+        subclass_mode_model: bool = True,
+        subclass_mode_data: bool = True,
+        auto_configure_optimizers: bool = False,
+        **kwargs,
+    ):
+        save_config_kwargs = fall_back_none(save_config_kwargs, {'config_filename': 'conf.yaml'})
+        trainer_defaults = fall_back_none(trainer_defaults, {
+            'callbacks': [
+                LearningRateMonitor(),
+                ModelSummary(max_depth=2),
+
+            ]
+        })
+        parser_kwargs = fall_back_none(parser_kwargs, {'parser_mode': "omegaconf"})
         super().__init__(
-            *args,
-            model_class=LightningModule,
-            save_config_kwargs={'config_filename': 'conf.yaml'},
-            trainer_class=Trainer,
-            subclass_mode_model=True,
-            auto_configure_optimizers=False,
+            model_class=model_class,
+            datamodule_class=datamodule_class,
+            save_config_kwargs=save_config_kwargs,
+            trainer_class=trainer_class,
+            trainer_defaults=trainer_defaults,
+            seed_everything_default=seed_everything_default,
+            parser_kwargs=parser_kwargs,
+            subclass_mode_model=subclass_mode_model,
+            subclass_mode_data=subclass_mode_data,
+            auto_configure_optimizers=auto_configure_optimizers,
             **kwargs,
         )
+
+    def _prepare_subcommand_parser(self, klass: type, subcommand: str, **kwargs) -> LightningArgumentParser:
+        # make current subcommand available in `add_arguments_to_parser`
+        self._subcommand_preparing = subcommand
+        return super()._prepare_subcommand_parser(klass, subcommand, **kwargs)
+
+    def add_arguments_to_parser(self, parser: LightningArgumentParser):
+        parser.add_argument('--float32_matmul_precision', type=Literal['medium', 'high', 'highest'], default='high')
+        parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
 
     def before_instantiate_classes(self):
         # wandb wants to use a directory already existing: https://github.com/wandb/wandb/issues/714#issuecomment-565870686
         save_dir = self.config[self.subcommand].trainer.logger.init_args.save_dir
         Path(save_dir).mkdir(exist_ok=True, parents=True)
+
+    def _run_subcommand(self, subcommand: str):
+        torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
+        super()._run_subcommand(subcommand)
+
+class LightningCLICrossVal(LightningCLI):
+    datamodule: CrossValDataModule
+
+    def __init__(
+        self,
+        *,
+        datamodule_class: type[CrossValDataModule] | Callable[..., CrossValDataModule] | None = CrossValDataModule,
+        **kwargs,
+    ):
+        super().__init__(datamodule_class=datamodule_class, **kwargs)
+
+    def add_arguments_to_parser(self, parser: LightningArgumentParser):
+        if self._subcommand_preparing == 'fit':
+            parser.add_argument('fold_id', type=int)
+        super().add_arguments_to_parser(parser)
+
+    def _run_subcommand(self, subcommand: str):
+        torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
+        self.datamodule.fold_id = self._get(self.config, 'fold_id')
+        super()._run_subcommand(subcommand)
