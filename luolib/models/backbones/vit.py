@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import einops
+import numpy as np
 from timm.layers import DropPath
 import torch
 from torch import nn
@@ -11,10 +12,14 @@ from torch.utils import checkpoint
 
 from monai.utils import ensure_tuple_rep
 
-from luolib.models import load_ckpt
-from luolib.models.blocks import sac, SpatialRotaryEmbedding
-from luolib.models.blocks.transformer_utils import MemoryEfficientAttention
 from luolib.types import NoWeightDecayParameter, param3_t, tuple2_t, tuple3_t
+from ..blocks import sac, SpatialRotaryEmbedding, MemoryEfficientAttention
+from ..utils import load_ckpt
+
+__all__ = [
+    'ViT',
+    'SimpleViTAdapter',
+]
 
 class PatchEmbed(nn.Module):
     def __init__(self, patch_size: param3_t[int] = 16, in_chans: int = 3, embed_dim: int = 768, adaptive: bool = True, flatten: bool = True):
@@ -96,7 +101,7 @@ class ViT(nn.Module):
         adaptive_patch_embed: bool = True,
         embed_dim: int = 768,
         pos_embed_shape: tuple3_t[int],
-        pretrained_pos_embed_shape: tuple2_t[int] | tuple3_t[int] | None = None,
+        pretrained_pos_embed_shape: tuple2_t[int] | None = None,
         rope_rescale_shape: tuple3_t[int] = (-1, -1, -1),
         rope_base: tuple3_t[float] = (2333., 10000., 10000.),
         rope_merge_hw: bool = True,
@@ -112,6 +117,10 @@ class ViT(nn.Module):
         patch_embed_grad_scale: float = 1.,
         pretrained_ckpt: Checkpoint,
     ):
+        """
+        Args:
+            pretrained_pos_embed_shape: used for spatialize 2D pre-trained positional embedding (from EVA-02)
+        """
         super().__init__()
         self.embed_dim = embed_dim
         self.patch_embed = PatchEmbed(patch_size, in_channels, embed_dim, adaptive_patch_embed, False)
@@ -208,3 +217,38 @@ class ViT(nn.Module):
             state_dict['pos_embed'] = sac.resample(pos_embed, self.pos_embed.shape[2:])
 
         return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
+
+class SimpleViTAdapter(ViT):
+    def __init__(self, *args, out_indexes: Sequence[int], **kwargs):
+        super().__init__(*args, **kwargs)
+        dim = self.embed_dim
+        patch_size = self.patch_embed.patch_size
+        assert patch_size[1] == patch_size[2] == 16
+        # TODO: handle in-plane patch size of 8
+        assert patch_size[0] & patch_size[0] - 1 == 0
+        aniso_d = max(0, (16 // patch_size[0]).bit_count() - 1)
+        assert not self.patch_embed.adaptive
+        get_args = lambda i: ((1 if aniso_d >= i else 2, 2, 2), ) * 2
+        self.fpn = nn.ModuleList([
+            nn.Sequential(
+                nn.ConvTranspose3d(dim, dim, *get_args(4)),
+                nn.InstanceNorm3d(dim, affine=True),
+                nn.GELU(),
+                nn.ConvTranspose3d(dim, dim, *get_args(3)),
+            ),
+            nn.ConvTranspose3d(dim, dim, *get_args(4)),
+            nn.Identity(),
+            nn.MaxPool3d(*get_args(5)),
+        ])
+        self.out_indexes = out_indexes
+        assert len(out_indexes) == len(self.fpn)
+        self.norms = nn.ModuleList([nn.InstanceNorm3d(dim, affine=True) for _ in range(len(out_indexes))])
+
+    def forward(self, x: torch.Tensor):
+        states = self.forward_features(x)
+        d, h, w = np.array(x.shape[2:]) // np.array(self.patch_embed.patch_size)
+        ret = []
+        for out_id, norm, fpn in zip(self.out_indexes, self.norms, self.fpn):
+            feature_map = einops.rearrange(states[out_id][:, 1:], 'n (d h w) c -> n c d h w', d=d, h=h, w=w)
+            ret.append(fpn(norm(feature_map)))
+        return ret

@@ -12,16 +12,15 @@ __all__ = [
     'MaskFormer',
 ]
 
-class MaskFormer(LightningModule):
+class MaskFormer(nn.Module):
     def __init__(
         self,
         backbone: nn.Module,
         mask_decoder: MaskedAttentionDecoder,
         key_levels: Sequence[int] = (-3, -2, -1),
         pixel_embedding_level: int = 0,
-        **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__()
         assert isinstance(backbone, BackboneProtocol)
         self.backbone = backbone
         self.mask_decoder = mask_decoder
