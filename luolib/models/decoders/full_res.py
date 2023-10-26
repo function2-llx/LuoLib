@@ -4,29 +4,39 @@ import torch
 from torch import nn
 
 from luolib.types import spatial_param_seq_t
-from .base import BackboneWithDecoder
+from .base import NestedBackbone
 from ..blocks import BasicConvLayer, UNetUpLayer
 from ..layers import Act, Norm
 
 __all__ = ['FullResAdapter']
 
-class FullResAdapter(BackboneWithDecoder):
+from ...utils import fall_back_none
+
+class FullResAdapter(NestedBackbone):
     def __init__(
         self,
         spatial_dims: int,
         num_input_channels: int,
         layer_channels: Sequence[int],
+        backbone_first_channels: int,
         kernel_sizes: spatial_param_seq_t[int],
         strides: spatial_param_seq_t[int],
-        layer_blocks: list[int] | None = None,
+        layer_blocks: list[int] | int = 2,
         norm: tuple | str = Norm.INSTANCE,
         act: tuple | str = Act.LEAKYRELU,
         **kwargs,
     ):
+        """
+        Args:
+            layer_channels: the feature maps channels produced by this module, resolution: high → low
+            backbone_first_channels: number of channels of first feature map produced by backbone
+        """
         super().__init__(**kwargs)
+        layer_channels = list(layer_channels)
+        layer_channels.append(backbone_first_channels)
         num_layers = len(layer_channels) - 1
-        if layer_blocks is None:
-            layer_blocks = [1] * num_layers
+        if isinstance(layer_blocks, int):
+            layer_blocks = [layer_blocks] * num_layers
         # self.inner = inner
         self.encode_layers = nn.ModuleList([
             BasicConvLayer(
@@ -47,7 +57,7 @@ class FullResAdapter(BackboneWithDecoder):
             for i in range(num_layers)
         ])
 
-    def decode(self, backbone_feature_maps: list[torch.Tensor], x_in: torch.Tensor):
+    def process(self, backbone_feature_maps: list[torch.Tensor], x_in: torch.Tensor):
         ret = list(backbone_feature_maps)[::-1]
         encodes = []
         for encode_layer in self.encode_layers:

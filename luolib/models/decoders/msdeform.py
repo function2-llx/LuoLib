@@ -11,7 +11,7 @@ from monai.networks.blocks import MLPBlock
 
 from luolib.types import NoWeightDecayParameter, get_conv_t
 from luolib.utils import fall_back_none, flatten
-from .base import BackboneWithDecoder
+from .base import NestedBackbone
 from ..init import init_common
 from ..blocks import SpatialSinusoidalPositionEmbedding, transformer_block_forward
 
@@ -171,7 +171,7 @@ class MultiscaleDeformablePixelDecoderLayer(nn.Module):
 
         return hidden_states
 
-class MultiscaleDeformablePixelDecoder(BackboneWithDecoder):
+class MultiscaleDeformablePixelDecoder(NestedBackbone):
     def __init__(
         self,
         spatial_dims: int,
@@ -189,12 +189,13 @@ class MultiscaleDeformablePixelDecoder(BackboneWithDecoder):
         """
             Args:
                 backbone_feature_channels: feature channels of high → low resolution backbone feature maps
+                n_points: key points for each level & head
         """
         super().__init__(**kwargs)
         self.spatial_dims = spatial_dims
         self.interpolate_mode = 'bilinear' if spatial_dims == 2 else 'trilinear'
-        self.num_fpn_levels = len(backbone_feature_channels) - num_feature_levels
         conv_t = get_conv_t(spatial_dims)
+
         self.input_projections = nn.ModuleList([
             nn.Sequential(
                 conv_t(backbone_feature_channel, feature_dim, 1),
@@ -202,6 +203,7 @@ class MultiscaleDeformablePixelDecoder(BackboneWithDecoder):
             )
             for backbone_feature_channel in backbone_feature_channels
         ])
+
         self.position_embedding = SpatialSinusoidalPositionEmbedding(feature_dim, normalize=True, flatten=True)
         self.level_embedding = NoWeightDecayParameter(torch.empty(num_feature_levels, feature_dim))
         mlp_dim = fall_back_none(mlp_dim, 4 * feature_dim)
@@ -209,6 +211,8 @@ class MultiscaleDeformablePixelDecoder(BackboneWithDecoder):
             MultiscaleDeformablePixelDecoderLayer(spatial_dims, feature_dim, num_heads, num_feature_levels, n_points, mlp_dim)
             for _ in range(num_layers)
         ])
+
+        self.num_fpn_levels = len(backbone_feature_channels) - num_feature_levels
         self.fpn_output_convs = nn.ModuleList([
             nn.Sequential(
                 # TODO: use sac
@@ -280,10 +284,10 @@ class MultiscaleDeformablePixelDecoder(BackboneWithDecoder):
             )
         ]
 
-    def decode(self, backbone_feature_maps: list[torch.Tensor], *args) -> list[torch.Tensor]:
+    def process(self, feature_maps: list[torch.Tensor], *args) -> list[torch.Tensor]:
         feature_maps = [
             projection(feature_map)
-            for projection, feature_map in zip(self.input_projections, backbone_feature_maps)
+            for projection, feature_map in zip(self.input_projections, feature_maps)
         ]
         outputs = self.forward_deformable_layers(feature_maps[self.num_fpn_levels:])
         # turn to resolution: low → high, for appending FPN

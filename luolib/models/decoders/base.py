@@ -3,19 +3,20 @@ from torch import nn
 
 from ..backbones import BackboneProtocol
 
-class BackboneWithDecoder(nn.Module):
-    backbone: BackboneProtocol
+class NestedBackbone(nn.Module):
+    inner: BackboneProtocol
 
-    def __init__(self, *, backbone: nn.Module):
+    def __init__(self, *, inner: nn.Module):
         super().__init__()
-        assert isinstance(backbone, BackboneProtocol)
-        self.backbone = backbone
+        assert isinstance(inner, BackboneProtocol)
+        self.inner = inner
 
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
-        return self.decode(self.backbone(x), x)
+        return self.process(self.inner(x), x)
 
-    def decode(self, feature_maps: list[torch.Tensor], x: torch.Tensor) -> list[torch.Tensor]:
+    def process(self, feature_maps: list[torch.Tensor], x: torch.Tensor) -> list[torch.Tensor]:
         """
+        Process the feature maps output by the inner backbone and produce feature maps processed by this module
         Args:
             feature_maps: feature maps (output by some backbone), high → low resolution
             x: original input image
