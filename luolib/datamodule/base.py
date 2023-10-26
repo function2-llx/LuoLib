@@ -23,13 +23,15 @@ class DataLoaderConf:
     num_workers: int
     train_batch_size: int
     val_batch_size: int
-    num_steps: int
+    num_batches: int
     pin_memory: bool = True
-    prefetch_factor: int = 2
+    persistent_workers: bool = True
+    prefetch_factor: int | None = 2
 
-    @property
-    def persistent_workers(self):
-        return self.num_workers > 0
+    def __post_init__(self):
+        if self.num_workers == 0:
+            self.persistent_workers = False
+            self.prefetch_factor = None
 
 class ExpDataModuleBase(LightningDataModule):
     def __init__(self, cache_dataset: CacheDatasetConf, dataloader: DataLoaderConf):
@@ -65,7 +67,7 @@ class ExpDataModuleBase(LightningDataModule):
                 # the only useful information provided by `data_source` is its length
                 range(len(dataset)),
                 replacement=False,
-                num_samples=conf.num_steps * conf.train_batch_size,
+                num_samples=conf.num_batches * conf.train_batch_size,
             ),
             num_workers=conf.num_workers,
             pin_memory=conf.pin_memory,
