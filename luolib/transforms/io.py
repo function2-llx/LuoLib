@@ -34,20 +34,19 @@ class nnUNetLoader(mt.Transform):
             [img_key, seg_key],
             reader=NumpyReader,
             dtype=None,
-            ensure_channel_first=True,
+            ensure_channel_first=False,
         )
 
     def __call__(self, key: str, data_dir: Path | None = None):
         data_dir = self.data_dir if data_dir is None else data_dir
-        return {
-            **self.img_loader(
-                {
-                    self.img_key: data_dir / f'{key}.npy',
-                    self.seg_key: data_dir / f'{key}_seg.npy',
-                }
-            ),
-            **pd.read_pickle(data_dir / f'{key}.pkl'),
-        }
+        img_data = self.img_loader(
+            {
+                self.img_key: data_dir / f'{key}.npy',
+                self.seg_key: data_dir / f'{key}_seg.npy',
+            }
+        )
+        meta = pd.read_pickle(data_dir / f'{key}.pkl')
+        return {**img_data, **meta}
 
 class nnUNetLoaderD(mt.Transform):
     def __init__(self, key: Hashable, data_dir: Path | None = None, img_key: Hashable = 'img', seg_key: Hashable = 'seg'):
