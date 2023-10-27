@@ -8,3 +8,4 @@ class ExpandUnitList(mt.Transform):
     def __call__(self, data):
         if isinstance(data, list) and len(data) == 1:
             return data[0]
+        return data
