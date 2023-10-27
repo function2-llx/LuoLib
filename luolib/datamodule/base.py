@@ -54,7 +54,7 @@ class ExpDataModuleBase(LightningDataModule):
         )
 
     def get_train_collate_fn(self):
-        from monai.data import list_data_collate
+        from luolib.data.utils import list_data_collate
         return list_data_collate
 
     def train_dataloader(self) -> TRAIN_DATALOADERS:
