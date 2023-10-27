@@ -46,7 +46,7 @@ class nnUNetLoader(mt.Transform):
             }
         )
         meta = pd.read_pickle(data_dir / f'{key}.pkl')
-        return {**img_data, **meta}
+        return {**img_data, **meta, 'path_base': data_dir / key}
 
 class nnUNetLoaderD(mt.Transform):
     def __init__(self, key: Hashable, data_dir: Path | None = None, img_key: Hashable = 'img', seg_key: Hashable = 'seg'):
