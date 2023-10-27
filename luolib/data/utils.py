@@ -8,4 +8,4 @@ def list_data_collate(batch: Sequence):
         for item in batch
         for x in (item if isinstance(item, list) else [item])
     ]
-    list_data_collate_monai(data)
+    return list_data_collate_monai(data)
