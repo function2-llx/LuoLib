@@ -9,5 +9,8 @@ class track_meta:
         self.origin = get_track_meta()
         set_track_meta(value)
 
+    def __enter__(self):
+        pass
+
     def __exit__(self, *args, **kwargs):
         set_track_meta(self.origin)
