@@ -6,16 +6,20 @@ from matplotlib.colors import ListedColormap
 import numpy as np
 from numpy import typing as npt
 
+from monai.config import NdarrayOrTensor
+from monai.utils import convert_to_numpy
+
 class IndexTracker:
     def __init__(
         self,
-        img: npt.NDArray,
+        img: NdarrayOrTensor,
         seg: Optional[npt.NDArray] = None,
         block: bool = True,
         title: str = "",
         zyx: bool = False,
         choose_max: bool = False,
     ):
+        img = convert_to_numpy(img)
         fig, ax = plt.subplots()
         fig: plt.Figure
         ax: plt.Axes
@@ -24,6 +28,7 @@ class IndexTracker:
         if zyx:
             img = img.transpose(2, 1, 0)
             if seg is not None:
+                seg = convert_to_numpy(seg)
                 seg = seg.transpose(2, 1, 0)
 
         self.img = img
