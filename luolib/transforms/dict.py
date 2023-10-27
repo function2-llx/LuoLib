@@ -55,7 +55,7 @@ class RandDictWrapper(DictWrapper, mt.Randomizable):
         pass  # do nothing, each key will randomize independently
 
     def __call__(self, data: Mapping[Hashable, ...], *args, **kwargs):
-        return super()(data, *args, **kwargs, randomize=True)
+        return super().__call__(data, *args, **kwargs, randomize=True)
 
 class RandUniformDictWrapper(DictWrapper, mt.RandomizableTransform):
     def __init__(
