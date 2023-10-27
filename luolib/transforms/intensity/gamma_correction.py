@@ -1,7 +1,7 @@
 # MONAI seems to have an unconventional name for gamma correction
 # https://github.com/Project-MONAI/MONAI/discussions/6027
 # ref: batchgenerators
-
+import einops
 import numpy as np
 import torch
 
@@ -43,26 +43,27 @@ class RandGammaCorrection(mt.RandomizableTransform):
                 self.gamma[i] = self.R.uniform(max(self.gamma_range[0], 1), self.gamma_range[1])
         self.invert = self.R.uniform() < self.prob_invert
 
-    def __call__(self, img_in: NdarrayOrTensor):
-        img: torch.Tensor = convert_to_tensor(img_in, track_meta=get_track_meta())
-        self.randomize(img.shape[0])
+    def __call__(self, img: NdarrayOrTensor, randomize: bool = True):
+        img_t: torch.Tensor = convert_to_tensor(img, track_meta=get_track_meta())
+        if randomize:
+            self.randomize(img_t.shape[0])
         if not self._do_transform:
-            return img
-        spatial_shape = img.shape[1:]
-        img = img.view(img.shape[0], -1)
+            return img_t
+        spatial_shape = img_t.shape[1:]
+        img_t = einops.rearrange(img_t, 'c ... -> c (...)')
         if self.invert:
-            img = -img
+            img_t = -img_t
         if self.retain_stats:
-            mean = img.mean(1, True)
-            std = img.std(1, keepdim=True, correction=True)
-        min_v = img.min(1, True)
-        range_v = img.max(1, True) - min_v + self.eps
-        img = ((img - min_v) / range_v).pow(self.gamma)
+            mean = img_t.mean(1, True)
+            std = img_t.std(1, keepdim=True, correction=0)
+        min_v = img_t.amin(1, True)
+        range_v = img_t.amax(1, True) - min_v + self.eps
+        img_t = ((img_t - min_v) / range_v).pow(img_t.new_tensor(self.gamma))
         if self.retain_stats:
-            img = (img - img.mean(1, True)) / (img.std(1, True) + 1e-8)
-            img = img * std + mean
+            img_t = (img_t - img_t.mean(1, True)) / (img_t.std(keepdim=True, correction=0) + 1e-8)
+            img_t = img_t * std + mean
         else:
-            img = img * range_v + min_v
+            img_t = img_t * range_v + min_v
         if self.invert:
-            img = -img
-        return img.view(img.shape[0], *spatial_shape)
+            img_t = -img_t
+        return img_t.view(img_t.shape[0], *spatial_shape)

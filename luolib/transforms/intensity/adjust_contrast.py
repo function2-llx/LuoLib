@@ -1,5 +1,6 @@
 import itertools as it
 
+import einops
 import torch
 
 from monai import transforms as mt
@@ -30,20 +31,20 @@ class RandAdjustContrast(mt.RandomizableTransform):
             return
         self.factor = self.R.uniform(*self.contrast_range, (num_channels, 1))
 
-    def __call__(self, img_in: NdarrayOrTensor, randomize: bool = True):
-        img: torch.Tensor = convert_to_tensor(img_in, track_meta=get_track_meta())
-        num_channels = img.shape[0]
+    def __call__(self, img: NdarrayOrTensor, randomize: bool = True):
+        img_t: torch.Tensor = convert_to_tensor(img, track_meta=get_track_meta())
+        num_channels = img_t.shape[0]
         if randomize:
             self.randomize(num_channels)
         if not self._do_transform:
-            return img
-        spatial_size = img.shape[1:]
-        img = img.view(num_channels, -1)
-        factor = img.new_tensor(self.factor)
-        min_v = img.min(1, True)
-        max_v = img.max(1, True)
-        mean = img.mean(1, True)
-        img.mul_(factor).add_(mean, alpha=1 - factor)
+            return img_t
+        spatial_size = img_t.shape[1:]
+        img_t = einops.rearrange(img_t, 'c ... -> c (...)')
+        min_v = img_t.amin(1, True)
+        max_v = img_t.amax(1, True)
+        mean = img_t.mean(1, True)
+        factor = img_t.new_tensor(self.factor)
+        ret = img_t * factor + mean * (1 - factor)
         if self.preserve_intensity_range:
-            img.clamp_(min_v, max_v)
-        return img.view(num_channels, *spatial_size)
+            ret.clamp_(min_v, max_v)
+        return ret.view(num_channels, *spatial_size)

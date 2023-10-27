@@ -16,7 +16,6 @@ from monai.config import NdarrayOrTensor
 from monai.utils import convert_to_tensor
 
 class RandSimulateLowResolution(mt.RandomizableTransform):
-
     backend = mt.Affine.backend
 
     def __init__(
@@ -63,26 +62,25 @@ class RandSimulateLowResolution(mt.RandomizableTransform):
 
         if self._do_transform:
             input_shape = img.shape[1:]
-            target_shape = np.round(np.array(input_shape) * self.zoom_factor).astype(np.int32)
-            with track_meta(False):
-                for ci, zoom_factor in enumerate(self.zoom_factor):
-                    if zoom_factor is None:
-                        continue
-                    downsample = mt.Affine(
-                        scale_params=np.full(len(input_shape), zoom_factor),
-                        spatial_size=target_shape,
-                        mode=self.downsample_mode,
-                        image_only=True,
-                    )
-                    upsample = mt.Affine(
-                        scale_params=np.full(len(input_shape), 1 / zoom_factor),
-                        spatial_size=input_shape,
-                        mode=self.upsample_mode,
-                        image_only=True,
-                    )
-                    # temporarily disable metadata tracking, since we do not want to invert the two Resize functions during
-                    # post-processing
-                    with track_meta(False):
-                        img_downsampled = downsample(img[ci:ci + 1])
-                        img[ci:ci + 1] = upsample(img_downsampled)
+            for ci, zoom_factor in enumerate(self.zoom_factor):
+                if zoom_factor is None:
+                    continue
+                downsample_shape = np.round(np.array(input_shape) * zoom_factor).astype(np.int32)
+                downsample = mt.Affine(
+                    scale_params=np.full(len(input_shape), zoom_factor).tolist(),
+                    spatial_size=downsample_shape,
+                    mode=self.downsample_mode,
+                    image_only=True,
+                )
+                upsample = mt.Affine(
+                    scale_params=np.full(len(input_shape), 1 / zoom_factor).tolist(),
+                    spatial_size=input_shape,
+                    mode=self.upsample_mode,
+                    image_only=True,
+                )
+                # temporarily disable metadata tracking, since we do not want to invert the two Resize functions during
+                # post-processing
+                with track_meta(False):
+                    img_downsampled = downsample(img[ci:ci + 1])
+                    img[ci:ci + 1] = upsample(img_downsampled)
         return img
