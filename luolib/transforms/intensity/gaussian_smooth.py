@@ -42,18 +42,18 @@ class RandGaussianSmooth(mt.RandomizableTransform):
             else:
                 self.gaussian_smooth.append(None)
 
-    def __call__(self, img_in: NdarrayOrTensor, randomize: bool = True):
-        img: torch.Tensor = convert_to_tensor(img_in, track_meta=get_track_meta())
+    def __call__(self, img: NdarrayOrTensor, randomize: bool = True):
+        img_t: torch.Tensor = convert_to_tensor(img, track_meta=get_track_meta())
         if randomize:
-            self.randomize(img)
+            self.randomize(img_t)
         if not self._do_transform:
-            return img
+            return img_t
 
         for i, gaussian_smooth in enumerate(self.gaussian_smooth):
             if gaussian_smooth is not None:
-                img[i:i + 1] = gaussian_smooth(img[i:i + 1])
+                img_t[i:i + 1] = gaussian_smooth(img_t[i:i + 1])
 
-        return img
+        return img_t
 
 # class RandGaussianSmoothD(mt.RandGaussianSmoothD):
 #     def __init__(

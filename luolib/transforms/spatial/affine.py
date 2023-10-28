@@ -46,7 +46,7 @@ class RandAffineGridWithIsotropicScale(mt.RandAffineGrid):
         self.translate_params = self._get_rand_param(self.translate_range)
         self.scale_params = [float(self.R.uniform(*self.scale_range))] * self.spatial_dims
         if self.ignore_dim is not None:
-            self.scale_params[self.ignore_dim] = 0
+            self.scale_params[self.ignore_dim] = 1
 
 class RandAffineWithIsotropicScale(mt.RandAffine):
     def __init__(

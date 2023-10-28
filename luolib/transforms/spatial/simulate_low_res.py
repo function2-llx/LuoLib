@@ -50,18 +50,18 @@ class RandSimulateLowResolution(mt.RandomizableTransform):
             else None
         ]
 
-    def __call__(self, img_in: NdarrayOrTensor, randomize: bool = True):
+    def __call__(self, img: NdarrayOrTensor, randomize: bool = True):
         """
         Args:
             img: shape must be (num_channels, H, W[, D]),
             randomize: whether to execute `randomize()` function first, defaults to True.
         """
-        img: torch.Tensor = convert_to_tensor(img_in)
+        img_t: torch.Tensor = convert_to_tensor(img)
         if randomize:
-            self.randomize(img)
+            self.randomize(img_t)
 
         if self._do_transform:
-            input_shape = img.shape[1:]
+            input_shape = img_t.shape[1:]
             for ci, zoom_factor in enumerate(self.zoom_factor):
                 if zoom_factor is None:
                     continue
@@ -81,6 +81,6 @@ class RandSimulateLowResolution(mt.RandomizableTransform):
                 # temporarily disable metadata tracking, since we do not want to invert the two Resize functions during
                 # post-processing
                 with track_meta(False):
-                    img_downsampled = downsample(img[ci:ci + 1])
-                    img[ci:ci + 1] = upsample(img_downsampled)
-        return img
+                    img_downsampled = downsample(img_t[ci:ci + 1])
+                    img_t[ci:ci + 1] = upsample(img_downsampled)
+        return img_t
