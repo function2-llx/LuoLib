@@ -45,7 +45,7 @@ class LightningModule(LightningModuleBase):
         param_groups = self.get_param_groups()
         normalized_param_groups = normalize_param_groups(param_groups, self.get_decay_keys())
         self.optimizer = self.trainer.optimizer_callable(normalized_param_groups)
-        self.lr_scheduler_config = LRSchedulerConfig(self.trainer.lr_scheduler_config_with_callable)
+        self.lr_scheduler_config = LRSchedulerConfig(**vars(self.trainer.lr_scheduler_config_with_callable))
         self.lr_scheduler_config.scheduler = self.trainer.lr_scheduler_config_with_callable.scheduler(self.optimizer)
         # https://github.com/Lightning-AI/lightning/issues/18870
         return [self.optimizer], [vars(self.lr_scheduler_config)]
@@ -154,6 +154,7 @@ class LightningCLI(LightningCLIBase):
     def add_arguments_to_parser(self, parser: LightningArgumentParser):
         parser.add_argument('--float32_matmul_precision', type=Literal['medium', 'high', 'highest'], default='high')
         parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
+        parser.add_argument('--compile', type=bool, default=True)
 
     def before_instantiate_classes(self):
         # wandb wants to use a directory already existing: https://github.com/wandb/wandb/issues/714#issuecomment-565870686
@@ -163,6 +164,12 @@ class LightningCLI(LightningCLIBase):
     def _run_subcommand(self, subcommand: str):
         torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
         super()._run_subcommand(subcommand)
+
+    def fit(self, model, **kwargs):
+        # https://github.com/Lightning-AI/lightning/issues/17283
+        if self._get(self.config, 'compile'):
+            model = torch.compile(model)
+        self.trainer.fit(model, **kwargs)
 
 class LightningCLICrossVal(LightningCLI):
     datamodule: CrossValDataModule
