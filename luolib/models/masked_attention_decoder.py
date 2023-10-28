@@ -120,7 +120,7 @@ class MaskedAttentionDecoder(nn.Module):
         num_queries: int = 100,
         pre_norm: bool = True,
         layer_drop: float = 0.,
-        gradient_checkpointing: bool = False,
+        grad_ckpt: bool = False,
     ):
         """
         Args:
@@ -147,7 +147,7 @@ class MaskedAttentionDecoder(nn.Module):
         self.mask_start_layer = mask_start_layer
         self.mask_predictor = MaskPredictor(hidden_dim, pixel_embedding_dim, pre_norm)
 
-        self.gradient_checkpointing = gradient_checkpointing
+        self.gradient_checkpointing = grad_ckpt
 
         # follows nn.Embedding
         nn.init.normal_(self.query_embedding)

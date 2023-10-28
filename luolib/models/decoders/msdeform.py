@@ -183,7 +183,7 @@ class MultiscaleDeformablePixelDecoder(NestedBackbone):
         n_points: int = 4,
         num_layers: int = 6,
         mlp_dim: int | None = None,
-        gradient_checkpointing: bool = False,
+        grad_ckpt: bool = False,
         **kwargs,
     ):
         """
@@ -223,7 +223,7 @@ class MultiscaleDeformablePixelDecoder(NestedBackbone):
             for _ in range(self.num_fpn_levels)
         ])
 
-        self.gradient_checkpointing = gradient_checkpointing
+        self.gradient_checkpointing = grad_ckpt
 
         # follows nn.Embedding
         nn.init.normal_(self.level_embedding)
