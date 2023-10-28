@@ -94,11 +94,11 @@ class Trainer(TrainerBase):
         """
         logger = self.logger
         assert isinstance(logger, WandbLogger)
-        root_dir = Path(logger.save_dir)
+        root_dir = Path(logger.save_dir) / logger.experiment.name
         if self.training and isinstance(self.datamodule, CrossValDataModule):
             root_dir /= f'fold-{self.datamodule.fold_id}'
         if self.is_global_zero:
-            log_dir = root_dir / logger.experiment.name / f'{Path(logger.experiment.dir).parent.name}'
+            log_dir = root_dir / f'{Path(logger.experiment.dir).parent.name}'
         else:
             log_dir = None
         log_dir = self.strategy.broadcast(log_dir)
