@@ -17,7 +17,7 @@ class MaskFormer(nn.Module):
         self,
         backbone: nn.Module,
         mask_decoder: MaskedAttentionDecoder,
-        key_levels: Sequence[int] = (-3, -2, -1),
+        key_levels: Sequence[int] = (-1, -2, -3),
         pixel_embedding_level: int = 0,
     ):
         super().__init__()
