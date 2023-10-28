@@ -14,16 +14,16 @@ from monai.data import CacheDataset, DataLoader
 
 @dataclass
 class CacheDatasetConf:
-    num_workers: int
-    train_num: int
-    val_num: int
+    num_workers: int = 8
+    train_num: int = 200
+    val_num: int = 100
 
 @dataclass
 class DataLoaderConf:
-    num_workers: int
     train_batch_size: int
     val_batch_size: int
     num_batches: int
+    num_workers: int = 8
     pin_memory: bool = True
     persistent_workers: bool = True
     prefetch_factor: int | None = 2

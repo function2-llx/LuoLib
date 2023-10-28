@@ -105,8 +105,10 @@ class MemoryEfficientAttention(nn.Module):
         v = self.expand_head(nnf.linear(value, self.v_proj.weight, self.v_bias))
         q = self.apply_rope(q)
         k = self.apply_rope(k)
-        x = einops.rearrange(
+        if isinstance(attn_bias, torch.Tensor):
             # if using amp, v.dtype here will be the autocast dtype
+            attn_bias = attn_bias.type_as(v)
+        x = einops.rearrange(
             xops.memory_efficient_attention(q.type_as(v), k.type_as(v), v, attn_bias, self.attn_drop, self.scale),
             'n l nh d -> n l (nh d)',
         )
