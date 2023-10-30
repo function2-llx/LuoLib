@@ -3,37 +3,45 @@ from collections.abc import Sequence
 import torch
 from torch import nn
 
-from monai.networks.blocks import UnetBasicBlock
+from luolib.models.blocks import BasicConvLayer
+from luolib.types import spatial_param_t
 from luolib.models.layers import Act, Norm
+
+__all__ = [
+    'UNetBackbone',
+]
 
 class UNetBackbone(nn.Module):
     def __init__(
         self,
         in_channels: int,
         layer_channels: list[int],
-        kernel_sizes: list[int | Sequence[int]],
-        strides: list[int | Sequence[int]],
-        norm: str | tuple = Norm.INSTANCE,
+        kernel_sizes: Sequence[spatial_param_t[int]],
+        strides: Sequence[spatial_param_t[int]],
+        norm: str | tuple = (Norm.INSTANCE, {'affine': True}),
         act: str | tuple = Act.LEAKYRELU,
+        res_block: bool = False,
     ):
         super().__init__()
         num_layers = len(layer_channels)
         self.layers = nn.ModuleList([
-            UnetBasicBlock(
+            BasicConvLayer(
                 3,
+                1,
                 layer_channels[i - 1] if i else in_channels,
                 layer_channels[i],
                 kernel_sizes[i],
                 strides[i],
                 norm,
                 act,
+                res_block,
             )
             for i in range(num_layers)
         ])
 
-    def forward(self, x: torch.Tensor, *args, **kwargs) -> BackboneOutput:
+    def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
         feature_maps = []
         for layer in self.layers:
             x = layer(x)
             feature_maps.append(x)
-        return BackboneOutput(feature_maps=feature_maps)
+        return feature_maps

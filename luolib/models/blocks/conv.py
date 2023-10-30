@@ -116,8 +116,8 @@ class BasicConvLayer(nn.Module):
         stride: spatial_param_t[int],
         norm: tuple | str = Norm.INSTANCE,
         act: tuple | str = Act.LEAKYRELU,
-        drop_paths: float | Sequence[float] = 0.,
         res_block: bool = True,
+        drop_paths: float | Sequence[float] = 0.,
     ):
         super().__init__()
         if isinstance(drop_paths, float):

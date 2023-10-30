@@ -9,25 +9,37 @@ from luolib.types import spatial_param_seq_t
 from ..blocks import UNetUpLayer, get_conv_layer
 from ..init import init_common
 from ..layers import Act, Norm
+from .base import NestedBackbone
 
-__all__ = ['PlainConvUNetDecoder']
+__all__ = [
+    'PlainConvUNetDecoder',
+]
 
-class PlainConvUNetDecoder(nn.Module):
+class PlainConvUNetDecoder(NestedBackbone):
     def __init__(
         self,
+        *,
         spatial_dims: int,
         layer_channels: list[int],
         kernel_sizes: spatial_param_seq_t[int],
-        upsample_strides: spatial_param_seq_t[int],
-        norm: tuple | str | None = Norm.INSTANCE,
+        strides: spatial_param_seq_t[int],
+        norm: tuple | str | None = None,
         act: tuple | str | None = Act.LEAKYRELU,
         lateral_channels: Sequence[int] | None = None,
         lateral_kernel_sizes: spatial_param_seq_t[int] | None = None,
-    ) -> None:
-        super().__init__()
+        **kwargs,
+    ):
+        """
+        Args:
+            strides: strides[0] is not used (usually = 1)
+            layer_channels: resolution: high → low
+        """
+        super().__init__(**kwargs)
+        if norm is None:
+            norm = (Norm.INSTANCE, {'affine': True})
         num_layers = len(layer_channels) - 1
         self.layers = nn.ModuleList([
-            UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i], upsample_strides[i])
+            UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i], strides[i + 1])
             for i in range(num_layers)
         ])
         if lateral_kernel_sizes is None:
@@ -45,14 +57,14 @@ class PlainConvUNetDecoder(nn.Module):
 
         self.apply(init_common)
 
-    def forward(self, backbone_feature_maps: Sequence[torch.Tensor]):
-        feature_maps = []
-        backbone_feature_maps = [
+    def process(self, feature_maps: Sequence[torch.Tensor], *args, **kwargs):
+        feature_maps = [
             lateral(x)
-            for x, lateral in zip(backbone_feature_maps, self.laterals)
+            for x, lateral in zip(feature_maps, self.laterals)
         ]
-        x = backbone_feature_maps[-1]
-        for layer, skip in zip(self.layers[::-1], backbone_feature_maps[-2::-1]):
+        x = feature_maps[-1]
+        ret = []
+        for layer, skip in zip(self.layers[::-1], feature_maps[-2::-1]):
             x = layer(x, skip)
-            feature_maps.append(x)
-        return feature_maps
+            ret.append(x)
+        return ret[::-1]

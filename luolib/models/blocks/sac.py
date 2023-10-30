@@ -320,7 +320,8 @@ class AdaptiveTransposedConvUpsample(nn.Module):
         return self.conv(x)
 
 def resample(x: torch.Tensor, shape: tuple3_t[int]):
-    downsample_shape = tuple(np.minimum(x.shape[2:], shape))
+    # without `.tolist()`, PyTorch will complain it is not int
+    downsample_shape = tuple(np.minimum(x.shape[2:], shape).tolist())
     if downsample_shape != x.shape[2:]:
         x = nnf.interpolate(x, downsample_shape, mode='area')
     if shape != x.shape[2:]:
