@@ -164,6 +164,7 @@ class LightningCLI(LightningCLIBase):
         parser.add_argument('--compile', type=bool, default=True)
         parser.add_argument('--logger', type=WandbLogger)
         parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
+        parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
 
     def before_instantiate_classes(self):
         logger_args = self.config[self.subcommand].logger.init_args
@@ -173,6 +174,7 @@ class LightningCLI(LightningCLIBase):
         logger_args.save_dir = str(save_dir)
 
     def _run_subcommand(self, subcommand: str):
+        torch.multiprocessing.set_start_method(self._get(self.config, 'mp_start_method'))
         torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
         super()._run_subcommand(subcommand)
 

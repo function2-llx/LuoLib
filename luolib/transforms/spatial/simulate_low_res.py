@@ -13,7 +13,7 @@ __all__ = [
 
 from monai.config import NdarrayOrTensor
 
-from monai.utils import convert_to_tensor
+from monai.utils import GridSampleMode, convert_to_tensor
 
 class RandSimulateLowResolution(mt.RandomizableTransform):
     backend = mt.Affine.backend
@@ -22,8 +22,8 @@ class RandSimulateLowResolution(mt.RandomizableTransform):
         self,
         prob: float = 0.25,
         prob_per_channel: float = 0.25,
-        downsample_mode: str | int = 0,
-        upsample_mode: str | int = 3,
+        downsample_mode: str | int = GridSampleMode.NEAREST,
+        upsample_mode: str | int = GridSampleMode.BICUBIC,
         zoom_range: Sequence[float] = (0.5, 1.0),
     ):
         """
