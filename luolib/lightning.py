@@ -4,6 +4,7 @@ from collections.abc import Callable
 from functools import cached_property
 from pathlib import Path
 from typing import Literal
+import warnings
 
 from lightning import LightningModule as LightningModuleBase, Trainer as TrainerBase
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint as ModelCheckpointBase, ModelSummary
@@ -13,6 +14,7 @@ from lightning.pytorch.trainer.connectors.accelerator_connector import _PRECISIO
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
 
+from monai.config import USE_COMPILED
 from luolib.datamodule import ExpDataModuleBase, CrossValDataModule
 from luolib.optim.factory import NamedParamGroup, OptimizerCallable, infer_weight_decay_keys, normalize_param_groups
 from luolib.scheduler.factory import LRScheduler, LRSchedulerConfig, LRSchedulerConfigWithCallable
@@ -87,6 +89,9 @@ class Trainer(TrainerBase):
         self.optimizer_callable = optimizer
         self.lr_scheduler_config_with_callable = lr_scheduler
 
+        if not USE_COMPILED:
+            warnings.warn('MONAI is not using compiled')
+
     @cached_property
     def log_dir(self) -> Path:
         """
@@ -94,9 +99,7 @@ class Trainer(TrainerBase):
         """
         logger = self.logger
         assert isinstance(logger, WandbLogger)
-        root_dir = Path(logger.save_dir) / logger.experiment.name
-        if self.training and isinstance(self.datamodule, CrossValDataModule):
-            root_dir /= f'fold-{self.datamodule.fold_id}'
+        root_dir = Path(logger.save_dir)
         if self.is_global_zero:
             log_dir = root_dir / f'{Path(logger.experiment.dir).parent.name}'
         else:
@@ -110,6 +113,7 @@ class ModelCheckpoint(ModelCheckpointBase):
 
 class LightningCLI(LightningCLIBase):
     _subcommand_preparing: str | None = None
+    trainer: Trainer
 
     def __init__(
         self,
@@ -158,11 +162,15 @@ class LightningCLI(LightningCLIBase):
         parser.add_argument('--float32_matmul_precision', type=Literal['medium', 'high', 'highest'], default='high')
         parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
         parser.add_argument('--compile', type=bool, default=True)
+        parser.add_argument('--logger', type=WandbLogger)
+        parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
 
     def before_instantiate_classes(self):
+        logger_args = self.config[self.subcommand].logger.init_args
+        save_dir = Path(logger_args.save_dir) / logger_args.name
         # wandb wants to use a directory already existing: https://github.com/wandb/wandb/issues/714#issuecomment-565870686
-        save_dir = self.config[self.subcommand].trainer.logger.init_args.save_dir
         Path(save_dir).mkdir(exist_ok=True, parents=True)
+        logger_args.save_dir = str(save_dir)
 
     def _run_subcommand(self, subcommand: str):
         torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
@@ -173,6 +181,9 @@ class LightningCLI(LightningCLIBase):
         if self._get(self.config, 'compile'):
             model = torch.compile(model)
         self.trainer.fit(model, **kwargs)
+
+def fit_or_val(command: str):
+    return command == 'fit' or command == 'validate'
 
 class LightningCLICrossVal(LightningCLI):
     datamodule: CrossValDataModule
@@ -186,11 +197,19 @@ class LightningCLICrossVal(LightningCLI):
         super().__init__(datamodule_class=datamodule_class, **kwargs)
 
     def add_arguments_to_parser(self, parser: LightningArgumentParser):
-        if self._subcommand_preparing == 'fit':
+        if fit_or_val(self._subcommand_preparing):
             parser.add_argument('fold_id', type=int)
         super().add_arguments_to_parser(parser)
 
+    def before_instantiate_classes(self):
+        if fit_or_val(self.subcommand):
+            config = self.config[self.subcommand]
+            logger_args = config.logger.init_args
+            logger_args.name = str(Path(logger_args.name) / f'fold-{config.fold_id}')
+        super().before_instantiate_classes()
+
     def _run_subcommand(self, subcommand: str):
         torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
-        self.datamodule.fold_id = self._get(self.config, 'fold_id')
+        if fit_or_val(subcommand):
+            self.datamodule.fold_id = self._get(self.config, 'fold_id')
         super()._run_subcommand(subcommand)
