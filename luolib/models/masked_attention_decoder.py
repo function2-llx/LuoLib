@@ -117,6 +117,7 @@ class MaskedAttentionDecoder(nn.Module):
         dim_feedforward: int | None = None,
         num_decoder_layers: int = 9,
         mask_start_layer: int = 3,
+        soft_mask: bool = False,
         num_feature_levels: int = 3,
         key_projection_channels: Sequence[int] | None = None,
         num_queries: int = 100,
@@ -155,6 +156,7 @@ class MaskedAttentionDecoder(nn.Module):
         self.layer_drop = layer_drop
 
         self.mask_start_layer = mask_start_layer
+        self.soft_mask = soft_mask
         self.mask_predictor = MaskPredictor(hidden_dim, pixel_embedding_dim, pre_norm)
 
         self.gradient_checkpointing = grad_ckpt
@@ -171,14 +173,22 @@ class MaskedAttentionDecoder(nn.Module):
         mask_logits: torch.Tensor,
         manual_mask: torch.Tensor | None = None,
     ):
+        def from_prob(mask_prob: torch.Tensor):
+            ignore_mask = einops.rearrange(mask_prob < 0.5, 'n nq ... -> n nq (...)')
+            # no restriction for empty mask
+            ignore_mask.masked_fill_(ignore_mask.all(dim=-1, keepdim=True), False)
+            attn_bias = torch.where(ignore_mask, -torch.inf, 0.)
+            return attn_bias
+
         if manual_mask is None:
-            mask_prob = nnf.interpolate(mask_logits, target_shape, mode=self.interpolate_mode).sigmoid()
+            mask_logits = nnf.interpolate(mask_logits, target_shape, mode=self.interpolate_mode)
+            if self.soft_mask:
+                attn_bias = einops.rearrange(mask_logits, 'n nq ... -> n nq (...)')
+            else:
+                attn_bias = from_prob(mask_logits.sigmoid())
         else:
             mask_prob = nnf.interpolate(manual_mask.float(), target_shape, mode=self.interpolate_mode)
-        ignore_mask = einops.rearrange(mask_prob < 0.5, 'n nq ... -> n nq (...)')
-        # no restriction for empty mask
-        ignore_mask.masked_fill_(ignore_mask.all(dim=-1, keepdim=True), False)
-        attn_bias = torch.where(ignore_mask, -torch.inf, 0.)
+            attn_bias = from_prob(mask_prob)
         return einops.repeat(attn_bias, 'n nq nk -> n M nq nk', M=self.num_attention_heads)
 
     def forward(
