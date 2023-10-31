@@ -12,7 +12,6 @@ __all__ = [
     'UNetBackbone',
 ]
 
-
 class UNetBackbone(nn.Module):
     def __init__(
         self,
