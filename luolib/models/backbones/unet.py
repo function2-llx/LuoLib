@@ -3,13 +3,15 @@ from collections.abc import Sequence
 import torch
 from torch import nn
 
-from luolib.models.blocks import BasicConvLayer
 from luolib.types import spatial_param_t
-from luolib.models.layers import Act, Norm
+from luolib.utils import fall_back_none
+from ..blocks import BasicConvLayer
+from ..layers import Act, default_instance
 
 __all__ = [
     'UNetBackbone',
 ]
+
 
 class UNetBackbone(nn.Module):
     def __init__(
@@ -18,12 +20,13 @@ class UNetBackbone(nn.Module):
         layer_channels: list[int],
         kernel_sizes: Sequence[spatial_param_t[int]],
         strides: Sequence[spatial_param_t[int]],
-        norm: str | tuple = (Norm.INSTANCE, {'affine': True}),
+        norm: str | tuple | None = None,
         act: str | tuple = Act.LEAKYRELU,
-        res_block: bool = False,
+        res_block: bool = True,
     ):
         super().__init__()
         num_layers = len(layer_channels)
+        norm = fall_back_none(norm, default_instance())
         self.layers = nn.ModuleList([
             BasicConvLayer(
                 3,
@@ -34,7 +37,7 @@ class UNetBackbone(nn.Module):
                 strides[i],
                 norm,
                 act,
-                res_block,
+                res_block and i > 0,
             )
             for i in range(num_layers)
         ])
