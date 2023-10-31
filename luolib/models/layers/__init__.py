@@ -1,1 +1,1 @@
-from .factories import Act, Norm, LayerNormNd
+from .factories import *

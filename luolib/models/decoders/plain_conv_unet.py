@@ -6,9 +6,11 @@ import torch
 from torch import nn
 
 from luolib.types import spatial_param_seq_t
+from luolib.utils import fall_back_none
+from ..layers.factories import default_instance
 from ..blocks import UNetUpLayer, get_conv_layer
 from ..init import init_common
-from ..layers import Act, Norm
+from ..layers import Act
 from .base import NestedBackbone
 
 __all__ = [
@@ -35,8 +37,7 @@ class PlainConvUNetDecoder(NestedBackbone):
             layer_channels: resolution: high → low
         """
         super().__init__(**kwargs)
-        if norm is None:
-            norm = (Norm.INSTANCE, {'affine': True})
+        norm = fall_back_none(norm, default_instance())
         num_layers = len(layer_channels) - 1
         self.layers = nn.ModuleList([
             UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i], strides[i + 1])
@@ -63,7 +64,7 @@ class PlainConvUNetDecoder(NestedBackbone):
             for x, lateral in zip(feature_maps, self.laterals)
         ]
         x = feature_maps[-1]
-        ret = []
+        ret = [x]
         for layer, skip in zip(self.layers[::-1], feature_maps[-2::-1]):
             x = layer(x, skip)
             ret.append(x)
