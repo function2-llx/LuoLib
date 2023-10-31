@@ -12,7 +12,8 @@ from monai.networks.blocks import MLPBlock
 from luolib.types import NoWeightDecayParameter, spatial_shape_t
 from luolib.utils import fall_back_none, flatten
 from .blocks import (
-    transformer_block_forward, MemoryEfficientAttention, SpatialSinusoidalPositionEmbedding, with_pos_embed,
+    get_conv_layer, transformer_block_forward, MemoryEfficientAttention, SpatialSinusoidalPositionEmbedding,
+    with_pos_embed,
 )
 from .init import init_common
 
@@ -117,6 +118,7 @@ class MaskedAttentionDecoder(nn.Module):
         num_decoder_layers: int = 9,
         mask_start_layer: int = 3,
         num_feature_levels: int = 3,
+        key_projection_channels: Sequence[int] | None = None,
         num_queries: int = 100,
         pre_norm: bool = True,
         layer_drop: float = 0.,
@@ -137,6 +139,14 @@ class MaskedAttentionDecoder(nn.Module):
         self.key_position_embedding = SpatialSinusoidalPositionEmbedding(feature_channels, normalize=True, flatten=True)
         self.level_embedding = NoWeightDecayParameter(torch.empty(num_feature_levels, hidden_dim))
         self.query_embedding = NoWeightDecayParameter(torch.empty(num_queries, hidden_dim))
+        if key_projection_channels is not None:
+            assert len(key_projection_channels) == num_feature_levels
+            self.projections = nn.ModuleList([
+                get_conv_layer(spatial_dims, c, feature_channels, 1, 1)
+                for c in key_projection_channels
+            ])
+        else:
+            self.register_module('projections', None)
 
         self.layers: Sequence[MaskedAttentionDecoderLayer] | nn.ModuleList = nn.ModuleList([
             MaskedAttentionDecoderLayer(feature_channels, num_attention_heads, dim_feedforward, pre_norm)
@@ -179,7 +189,7 @@ class MaskedAttentionDecoder(nn.Module):
     ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
         """
         Args:
-            key_feature_maps: list of (n, c, *spatial), c is identical across all levels
+            key_feature_maps: list of (n, c, *spatial), c is identical (if no projection) across all levels
                 resolution: low → high (Mask2Former)
             pixel_embedding: feature map to produce the segmentation output
             manual_mask: restrict the cross-attention area with the specified mask
@@ -187,6 +197,11 @@ class MaskedAttentionDecoder(nn.Module):
             (mask_embedding, mask_logits) of all layers
         """
         batch_size = pixel_embedding.shape[0]
+        if self.projections is not None:
+            key_feature_maps = [
+                projection(feature_map)
+                for projection, feature_map in zip(self.projections, key_feature_maps)
+            ]
         key_hidden_states = list(map(flatten, key_feature_maps))
         key_position_embeddings = [
             self.key_position_embedding(x.shape[2:]) + self.level_embedding[i]

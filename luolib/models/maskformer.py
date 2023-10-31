@@ -19,8 +19,9 @@ class MaskFormer(nn.Module):
         mask_decoder: MaskedAttentionDecoder,
         key_levels: Sequence[int] = (-1, -2, -3),
         pixel_embedding_level: int = 0,
+        **kwargs,
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         assert isinstance(backbone, BackboneProtocol)
         self.backbone = backbone
         self.mask_decoder = mask_decoder
