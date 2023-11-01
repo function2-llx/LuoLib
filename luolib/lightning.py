@@ -162,6 +162,7 @@ class LightningCLI(LightningCLIBase):
         parser.add_argument('--float32_matmul_precision', type=Literal['medium', 'high', 'highest'], default='high')
         parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
         parser.add_argument('--compile', type=bool, default=True)
+        parser.add_argument('--trace_numpy', type=bool, default=False)
         parser.add_argument('--logger', type=WandbLogger)
         parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
@@ -181,6 +182,9 @@ class LightningCLI(LightningCLIBase):
     def fit(self, model, **kwargs):
         # https://github.com/Lightning-AI/lightning/issues/17283
         if self._get(self.config, 'compile'):
+            # https://github.com/pytorch/pytorch/issues/112335
+            from torch._dynamo import config
+            config.trace_numpy = self._get(self.config, 'trace_numpy')
             model = torch.compile(model)
         self.trainer.fit(model, **kwargs)
 
