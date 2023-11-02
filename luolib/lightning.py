@@ -33,14 +33,11 @@ __all__ = [
 ]
 
 class LightningModule(LightningModuleBase):
+    trainer: Trainer
+
     def __init__(self, *, log_grad_norm: bool = True, **kwargs):
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
-
-    @property
-    def trainer(self) -> Trainer:
-        # make PyCharm happy
-        return super().trainer
 
     def grad_named_parameters(self):
         for pn, p in self.named_parameters():
