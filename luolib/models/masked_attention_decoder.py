@@ -77,7 +77,7 @@ class MaskedAttentionDecoderLayer(nn.Module):
         return hidden_states
 
 class MaskPredictor(nn.Module):
-    def __init__(self, hidden_dim: int, pixel_embedding_dim: int, norm: bool = False):
+    def __init__(self, hidden_dim: int, pixel_embedding_dim: int, bias: bool, norm: bool):
         """
         Args:
             norm: usually used for pre-norm
@@ -89,8 +89,9 @@ class MaskPredictor(nn.Module):
             nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, pixel_embedding_dim + 1),
+            nn.Linear(hidden_dim, pixel_embedding_dim + bias),
         )
+        self.bias = bias
         if norm:
             self.norm = nn.LayerNorm(hidden_dim)
         else:
@@ -99,11 +100,13 @@ class MaskPredictor(nn.Module):
     def forward(self, hidden_states: torch.Tensor, pixel_embedding: torch.Tensor) -> torch.Tensor:
         wandb = self.mask_query_projection(self.norm(hidden_states))
         weight = wandb[..., :self.pixel_embedding_dim]
-        bias = einops.rearrange(
-            wandb[..., self.pixel_embedding_dim],
-            f"... -> ... {' '.join('1' * (pixel_embedding.ndim - 2))}",
-        )
-        mask_logits = einops.einsum(weight, pixel_embedding, 'n nq c, n c ... -> n nq ...') + bias
+        mask_logits = einops.einsum(weight, pixel_embedding, 'n nq c, n c ... -> n nq ...')
+        if self.bias:
+            bias = einops.rearrange(
+                wandb[..., self.pixel_embedding_dim],
+                f"... -> ... {' '.join('1' * (pixel_embedding.ndim - 2))}",
+            )
+            mask_logits += bias
         return mask_logits
 
 # modified from transformers.models.mask2former.modeling_mask2former.Mask2FormerMaskedAttentionDecoder
@@ -121,6 +124,7 @@ class MaskedAttentionDecoder(nn.Module):
         num_feature_levels: int = 3,
         key_projection_channels: Sequence[int] | None = None,
         num_queries: int = 100,
+        bias: bool = True,
         pre_norm: bool = True,
         layer_drop: float = 0.,
         grad_ckpt: bool = False,
@@ -128,6 +132,7 @@ class MaskedAttentionDecoder(nn.Module):
         """
         Args:
             mask_start_layer: the layer from which to start restricting the cross-attention area using predicted mask.
+            bias: whether generating bias for predicting mask
         """
         super().__init__()
         # attention mask interpolation
@@ -140,6 +145,7 @@ class MaskedAttentionDecoder(nn.Module):
         self.key_position_embedding = SpatialSinusoidalPositionEmbedding(feature_channels, normalize=True, flatten=True)
         self.level_embedding = NoWeightDecayParameter(torch.empty(num_feature_levels, hidden_dim))
         self.query_embedding = NoWeightDecayParameter(torch.empty(num_queries, hidden_dim))
+        self.bias = bias
         if key_projection_channels is not None:
             assert len(key_projection_channels) == num_feature_levels
             self.projections = nn.ModuleList([
@@ -157,7 +163,7 @@ class MaskedAttentionDecoder(nn.Module):
 
         self.mask_start_layer = mask_start_layer
         self.soft_mask = soft_mask
-        self.mask_predictor = MaskPredictor(hidden_dim, pixel_embedding_dim, pre_norm)
+        self.mask_predictor = MaskPredictor(hidden_dim, pixel_embedding_dim, bias, pre_norm)
 
         self.gradient_checkpointing = grad_ckpt
 
