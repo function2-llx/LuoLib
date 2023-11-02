@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from functools import cached_property
+import os
 from pathlib import Path
 from typing import Literal
 import warnings
@@ -13,7 +14,9 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.trainer.connectors.accelerator_connector import _PRECISION_INPUT
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
+from torch.optim import Optimizer
 
+from luolib.utils.grad import grad_norm
 from monai.config import USE_COMPILED
 from luolib.datamodule import ExpDataModuleBase, CrossValDataModule
 from luolib.optim.factory import NamedParamGroup, OptimizerCallable, infer_weight_decay_keys, normalize_param_groups
@@ -30,6 +33,10 @@ __all__ = [
 
 class LightningModule(LightningModuleBase):
     trainer: Trainer
+
+    def __init__(self, *, log_grad_norm: bool = True, **kwargs):
+        super().__init__(**kwargs)
+        self.log_grad_norm = log_grad_norm
 
     def grad_named_parameters(self):
         for pn, p in self.named_parameters():
@@ -69,6 +76,10 @@ class LightningModule(LightningModuleBase):
             case _:
                 super().lr_scheduler_step(scheduler, metric)
 
+    def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
+        if self.log_grad_norm:
+            self.log('grad_norm', grad_norm(self))
+
 class Trainer(TrainerBase):
     def __init__(
         self,
@@ -97,11 +108,12 @@ class Trainer(TrainerBase):
         """
         You must call this on all processes. Failing to do so will cause your program to stall forever.
         """
-        logger = self.logger
-        assert isinstance(logger, WandbLogger)
-        root_dir = Path(logger.save_dir)
         if self.is_global_zero:
-            log_dir = root_dir / f'{Path(logger.experiment.dir).parent.name}'
+            logger = self.logger
+            assert isinstance(logger, WandbLogger)
+            seed = os.getenv('PL_GLOBAL_SEED')
+            root_dir = Path(logger.save_dir)
+            log_dir = root_dir / f'seed-{seed}' / f'{Path(logger.experiment.dir).parent.name}'
         else:
             log_dir = None
         log_dir = self.strategy.broadcast(log_dir)

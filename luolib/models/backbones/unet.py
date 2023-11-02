@@ -21,7 +21,7 @@ class UNetBackbone(nn.Module):
         strides: Sequence[spatial_param_t[int]],
         norm: str | tuple | None = None,
         act: str | tuple = Act.LEAKYRELU,
-        res_block: bool = True,
+        res_block: bool = False,
     ):
         super().__init__()
         num_layers = len(layer_channels)
