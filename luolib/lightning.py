@@ -12,6 +12,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint as 
 from lightning.pytorch.cli import LightningArgumentParser, LightningCLI as LightningCLIBase
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.trainer.connectors.accelerator_connector import _PRECISION_INPUT
+from lightning.pytorch.utilities.types import STEP_OUTPUT
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
 from torch.optim import Optimizer
@@ -32,11 +33,14 @@ __all__ = [
 ]
 
 class LightningModule(LightningModuleBase):
-    trainer: Trainer
-
     def __init__(self, *, log_grad_norm: bool = True, **kwargs):
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
+
+    @property
+    def trainer(self) -> Trainer:
+        # make PyCharm happy
+        return super().trainer
 
     def grad_named_parameters(self):
         for pn, p in self.named_parameters():
@@ -68,6 +72,23 @@ class LightningModule(LightningModuleBase):
         match scheduler := self.lr_scheduler_config.scheduler:
             case TIMMScheduler():
                 scheduler.step_update(0)
+
+    def on_train_batch_end(self, outputs: STEP_OUTPUT, batch: ..., batch_idx: int) -> None:
+        match outputs:
+            case torch.Tensor():
+                loss = outputs
+            case dict():
+                loss = outputs['loss']
+            case None:
+                return
+            case _:
+                raise ValueError
+
+        if loss.isfinite() or (save_dir := self.trainer.log_dir / 'bad-loss-ctx').exists():
+            return
+        save_dir.mkdir(parents=True, exist_ok=True)
+        self.trainer.save_checkpoint(save_dir / 'checkpoint.ckpt')
+        torch.save(batch, save_dir / 'batch.pt')
 
     def lr_scheduler_step(self, scheduler: LRScheduler, metric=None):
         match scheduler:
