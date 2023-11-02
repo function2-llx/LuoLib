@@ -124,6 +124,7 @@ class MaskedAttentionDecoder(nn.Module):
         num_feature_levels: int = 3,
         key_projection_channels: Sequence[int] | None = None,
         num_queries: int = 100,
+        mask_attn_th: float = 0.5,
         bias: bool = True,
         pre_norm: bool = True,
         layer_drop: float = 0.,
@@ -146,6 +147,7 @@ class MaskedAttentionDecoder(nn.Module):
         self.level_embedding = NoWeightDecayParameter(torch.empty(num_feature_levels, hidden_dim))
         self.query_embedding = NoWeightDecayParameter(torch.empty(num_queries, hidden_dim))
         self.bias = bias
+        self.mask_attn_th = mask_attn_th
         if key_projection_channels is not None:
             assert len(key_projection_channels) == num_feature_levels
             self.projections = nn.ModuleList([
@@ -180,7 +182,7 @@ class MaskedAttentionDecoder(nn.Module):
         manual_mask: torch.Tensor | None = None,
     ):
         def from_prob(mask_prob: torch.Tensor):
-            ignore_mask = einops.rearrange(mask_prob < 0.5, 'n nq ... -> n nq (...)')
+            ignore_mask = einops.rearrange(mask_prob < self.mask_attn_th, 'n nq ... -> n nq (...)')
             # no restriction for empty mask
             ignore_mask.masked_fill_(ignore_mask.all(dim=-1, keepdim=True), False)
             attn_bias = torch.where(ignore_mask, -torch.inf, 0.)
