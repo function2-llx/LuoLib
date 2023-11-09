@@ -27,6 +27,7 @@ class PlainConvUNetDecoder(NestedBackbone):
         strides: spatial_param_seq_t[int],
         norm: tuple | str | None = None,
         act: tuple | str | None = Act.LEAKYRELU,
+        upsample_norm: tuple | str | None = None,
         lateral_channels: Sequence[int] | None = None,
         lateral_kernel_sizes: spatial_param_seq_t[int] | None = None,
         **kwargs,
@@ -40,7 +41,7 @@ class PlainConvUNetDecoder(NestedBackbone):
         norm = fall_back_none(norm, default_instance())
         num_layers = len(layer_channels) - 1
         self.layers = nn.ModuleList([
-            UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i], strides[i + 1])
+            UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i], strides[i + 1], norm, act, upsample_norm)
             for i in range(num_layers)
         ])
         if lateral_kernel_sizes is None:

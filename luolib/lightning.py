@@ -18,7 +18,6 @@ import torch
 from torch.optim import Optimizer
 
 from luolib.utils.grad import grad_norm
-from monai.config import USE_COMPILED
 from luolib.datamodule import ExpDataModuleBase, CrossValDataModule
 from luolib.optim.factory import NamedParamGroup, OptimizerCallable, infer_weight_decay_keys, normalize_param_groups
 from luolib.scheduler.factory import LRScheduler, LRSchedulerConfig, LRSchedulerConfigWithCallable
@@ -118,6 +117,7 @@ class Trainer(TrainerBase):
         self.optimizer_callable = optimizer
         self.lr_scheduler_config_with_callable = lr_scheduler
 
+        from monai.config import USE_COMPILED
         if not USE_COMPILED:
             warnings.warn('MONAI is not using compiled')
 
@@ -136,6 +136,9 @@ class Trainer(TrainerBase):
             log_dir = None
         log_dir = self.strategy.broadcast(log_dir)
         return log_dir
+
+    def play(self, *, ckpt_path: str | None, **kwargs):
+        pass
 
 class ModelCheckpoint(ModelCheckpointBase):
     def __resolve_ckpt_dir(self, trainer: Trainer):
@@ -183,6 +186,15 @@ class LightningCLI(LightningCLIBase):
             **kwargs,
         )
 
+    @staticmethod
+    def subcommands() -> dict[str, set[str]]:
+        """Defines the list of available subcommands and the arguments to skip."""
+        subcommands = LightningCLIBase.subcommands()
+        return {
+            **subcommands,
+            'play': set(),
+        }
+
     def _prepare_subcommand_parser(self, klass: type, subcommand: str, **kwargs) -> LightningArgumentParser:
         # make current subcommand available in `add_arguments_to_parser`
         self._subcommand_preparing = subcommand
@@ -219,7 +231,7 @@ class LightningCLI(LightningCLIBase):
         self.trainer.fit(model, **kwargs)
 
 def fit_or_val(command: str):
-    return command == 'fit' or command == 'validate'
+    return command in ['fit', 'validate', 'play']
 
 class LightningCLICrossVal(LightningCLI):
     datamodule: CrossValDataModule

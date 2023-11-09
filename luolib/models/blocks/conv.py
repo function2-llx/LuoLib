@@ -148,19 +148,26 @@ class UNetUpLayer(nn.Module):
         upsample_stride: spatial_param_t[int],
         norm: tuple | str | None = None,
         act: tuple | str = Act.LEAKYRELU,
+        upsample_norm: tuple | str | None = None,
         res: bool = False,
     ):
         super().__init__()
         if norm is None:
             norm = default_instance()
-        self.upsample = Conv[Conv.CONVTRANS, spatial_dims](
-            in_channels,
-            out_channels,
-            upsample_stride,
-            upsample_stride,
-            padding := get_padding(upsample_stride, upsample_stride),
-            get_output_padding(upsample_stride, upsample_stride, padding),
-        )
+        if upsample_norm is None:
+            self.upsample = Conv[Conv.CONVTRANS, spatial_dims](
+                in_channels,
+                out_channels,
+                upsample_stride,
+                upsample_stride,
+                padding := get_padding(upsample_stride, upsample_stride),
+                get_output_padding(upsample_stride, upsample_stride, padding),
+            )
+        else:
+            self.upsample = get_conv_layer(
+                spatial_dims, in_channels, out_channels, upsample_stride, upsample_stride,
+                norm=upsample_norm, act=None, is_transposed=True,
+            )
         self.conv = BasicConvBlock(
             spatial_dims,
             out_channels << 1,
