@@ -85,6 +85,9 @@ class NamedParamGroup(TypedDict, total=False):
     lr_scale: float  # inserted by timm
 
 def normalize_param_groups(param_groups: list[NamedParamGroup], decay_keys: set[str]) -> list[dict]:
+    """
+    partition each param group into decay/no decay group, and remove param names
+    """
     normalized_param_groups = []
     for param_group in param_groups:
         params = param_group.pop('params')

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from functools import cached_property
 import os
 from pathlib import Path
@@ -44,19 +44,29 @@ class LightningModule(LightningModuleBase):
                 yield pn, p
 
     def get_param_groups(self) -> list[NamedParamGroup]:
-        # this function does not take "no weight decay" into account
+        # this function does not take "no weight decay" into account, will be normalized later
         return [{'params': list(self.grad_named_parameters())}]
 
     def get_decay_keys(self) -> set[str]:
         return infer_weight_decay_keys(self)
 
+    def set_cli_optimizers(
+        self,
+        cli_optimizers: Sequence[OptimizerCallable],
+        cli_lr_scheduler_configs: Sequence[LRSchedulerConfigWithCallable],
+    ):
+        if len(cli_optimizers) != len(cli_lr_scheduler_configs):
+            pass
+        self.cli_optimizers = cli_optimizers
+        self.cli_lr_scheduler_configs = cli_lr_scheduler_configs
+
     def configure_optimizers(self):
         param_groups = self.get_param_groups()
         normalized_param_groups = normalize_param_groups(param_groups, self.get_decay_keys())
-        self.optimizer = self.trainer.optimizer_callable(normalized_param_groups)
-        self.lr_scheduler_config = LRSchedulerConfig(**vars(self.trainer.lr_scheduler_config_with_callable))
-        self.lr_scheduler_config.scheduler = self.trainer.lr_scheduler_config_with_callable.scheduler(self.optimizer)
-        # https://github.com/Lightning-AI/lightning/issues/18870
+        optimizer = self.trainer.optimizer_callable(normalized_param_groups)
+        lr_scheduler_config = LRSchedulerConfig(**vars(self.trainer.lr_scheduler_config_with_callable))
+        lr_scheduler_config.scheduler = self.trainer.lr_scheduler_config_with_callable.scheduler(optimizer)
+        # vars(scheduler) due to: https://github.com/Lightning-AI/lightning/issues/18870
         return [self.optimizer], [vars(self.lr_scheduler_config)]
 
     def on_fit_start(self) -> None:
@@ -138,7 +148,7 @@ class Trainer(TrainerBase):
         return log_dir
 
     def play(self, *, ckpt_path: str | None, **kwargs):
-        pass
+        """have to define this function in Trainer or CLI can't find the `ckpt_path` parameter"""
 
 class ModelCheckpoint(ModelCheckpointBase):
     def __resolve_ckpt_dir(self, trainer: Trainer):
