@@ -17,6 +17,8 @@ from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
 from torch.optim import Optimizer
 
+from monai.utils import ensure_tuple
+
 from luolib.utils.grad import grad_norm
 from luolib.datamodule import ExpDataModuleBase, CrossValDataModule
 from luolib.optim.factory import NamedParamGroup, OptimizerCallable, infer_weight_decay_keys, normalize_param_groups
@@ -67,16 +69,16 @@ class LightningModule(LightningModuleBase):
         lr_scheduler_config = LRSchedulerConfig(**vars(self.trainer.lr_scheduler_config_with_callable))
         lr_scheduler_config.scheduler = self.trainer.lr_scheduler_config_with_callable.scheduler(optimizer)
         # vars(scheduler) due to: https://github.com/Lightning-AI/lightning/issues/18870
-        return [self.optimizer], [vars(self.lr_scheduler_config)]
+        return [optimizer], [vars(lr_scheduler_config)]
 
     def on_fit_start(self) -> None:
         if self.trainer.is_global_zero:
             (self.trainer.log_dir / 'model.txt').write_text(repr(self))
 
     def on_train_start(self) -> None:
-        # https://github.com/Lightning-AI/lightning/issues/17972
-        match scheduler := self.lr_scheduler_config.scheduler:
-            case TIMMScheduler():
+        # handle warm-up: https://github.com/Lightning-AI/lightning/issues/17972
+        for scheduler in ensure_tuple(self.lr_schedulers()):
+            if isinstance(scheduler, TIMMScheduler):
                 scheduler.step_update(0)
 
     def on_train_batch_end(self, outputs: STEP_OUTPUT, batch: ..., batch_idx: int) -> None:
