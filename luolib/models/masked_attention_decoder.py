@@ -176,12 +176,10 @@ class MaskedAttentionDecoder(nn.Module):
         self.mask_embedding_norm = nn.LayerNorm(hidden_dim) if pre_norm else nn.Identity()
         self.share_predictor = share_predictor
         if share_predictor:
-            self.mask_predictor = MaskPredictor(
-                hidden_dim, pixel_embedding_dims, predict_bias, pre_norm, predictor_num_layers,
-            )
+            self.mask_predictor = MaskPredictor(hidden_dim, pixel_embedding_dims, predict_bias, predictor_num_layers)
         else:
             self.mask_predictors = [
-                MaskPredictor(hidden_dim, pixel_embedding_dims, predict_bias, pre_norm, predictor_num_layers)
+                MaskPredictor(hidden_dim, pixel_embedding_dims, predict_bias, predictor_num_layers)
                 for _ in range(num_decoder_layers + 1)
             ]
 
