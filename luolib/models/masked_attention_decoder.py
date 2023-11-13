@@ -82,13 +82,8 @@ class MaskPredictor(nn.Module):
         hidden_dim: int,
         pixel_embedding_dims: Sequence[int],
         bias: bool,
-        norm: bool,
         num_hidden_layers: int,
     ):
-        """
-        Args:
-            norm: usually used for pre-norm
-        """
         super().__init__()
         self.mask_query_projections = nn.ModuleList()
         for pixel_embedding_dim in pixel_embedding_dims:
@@ -101,16 +96,11 @@ class MaskPredictor(nn.Module):
             mask_query_projection.append(nn.Linear(hidden_dim, pixel_embedding_dim + bias))
             self.mask_query_projections.append(mask_query_projection)
         self.bias = bias
-        if norm:
-            self.norm = nn.LayerNorm(hidden_dim)
-        else:
-            self.norm = nn.Identity()
 
-    def forward(self, hidden_states: torch.Tensor, pixel_embedding: torch.Tensor) -> list[torch.Tensor]:
-        hidden_states = self.norm(hidden_states)
+    def forward(self, mask_embedding: torch.Tensor, pixel_embedding: torch.Tensor) -> list[torch.Tensor]:
         ret = []
         for projection in self.mask_query_projections:
-            wandb = projection(hidden_states)  # bias and weight
+            wandb = projection(mask_embedding)  # bias and weight
             weight = wandb[..., self.bias:]
             mask_logits = einops.einsum(weight, pixel_embedding, 'n nq c, n c ... -> n nq ...')
             if self.bias:
@@ -179,10 +169,21 @@ class MaskedAttentionDecoder(nn.Module):
         self.layer_drop = layer_drop
 
         self.mask_start_layer = mask_start_layer
+        if soft_mask:
+            raise NotImplementedError
         self.soft_mask = soft_mask
-        self.mask_predictor = MaskPredictor(
-            hidden_dim, pixel_embedding_dims, predict_bias, pre_norm, predictor_num_layers,
-        )
+
+        self.mask_embedding_norm = nn.LayerNorm(hidden_dim) if pre_norm else nn.Identity()
+        self.share_predictor = share_predictor
+        if share_predictor:
+            self.mask_predictor = MaskPredictor(
+                hidden_dim, pixel_embedding_dims, predict_bias, pre_norm, predictor_num_layers,
+            )
+        else:
+            self.mask_predictors = [
+                MaskPredictor(hidden_dim, pixel_embedding_dims, predict_bias, pre_norm, predictor_num_layers)
+                for _ in range(num_decoder_layers + 1)
+            ]
 
         self.gradient_checkpointing = grad_ckpt
 
@@ -216,17 +217,22 @@ class MaskedAttentionDecoder(nn.Module):
             attn_bias = from_prob(mask_prob)
         return einops.repeat(attn_bias, 'n nq nk -> n M nq nk', M=self.num_attention_heads)
 
+    def get_mask_predictor(self, layer_id: int) -> MaskPredictor:
+        if self.share_predictor:
+            return self.mask_predictor
+        return self.mask_predictors[layer_id + 1]
+
     def forward(
         self,
         key_feature_maps: list[torch.Tensor],
         pixel_embeddings: list[torch.Tensor],
         manual_mask: torch.Tensor | None = None,
-    ) -> tuple[list[list[torch.Tensor]], list[torch.Tensor]]:
+    ) -> tuple[list[torch.Tensor], list[list[torch.Tensor]]]:
         """
         Args:
             key_feature_maps: list of (n, c, *spatial), c is identical (if no projection) across all levels
                 resolution: low → high (Mask2Former)
-            pixel_embeddings: feature maps to produce the segmentation outputs
+            pixel_embeddings: feature maps to produce the segmentation outputs (multiple maps for deep supervision)
             manual_mask: restrict the cross-attention area with the specified mask
         Returns:
             (mask_embedding, mask_logits) of all layers
@@ -245,7 +251,7 @@ class MaskedAttentionDecoder(nn.Module):
         batch_size = key_feature_maps[0].shape[0]
         hidden_states = einops.repeat(self.query_embedding, '... -> n ...', n=batch_size)
         layers_mask_embeddings = [hidden_states]
-        mask_logits = self.mask_predictor(hidden_states, pixel_embedding)
+        mask_logits = self.get_mask_predictor(-1)(hidden_states, pixel_embeddings)
         layers_mask_logits = [mask_logits]
 
         for idx, layer in enumerate(self.layers):
@@ -267,8 +273,9 @@ class MaskedAttentionDecoder(nn.Module):
                     key_hidden_states[level_index], key_position_embeddings[level_index], attn_bias,
                 )
 
-            layers_mask_embeddings.append(hidden_states)
-            mask_logits = self.mask_predictor(hidden_states, pixel_embedding)
+            mask_embedding = self.mask_embedding_norm(hidden_states)
+            layers_mask_embeddings.append(mask_embedding)
+            mask_logits = self.get_mask_predictor(idx)(mask_embedding, pixel_embeddings)
             layers_mask_logits.append(mask_logits)
 
         return layers_mask_embeddings, layers_mask_logits

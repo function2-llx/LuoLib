@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 import warnings
 
-from lightning import LightningModule as LightningModuleBase, Trainer as TrainerBase
+from lightning import LightningDataModule, LightningModule as LightningModuleBase, Trainer as TrainerBase
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint as ModelCheckpointBase, ModelSummary
 from lightning.pytorch.cli import LightningArgumentParser, LightningCLI as LightningCLIBase
 from lightning.pytorch.loggers import WandbLogger
@@ -108,6 +108,10 @@ class LightningModule(LightningModuleBase):
     def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
         if self.log_grad_norm:
             self.log('grad_norm', grad_norm(self))
+
+    @property
+    def datamodule(self) -> LightningDataModule:
+        return self.trainer.datamodule
 
 class Trainer(TrainerBase):
     def __init__(
