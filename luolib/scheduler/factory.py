@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Literal
 
 from lightning.pytorch.cli import ReduceLROnPlateau
 from lightning.pytorch.utilities.types import LRSchedulerConfig as LRSchedulerConfigBase
@@ -20,7 +20,8 @@ LRSchedulerCallable = Callable[[Optimizer], LRScheduler]
 @dataclass
 class LRSchedulerConfig(LRSchedulerConfigBase):
     scheduler: LRScheduler
-    interval: str = 'step'
+    frequency: int = 0  # 0: set to some default value in `build_optimization`
+    interval: Literal['step', 'epoch'] = 'step'
 
 @dataclass
 class LRSchedulerConfigWithCallable(LRSchedulerConfig):

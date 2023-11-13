@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
-from functools import cached_property
+from collections.abc import Callable, Hashable
+from functools import cache, cached_property
 import os
 from pathlib import Path
 from typing import Literal
@@ -12,7 +12,7 @@ from lightning.pytorch.callbacks import LearningRateMonitor, ModelCheckpoint as 
 from lightning.pytorch.cli import LightningArgumentParser, LightningCLI as LightningCLIBase
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.trainer.connectors.accelerator_connector import _PRECISION_INPUT
-from lightning.pytorch.utilities.types import STEP_OUTPUT
+from lightning.pytorch.utilities.types import LRSchedulerConfigType, STEP_OUTPUT
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
 from torch.optim import Optimizer
@@ -33,6 +33,8 @@ __all__ = [
     'LightningCLICrossVal',
 ]
 
+OptimizationTuple = tuple[OptimizerCallable, LRSchedulerConfigWithCallable]
+
 class LightningModule(LightningModuleBase):
     trainer: Trainer
 
@@ -41,35 +43,58 @@ class LightningModule(LightningModuleBase):
         self.log_grad_norm = log_grad_norm
 
     def grad_named_parameters(self):
+        # will I ever encounter the abstract case that some parameter is optimized without gradient?
         for pn, p in self.named_parameters():
             if p.requires_grad:
                 yield pn, p
 
-    def get_param_groups(self) -> list[NamedParamGroup]:
-        # this function does not take "no weight decay" into account, will be normalized later
-        return [{'params': list(self.grad_named_parameters())}]
-
-    def get_decay_keys(self) -> set[str]:
+    def _get_decay_keys(self) -> set[str]:
         return infer_weight_decay_keys(self)
 
-    def set_cli_optimizers(
-        self,
-        cli_optimizers: Sequence[OptimizerCallable],
-        cli_lr_scheduler_configs: Sequence[LRSchedulerConfigWithCallable],
-    ):
-        if len(cli_optimizers) != len(cli_lr_scheduler_configs):
-            pass
-        self.cli_optimizers = cli_optimizers
-        self.cli_lr_scheduler_configs = cli_lr_scheduler_configs
+    @cache
+    def get_decay_keys(self) -> set[str]:
+        return self._get_decay_keys()
+
+    @property
+    def optimization(self):
+        return self._optimization
+
+    @optimization.setter
+    def optimization(self, optimization: OptimizationTuple | dict[Hashable, OptimizationTuple]):
+        self._optimization = optimization
+
+    def get_param_groups(self) -> list[NamedParamGroup]:
+        return [{'params': list(self.grad_named_parameters())}]
+
+    def get_param_groups_for_optimizer(self, key: Hashable):
+        raise NotImplementedError
+
+    def build_optimization(self, param_groups: list[NamedParamGroup], optimization: OptimizationTuple) -> tuple[Optimizer, LRSchedulerConfigType]:
+        normalized_param_groups = normalize_param_groups(param_groups, self.get_decay_keys())
+        optimizer_callable, lr_scheduler_config_with_callable = optimization
+        optimizer = optimizer_callable(normalized_param_groups)
+        lr_scheduler_config = LRSchedulerConfig(**vars(lr_scheduler_config_with_callable))  # no type checks here, thanks
+        if lr_scheduler_config.frequency == 0:
+            if lr_scheduler_config.interval == 'step':
+                lr_scheduler_config.frequency = self.trainer.val_check_interval
+            else:
+                lr_scheduler_config.frequency = 1
+        scheduler = lr_scheduler_config_with_callable.scheduler(optimizer)
+        lr_scheduler_config.scheduler = scheduler
+        # vars(scheduler) due to: https://github.com/Lightning-AI/lightning/issues/18870
+        return optimizer, vars(lr_scheduler_config)
 
     def configure_optimizers(self):
-        param_groups = self.get_param_groups()
-        normalized_param_groups = normalize_param_groups(param_groups, self.get_decay_keys())
-        optimizer = self.trainer.optimizer_callable(normalized_param_groups)
-        lr_scheduler_config = LRSchedulerConfig(**vars(self.trainer.lr_scheduler_config_with_callable))
-        lr_scheduler_config.scheduler = self.trainer.lr_scheduler_config_with_callable.scheduler(optimizer)
-        # vars(scheduler) due to: https://github.com/Lightning-AI/lightning/issues/18870
-        return [optimizer], [vars(lr_scheduler_config)]
+        if isinstance(self.optimization, dict):
+            optimizations = [
+                self.build_optimization(self.get_param_groups_for_optimizer(key), optimization)
+                for key, optimization in self.optimization.items()
+            ]
+            return tuple(zip(*optimizations))
+        else:
+            param_groups = self.get_param_groups()
+            optimizer, lr_scheduler_config = self.build_optimization(param_groups, self.optimization)
+            return [optimizer], [lr_scheduler_config]
 
     def on_fit_start(self) -> None:
         if self.trainer.is_global_zero:
@@ -120,8 +145,6 @@ class Trainer(TrainerBase):
         precision: _PRECISION_INPUT = '16-mixed',
         check_val_every_n_epoch: int | None = None,
         benchmark: bool = True,
-        optimizer: OptimizerCallable | None = None,
-        lr_scheduler: LRSchedulerConfigWithCallable | None = None,
         **kwargs,
     ):
         super().__init__(
@@ -130,8 +153,6 @@ class Trainer(TrainerBase):
             benchmark=benchmark,
             **kwargs,
         )
-        self.optimizer_callable = optimizer
-        self.lr_scheduler_config_with_callable = lr_scheduler
 
         from monai.config import USE_COMPILED
         if not USE_COMPILED:
@@ -221,9 +242,11 @@ class LightningCLI(LightningCLIBase):
         parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
         parser.add_argument('--compile', type=bool, default=True)
         parser.add_argument('--trace_numpy', type=bool, default=False)
-        parser.add_argument('--logger', type=WandbLogger)
+        parser.add_argument('--logger', type=WandbLogger, enable_path=True)
         parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
+        if self._subcommand_preparing in {'fit', 'play'}:
+            parser.add_argument('--optimization', type=OptimizationTuple | dict[Hashable, OptimizationTuple], enable_path=True)
 
     def before_instantiate_classes(self):
         logger_args = self.config[self.subcommand].logger.init_args
@@ -237,7 +260,8 @@ class LightningCLI(LightningCLIBase):
         torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
         super()._run_subcommand(subcommand)
 
-    def fit(self, model, **kwargs):
+    def fit(self, model: LightningModule, **kwargs):
+        model.optimization = self._get(self.config, 'optimization')
         # https://github.com/Lightning-AI/lightning/issues/17283
         if self._get(self.config, 'compile'):
             # https://github.com/pytorch/pytorch/issues/112335
@@ -245,9 +269,6 @@ class LightningCLI(LightningCLIBase):
             config.trace_numpy = self._get(self.config, 'trace_numpy')
             model = torch.compile(model)
         self.trainer.fit(model, **kwargs)
-
-def fit_or_val(command: str):
-    return command in ['fit', 'validate', 'play']
 
 class LightningCLICrossVal(LightningCLI):
     datamodule: CrossValDataModule
@@ -261,12 +282,12 @@ class LightningCLICrossVal(LightningCLI):
         super().__init__(datamodule_class=datamodule_class, **kwargs)
 
     def add_arguments_to_parser(self, parser: LightningArgumentParser):
-        if fit_or_val(self._subcommand_preparing):
+        if self._subcommand_preparing in {'fit', 'validate', 'play'}:
             parser.add_argument('fold_id', type=int)
         super().add_arguments_to_parser(parser)
 
     def before_instantiate_classes(self):
-        if fit_or_val(self.subcommand):
+        if self.subcommand in {'fit', 'validate', 'play'}:
             config = self.config[self.subcommand]
             logger_args = config.logger.init_args
             logger_args.name = str(Path(logger_args.name) / f'fold-{config.fold_id}')
@@ -274,6 +295,6 @@ class LightningCLICrossVal(LightningCLI):
 
     def _run_subcommand(self, subcommand: str):
         torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
-        if fit_or_val(subcommand):
+        if subcommand in {'fit', 'validate', 'play'}:
             self.datamodule.fold_id = self._get(self.config, 'fold_id')
         super()._run_subcommand(subcommand)
