@@ -4,9 +4,8 @@ import torch
 from torch import nn
 
 from luolib.types import spatial_param_t
-from luolib.utils import fall_back_none
 from ..blocks import BasicConvLayer
-from ..layers import Act, default_instance
+from ..layers import Act, Norm
 
 __all__ = [
     'UNetBackbone',
@@ -19,13 +18,12 @@ class UNetBackbone(nn.Module):
         layer_channels: list[int],
         kernel_sizes: Sequence[spatial_param_t[int]],
         strides: Sequence[spatial_param_t[int]],
-        norm: str | tuple | None = None,
+        norm: str | tuple = (Norm.INSTANCE, {'affine': True}),
         act: str | tuple = Act.LEAKYRELU,
         res_block: bool = False,
     ):
         super().__init__()
         num_layers = len(layer_channels)
-        norm = fall_back_none(norm, default_instance())
         self.layers = nn.ModuleList([
             BasicConvLayer(
                 3,

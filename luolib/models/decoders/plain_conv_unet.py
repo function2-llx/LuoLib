@@ -6,18 +6,15 @@ import torch
 from torch import nn
 
 from luolib.types import spatial_param_seq_t
-from luolib.utils import fall_back_none
-from ..layers.factories import default_instance
 from ..blocks import UNetUpLayer, get_conv_layer
 from ..init import init_common
-from ..layers import Act
-from .base import NestedBackbone
+from ..layers import Act, Norm
 
 __all__ = [
     'PlainConvUNetDecoder',
 ]
 
-class PlainConvUNetDecoder(NestedBackbone):
+class PlainConvUNetDecoder(nn.Module):
     def __init__(
         self,
         *,
@@ -25,8 +22,8 @@ class PlainConvUNetDecoder(NestedBackbone):
         layer_channels: list[int],
         kernel_sizes: spatial_param_seq_t[int],
         strides: spatial_param_seq_t[int],
-        norm: tuple | str | None = None,
-        act: tuple | str | None = Act.LEAKYRELU,
+        norm: tuple | str = (Norm.INSTANCE, {'affine': True}),
+        act: tuple | str = Act.LEAKYRELU,
         upsample_norm: tuple | str | None = None,
         lateral_channels: Sequence[int] | None = None,
         lateral_kernel_sizes: spatial_param_seq_t[int] | None = None,
@@ -38,7 +35,6 @@ class PlainConvUNetDecoder(NestedBackbone):
             layer_channels: resolution: high → low
         """
         super().__init__(**kwargs)
-        norm = fall_back_none(norm, default_instance())
         num_layers = len(layer_channels) - 1
         self.layers = nn.ModuleList([
             UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i], strides[i + 1], norm, act, upsample_norm)
@@ -59,7 +55,7 @@ class PlainConvUNetDecoder(NestedBackbone):
 
         self.apply(init_common)
 
-    def process(self, feature_maps: Sequence[torch.Tensor], *args, **kwargs):
+    def forward(self, feature_maps: Sequence[torch.Tensor], *args):
         feature_maps = [
             lateral(x)
             for x, lateral in zip(feature_maps, self.laterals)

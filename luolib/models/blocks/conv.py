@@ -5,11 +5,10 @@ import torch
 from torch import nn
 
 from monai.networks.blocks import Convolution, get_output_padding, get_padding
-from monai.networks.layers import Conv, DropPath, Pool, get_act_layer, get_norm_layer
+from monai.networks.layers import DropPath, Pool, get_act_layer
 
-from luolib.utils import fall_back_none
 from luolib.types import spatial_param_t
-from ..layers import Act, default_instance
+from ..layers import Act, Norm
 
 __all__ = [
     'get_conv_layer',
@@ -25,13 +24,12 @@ def get_conv_layer(
     kernel_size: Sequence[int] | int = 3,
     stride: Sequence[int] | int = 1,
     groups: int = 1,
-    norm: tuple | str | None = None,
+    norm: tuple | str | None = (Norm.INSTANCE, {'affine': True}),
     act: tuple | str | None = Act.LEAKYRELU,
     adn_ordering: str = "DNA",
     bias: bool = False,
     is_transposed: bool = False,
 ):
-    norm = fall_back_none(norm, default_instance())
     padding = get_padding(kernel_size, stride)
     output_padding = None
     if is_transposed:
@@ -60,13 +58,12 @@ class BasicConvBlock(nn.Module):
         out_channels: int,
         kernel_size: spatial_param_t[int],
         stride: spatial_param_t[int],
-        norm: tuple | str | None = None,
+        norm: tuple | str = (Norm.INSTANCE, {'affine': True}),
         act: tuple | str = Act.LEAKYRELU,
         drop_path: float = .0,
         res: bool = True,
     ):
         super().__init__()
-        norm = fall_back_none(norm, default_instance())
         self.conv1 = get_conv_layer(
             spatial_dims,
             in_channels,
@@ -88,8 +85,9 @@ class BasicConvBlock(nn.Module):
             if in_channels != out_channels or np.prod(stride) > 1:
                 self.res = nn.Sequential(
                     Pool[Pool.AVG, spatial_dims](stride, stride),
-                    Conv[Conv.CONV, spatial_dims](in_channels, out_channels, kernel_size=1, stride=1),
-                    get_norm_layer(norm, spatial_dims, out_channels),
+                    get_conv_layer(
+                        spatial_dims, in_channels, out_channels, 1, 1, norm=norm, act=None,
+                    ),
                 )
             else:
                 self.res = nn.Identity()
@@ -117,13 +115,12 @@ class BasicConvLayer(nn.Module):
         out_channels: int,
         kernel_size: spatial_param_t[int],
         stride: spatial_param_t[int],
-        norm: tuple | str | None = None,
+        norm: tuple | str = (Norm.INSTANCE, {'affine': True}),
         act: tuple | str = Act.LEAKYRELU,
         res_block: bool = True,
         drop_paths: float | Sequence[float] = 0.,
     ):
         super().__init__()
-        norm = fall_back_none(norm, default_instance())
         if isinstance(drop_paths, float):
             drop_paths = [drop_paths] * num_blocks
         assert len(drop_paths) == num_blocks
@@ -146,36 +143,22 @@ class UNetUpLayer(nn.Module):
         out_channels: int,
         kernel_size: spatial_param_t[int],
         upsample_stride: spatial_param_t[int],
-        norm: tuple | str | None = None,
+        norm: tuple | str = (Norm.INSTANCE, {'affine': True}),
         act: tuple | str = Act.LEAKYRELU,
         upsample_norm: tuple | str | None = None,
+        upsample_act: tuple | str | None = None,
         res: bool = False,
     ):
         super().__init__()
-        if norm is None:
-            norm = default_instance()
-        if upsample_norm is None:
-            self.upsample = Conv[Conv.CONVTRANS, spatial_dims](
-                in_channels,
-                out_channels,
-                upsample_stride,
-                upsample_stride,
-                padding := get_padding(upsample_stride, upsample_stride),
-                get_output_padding(upsample_stride, upsample_stride, padding),
-            )
-        else:
-            self.upsample = get_conv_layer(
-                spatial_dims, in_channels, out_channels, upsample_stride, upsample_stride,
-                norm=upsample_norm, act=None, is_transposed=True,
-            )
+        self.upsample = get_conv_layer(
+            spatial_dims, in_channels, out_channels, upsample_stride, upsample_stride,
+            norm=upsample_norm, act=upsample_act, is_transposed=True,
+        )
         self.conv = BasicConvBlock(
             spatial_dims,
-            out_channels << 1,
-            out_channels,
-            kernel_size,
-            stride=1,
-            norm=norm,
-            act=act,
+            out_channels << 1, out_channels,
+            kernel_size, 1,
+            norm=norm, act=act,
             res=res,
         )
 

@@ -11,7 +11,6 @@ from monai.networks.blocks import MLPBlock
 
 from luolib.types import NoWeightDecayParameter, get_conv_t
 from luolib.utils import fall_back_none, flatten
-from .base import NestedBackbone
 from ..init import init_common
 from ..blocks import SpatialSinusoidalPositionEmbedding, transformer_block_forward
 
@@ -171,7 +170,7 @@ class MultiscaleDeformablePixelDecoderLayer(nn.Module):
 
         return hidden_states
 
-class MultiscaleDeformablePixelDecoder(NestedBackbone):
+class MultiscaleDeformablePixelDecoder(nn.Module):
     def __init__(
         self,
         spatial_dims: int,
@@ -284,7 +283,7 @@ class MultiscaleDeformablePixelDecoder(NestedBackbone):
             )
         ]
 
-    def process(self, feature_maps: list[torch.Tensor], *args) -> list[torch.Tensor]:
+    def forward(self, feature_maps: list[torch.Tensor], *args) -> list[torch.Tensor]:
         feature_maps = [
             projection(feature_map)
             for projection, feature_map in zip(self.input_projections, feature_maps)

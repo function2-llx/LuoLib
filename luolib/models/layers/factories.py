@@ -14,7 +14,6 @@ __all__ = [
     'Act',
     'Norm',
     'LayerNormNd',
-    'default_instance',
 ]
 
 class LayerNormNd(nn.Sequential):
@@ -35,6 +34,3 @@ class Contiguous(nn.Module):
 @Norm.factory_function("layernd")
 def layer_factory(_dim) -> Type[LayerNormNd]:
     return LayerNormNd
-
-def default_instance():
-    return Norm.INSTANCE, {'affine': True}
