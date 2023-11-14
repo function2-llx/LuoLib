@@ -13,7 +13,6 @@ from monai.utils import ensure_tuple
 from luolib.utils import partition_by_predicate
 from luolib.optim import create_optimizer, param_groups_layer_decay
 from luolib.scheduler import create_scheduler
-from ...optim.factory import infer_weight_decay_keys
 
 class ExpModelBase(LightningModule):
     # def __init__(self, conf: ExpConfBase):

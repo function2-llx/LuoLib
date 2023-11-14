@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Hashable
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import cache, cached_property
 import os
@@ -22,8 +22,8 @@ from monai.utils import ensure_tuple
 
 from luolib.utils.grad import grad_norm
 from luolib.datamodule import ExpDataModuleBase, CrossValDataModule
-from luolib.optim.factory import NamedParamGroup, OptimizerCallable, infer_weight_decay_keys, normalize_param_groups
-from luolib.scheduler.factory import LRScheduler, LRSchedulerConfig, LRSchedulerConfigWithCallable
+from luolib.optim import HybridOptim, NamedParamGroup, OptimizerCallable, infer_weight_decay_keys, normalize_param_groups
+from luolib.scheduler import HybridScheduler, LRScheduler, LRSchedulerConfig, LRSchedulerConfigWithCallable
 from luolib.utils import fall_back_none
 
 __all__ = [
@@ -80,7 +80,7 @@ class LightningModule(LightningModuleBase):
             if lr_scheduler_config.interval == 'step':
                 lr_scheduler_config.frequency = self.trainer.val_check_interval
             else:
-                lr_scheduler_config.frequency = 1
+                lr_scheduler_config.frequency = self.trainer.check_val_every_n_epoch
         scheduler = optimization.lr_scheduler.scheduler(optimizer)
         lr_scheduler_config.scheduler = scheduler
         # vars(scheduler) due to: https://github.com/Lightning-AI/lightning/issues/18870
@@ -101,17 +101,28 @@ class LightningModule(LightningModuleBase):
             self.build_optimization([{'params': param_group}], optimization)
             for param_group, optimization in zip(param_groups, self.optimization)
         ]
-        return tuple(map(list, zip(*optimizations)))
+        optimizers, lr_scheduler_configs = zip(*optimizations)
+        optimizer = HybridOptim(optimizers)
+        # return [HybridOptim(optimizers)], list(lr_scheduler_configs)
+        ref_config = lr_scheduler_configs[0]
+        schedulers = [ref_config['scheduler']]
+        # TODO: check monitor
+        for config in lr_scheduler_configs[1:]:
+            for key in ['interval', 'frequency']:
+                assert ref_config[key] == config[key], ("hey, inconsistent scheduler config is not supported. "
+                                                        "you don't want some abstract stuff like manual optimization, do you?")
+            schedulers.append(config['scheduler'])
+
+        ref_config['scheduler'] = HybridScheduler(optimizer, schedulers)
+        # when returning a dict, PL won't check if optimizer is a "Optimizable"
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': ref_config,
+        }
 
     def on_fit_start(self) -> None:
         if self.trainer.is_global_zero:
             (self.trainer.log_dir / 'model.txt').write_text(repr(self))
-
-    def on_train_start(self) -> None:
-        # handle warm-up: https://github.com/Lightning-AI/lightning/issues/17972
-        for scheduler in ensure_tuple(self.lr_schedulers()):
-            if isinstance(scheduler, TIMMScheduler):
-                scheduler.step_update(0)
 
     def on_train_batch_end(self, outputs: STEP_OUTPUT, batch: ..., batch_idx: int) -> None:
         match outputs:
@@ -130,12 +141,13 @@ class LightningModule(LightningModuleBase):
         self.trainer.save_checkpoint(save_dir / 'checkpoint.ckpt')
         torch.save(batch, save_dir / 'batch.pt')
 
-    def lr_scheduler_step(self, scheduler: LRScheduler, metric=None):
-        match scheduler:
-            case TIMMScheduler():
-                scheduler.step_update(self.global_step + 1, metric)
-            case _:
-                super().lr_scheduler_step(scheduler, metric)
+    def lr_scheduler_step(self, scheduler: HybridScheduler, metric=None):
+        for inner_scheduler in scheduler.schedulers:
+            match inner_scheduler:
+                case TIMMScheduler():
+                    inner_scheduler.step_update(self.global_step + 1, metric)
+                case _:
+                    super().lr_scheduler_step(inner_scheduler, metric)
 
     def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
         if self.log_grad_norm:
@@ -252,6 +264,7 @@ class LightningCLI(LightningCLIBase):
         parser.add_argument('--logger', type=WandbLogger, enable_path=True)
         parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
+        parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
         if self._subcommand_preparing in {'fit', 'play'}:
             parser.add_argument('--optimization', type=OptimizationConf | list[OptimizationConf], enable_path=True)
 
@@ -264,6 +277,7 @@ class LightningCLI(LightningCLIBase):
 
     def _run_subcommand(self, subcommand: str):
         torch.multiprocessing.set_start_method(self._get(self.config, 'mp_start_method'))
+        torch.multiprocessing.set_sharing_strategy(self._get(self.config, 'mp_sharing_strategy'))
         torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
         super()._run_subcommand(subcommand)
 
