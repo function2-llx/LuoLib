@@ -257,7 +257,7 @@ class MaskedAttentionDecoder(nn.Module):
                 continue
             level_index = idx % self.num_feature_levels
             if manual_mask is not None or idx >= self.mask_start_layer:
-                attn_bias = self.get_attn_bias(key_feature_maps[level_index].shape[2:], mask_logits, manual_mask)
+                attn_bias = self.get_attn_bias(key_feature_maps[level_index].shape[2:], mask_logits[0], manual_mask)
             else:
                 attn_bias = None
             if self.training and self.gradient_checkpointing:
