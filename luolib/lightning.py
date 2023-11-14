@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Hashable
+from dataclasses import dataclass
 from functools import cache, cached_property
 import os
 from pathlib import Path
@@ -33,7 +34,13 @@ __all__ = [
     'LightningCLICrossVal',
 ]
 
-OptimizationTuple = tuple[OptimizerCallable, LRSchedulerConfigWithCallable]
+# OptimizationTuple = tuple[Hashable | list[Hashable], OptimizerCallable, LRSchedulerConfigWithCallable]
+
+@dataclass(kw_only=True)
+class OptimizationConf:
+    prefix: str | list[str] = ''
+    optimizer: OptimizerCallable
+    lr_scheduler: LRSchedulerConfigWithCallable
 
 class LightningModule(LightningModuleBase):
     trainer: Trainer
@@ -60,41 +67,41 @@ class LightningModule(LightningModuleBase):
         return self._optimization
 
     @optimization.setter
-    def optimization(self, optimization: OptimizationTuple | dict[Hashable, OptimizationTuple]):
+    def optimization(self, optimization: list[OptimizationConf]):
         self._optimization = optimization
 
-    def get_param_groups(self) -> list[NamedParamGroup]:
-        return [{'params': list(self.grad_named_parameters())}]
-
-    def get_param_groups_for_optimizer(self, key: Hashable):
-        raise NotImplementedError
-
-    def build_optimization(self, param_groups: list[NamedParamGroup], optimization: OptimizationTuple) -> tuple[Optimizer, LRSchedulerConfigType]:
+    def build_optimization(self, param_groups: list[NamedParamGroup], optimization: OptimizationConf) -> tuple[Optimizer, LRSchedulerConfigType]:
         normalized_param_groups = normalize_param_groups(param_groups, self.get_decay_keys())
-        optimizer_callable, lr_scheduler_config_with_callable = optimization
-        optimizer = optimizer_callable(normalized_param_groups)
-        lr_scheduler_config = LRSchedulerConfig(**vars(lr_scheduler_config_with_callable))  # no type checks here, thanks
+        # optimizer_callable, lr_scheduler_config_with_callable = optimization.optimizer
+        optimizer = optimization.optimizer(normalized_param_groups)
+        lr_scheduler_config = LRSchedulerConfig(**vars(optimization.lr_scheduler))  # no type checks here, thanks
         if lr_scheduler_config.frequency == 0:
+            # set default frequency
             if lr_scheduler_config.interval == 'step':
                 lr_scheduler_config.frequency = self.trainer.val_check_interval
             else:
                 lr_scheduler_config.frequency = 1
-        scheduler = lr_scheduler_config_with_callable.scheduler(optimizer)
+        scheduler = optimization.lr_scheduler.scheduler(optimizer)
         lr_scheduler_config.scheduler = scheduler
         # vars(scheduler) due to: https://github.com/Lightning-AI/lightning/issues/18870
         return optimizer, vars(lr_scheduler_config)
 
     def configure_optimizers(self):
-        if isinstance(self.optimization, dict):
-            optimizations = [
-                self.build_optimization(self.get_param_groups_for_optimizer(key), optimization)
-                for key, optimization in self.optimization.items()
-            ]
-            return tuple(zip(*optimizations))
-        else:
-            param_groups = self.get_param_groups()
-            optimizer, lr_scheduler_config = self.build_optimization(param_groups, self.optimization)
-            return [optimizer], [lr_scheduler_config]
+        # https://github.com/Lightning-AI/lightning/issues/3346
+        param_groups = [[] for _ in range(len(self.optimization))]
+        for pn, p in self.grad_named_parameters():
+            for i, optimization in enumerate(self.optimization):
+                if any(pn.startswith(prefix) for prefix in ensure_tuple(optimization.prefix)):
+                    param_groups[i].append((pn, p))
+                    break
+            else:
+                raise ValueError(f'unable to match optimization for {pn}')
+
+        optimizations = [
+            self.build_optimization([{'params': param_group}], optimization)
+            for param_group, optimization in zip(param_groups, self.optimization)
+        ]
+        return tuple(map(list, zip(*optimizations)))
 
     def on_fit_start(self) -> None:
         if self.trainer.is_global_zero:
@@ -246,7 +253,7 @@ class LightningCLI(LightningCLIBase):
         parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
         if self._subcommand_preparing in {'fit', 'play'}:
-            parser.add_argument('--optimization', type=OptimizationTuple | dict[Hashable, OptimizationTuple], enable_path=True)
+            parser.add_argument('--optimization', type=OptimizationConf | list[OptimizationConf], enable_path=True)
 
     def before_instantiate_classes(self):
         logger_args = self.config[self.subcommand].logger.init_args
@@ -261,7 +268,7 @@ class LightningCLI(LightningCLIBase):
         super()._run_subcommand(subcommand)
 
     def fit(self, model: LightningModule, **kwargs):
-        model.optimization = self._get(self.config, 'optimization')
+        model.optimization = self._get(self.config_init, 'optimization')
         # https://github.com/Lightning-AI/lightning/issues/17283
         if self._get(self.config, 'compile'):
             # https://github.com/pytorch/pytorch/issues/112335
