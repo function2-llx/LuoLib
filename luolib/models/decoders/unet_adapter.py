@@ -51,8 +51,7 @@ class UNetAdapter(nn.Module):
                 1,
                 num_input_channels if i == 0 else layer_channels[i - 1],
                 layer_channels[i],
-                kernel_sizes[i],
-                1 if i == 0 else strides[i - 1],
+                kernel_sizes[i], strides[i],
                 norm, act,
                 res_block and i > 0,
             )

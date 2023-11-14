@@ -5,7 +5,7 @@ import torch
 from torch import nn
 
 from monai.networks.blocks import Convolution, get_output_padding, get_padding
-from monai.networks.layers import DropPath, Pool, get_act_layer
+from monai.networks.layers import DropPath, Pool, get_act_layer, get_pool_layer
 
 from luolib.types import spatial_param_t
 from ..layers import Act, Norm
@@ -82,15 +82,15 @@ class BasicConvBlock(nn.Module):
             act=None,
         )
         if res:
-            if in_channels != out_channels or np.prod(stride) > 1:
-                self.res = nn.Sequential(
-                    Pool[Pool.AVG, spatial_dims](stride, stride),
+            self.res = nn.Sequential()
+            if np.prod(stride) > 1:
+                self.res.append(Pool[Pool.AVG, spatial_dims](stride, stride))
+            if in_channels != out_channels:
+                self.res.append(
                     get_conv_layer(
                         spatial_dims, in_channels, out_channels, 1, 1, norm=norm, act=None,
-                    ),
+                    )
                 )
-            else:
-                self.res = nn.Identity()
         else:
             self.res = None
         self.act2 = get_act_layer(act)

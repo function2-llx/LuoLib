@@ -27,7 +27,7 @@ class MaskedAttentionDecoderLayer(nn.Module):
         embed_dim: int,
         num_attention_heads: int,
         dim_feedforward: int,
-        pre_norm: bool = True,
+        pre_norm: bool,
         attn_drop: float = 0.,
         proj_drop: float = 0.,
         ffn_drop: float = 0.,
@@ -95,17 +95,17 @@ class MaskPredictor(nn.Module):
                 ])
             mask_query_projection.append(nn.Linear(hidden_dim, pixel_embedding_dim + bias))
             self.mask_query_projections.append(mask_query_projection)
-        self.bias = bias
+        self.bias = int(bias)
 
-    def forward(self, mask_embedding: torch.Tensor, pixel_embedding: torch.Tensor) -> list[torch.Tensor]:
+    def forward(self, mask_embedding: torch.Tensor, pixel_embeddings: torch.Tensor) -> list[torch.Tensor]:
         ret = []
-        for projection in self.mask_query_projections:
+        for pixel_embedding, projection in zip(pixel_embeddings, self.mask_query_projections):
             wandb = projection(mask_embedding)  # bias and weight
             weight = wandb[..., self.bias:]
             mask_logits = einops.einsum(weight, pixel_embedding, 'n nq c, n c ... -> n nq ...')
             if self.bias:
                 bias = einops.rearrange(
-                    wandb[..., self.bias],
+                    wandb[..., 0],
                     f"... -> ... {' '.join('1' * (pixel_embedding.ndim - 2))}",
                 )
                 mask_logits += bias
@@ -132,13 +132,14 @@ class MaskedAttentionDecoder(nn.Module):
         predict_bias: bool = True,
         predictor_num_layers: int = 1,
         share_predictor: bool = False,
-        pre_norm: bool = True,
+        pre_norm: bool = False,
         layer_drop: float = 0.,
         grad_ckpt: bool = False,
     ):
         """
         Args:
             mask_start_layer: the layer from which to start restricting the cross-attention area using predicted mask.
+            key_projection_channels: used for converting input feature map channels
             predict_bias: whether generating bias for predicting mask
         """
         super().__init__()
@@ -173,15 +174,18 @@ class MaskedAttentionDecoder(nn.Module):
             raise NotImplementedError
         self.soft_mask = soft_mask
 
-        self.mask_embedding_norm = nn.LayerNorm(hidden_dim) if pre_norm else nn.Identity()
+        self.mask_embedding_norms = nn.ModuleList([
+            nn.LayerNorm(hidden_dim) if pre_norm else nn.Identity()
+            for _ in range(num_decoder_layers)
+        ])
         self.share_predictor = share_predictor
         if share_predictor:
             self.mask_predictor = MaskPredictor(hidden_dim, pixel_embedding_dims, predict_bias, predictor_num_layers)
         else:
-            self.mask_predictors = [
+            self.mask_predictors = nn.ModuleList([
                 MaskPredictor(hidden_dim, pixel_embedding_dims, predict_bias, predictor_num_layers)
                 for _ in range(num_decoder_layers + 1)
-            ]
+            ])
 
         self.gradient_checkpointing = grad_ckpt
 
@@ -229,7 +233,7 @@ class MaskedAttentionDecoder(nn.Module):
         """
         Args:
             key_feature_maps: list of (n, c, *spatial), c is identical (if no projection) across all levels
-                resolution: low → high (Mask2Former)
+                resolution: low → high (following Mask2Former)
             pixel_embeddings: feature maps to produce the segmentation outputs (multiple maps for deep supervision)
             manual_mask: restrict the cross-attention area with the specified mask
         Returns:
@@ -271,7 +275,7 @@ class MaskedAttentionDecoder(nn.Module):
                     key_hidden_states[level_index], key_position_embeddings[level_index], attn_bias,
                 )
 
-            mask_embedding = self.mask_embedding_norm(hidden_states)
+            mask_embedding = self.mask_embedding_norms[idx](hidden_states)
             layers_mask_embeddings.append(mask_embedding)
             mask_logits = self.get_mask_predictor(idx)(mask_embedding, pixel_embeddings)
             layers_mask_logits.append(mask_logits)
