@@ -24,9 +24,11 @@ class PlainConvUNetDecoder(nn.Module):
         strides: spatial_param_seq_t[int],
         norm: tuple | str = (Norm.INSTANCE, {'affine': True}),
         act: tuple | str = Act.LEAKYRELU,
-        upsample_norm: tuple | str | None = None,
-        lateral_channels: Sequence[int] | None = None,
+        upsample_norm: tuple | str | None = (Norm.INSTANCE, {'affine': True}),
+        upsample_act: tuple | str = Act.LEAKYRELU,
+        res_block: bool = False,
         lateral_kernel_sizes: spatial_param_seq_t[int] | None = None,
+        lateral_channels: Sequence[int] | None = None,
         **kwargs,
     ):
         """
@@ -37,7 +39,13 @@ class PlainConvUNetDecoder(nn.Module):
         super().__init__(**kwargs)
         num_layers = len(layer_channels) - 1
         self.layers = nn.ModuleList([
-            UNetUpLayer(spatial_dims, layer_channels[i + 1], layer_channels[i], kernel_sizes[i], strides[i + 1], norm, act, upsample_norm)
+            UNetUpLayer(
+                spatial_dims,
+                layer_channels[i + 1], layer_channels[i],
+                kernel_sizes[i], strides[i + 1],
+                norm, act, upsample_norm, upsample_act,
+                res_block,
+            )
             for i in range(num_layers)
         ])
         if lateral_kernel_sizes is None:

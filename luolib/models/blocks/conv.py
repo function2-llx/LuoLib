@@ -145,8 +145,8 @@ class UNetUpLayer(nn.Module):
         upsample_stride: spatial_param_t[int],
         norm: tuple | str = (Norm.INSTANCE, {'affine': True}),
         act: tuple | str = Act.LEAKYRELU,
-        upsample_norm: tuple | str | None = None,
-        upsample_act: tuple | str | None = None,
+        upsample_norm: tuple | str | None = (Norm.INSTANCE, {'affine': True}),
+        upsample_act: tuple | str | None = Act.LEAKYRELU,
         res: bool = False,
     ):
         super().__init__()
