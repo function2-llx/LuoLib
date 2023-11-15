@@ -266,7 +266,7 @@ class LightningCLI(LightningCLIBase):
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
         parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
         if self._subcommand_preparing in {'fit', 'play'}:
-            parser.add_argument('--optimization', type=OptimizationConf | list[OptimizationConf], enable_path=True)
+            parser.add_argument('--optimization', type=list[OptimizationConf], enable_path=True)
 
     def before_instantiate_classes(self):
         logger_args = self.config[self.subcommand].logger.init_args
