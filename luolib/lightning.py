@@ -103,7 +103,7 @@ class LightningModule(LightningModuleBase):
         ]
         optimizers, lr_scheduler_configs = zip(*optimizations)
         optimizer = HybridOptim(optimizers)
-        # return [HybridOptim(optimizers)], list(lr_scheduler_configs)
+        # check and combine lr scheduler configs
         ref_config = lr_scheduler_configs[0]
         schedulers = [ref_config['scheduler']]
         # TODO: check monitor
@@ -112,9 +112,8 @@ class LightningModule(LightningModuleBase):
                 assert ref_config[key] == config[key], ("hey, inconsistent scheduler config is not supported. "
                                                         "you don't want some abstract stuff like manual optimization, do you?")
             schedulers.append(config['scheduler'])
-
         ref_config['scheduler'] = HybridScheduler(optimizer, schedulers)
-        # when returning a dict, PL won't check if optimizer is a "Optimizable"
+        # when returning a dict, PL won't check if optimizer is an "Optimizable"
         return {
             'optimizer': optimizer,
             'lr_scheduler': ref_config,
@@ -269,16 +268,18 @@ class LightningCLI(LightningCLIBase):
             parser.add_argument('--optimization', type=list[OptimizationConf], enable_path=True)
 
     def before_instantiate_classes(self):
-        logger_args = self.config[self.subcommand].logger.init_args
+        config = self.config[self.subcommand]
+        logger_args = config.logger.init_args
         save_dir = Path(logger_args.save_dir) / logger_args.name
         # wandb wants to use a directory already existing: https://github.com/wandb/wandb/issues/714#issuecomment-565870686
         Path(save_dir).mkdir(exist_ok=True, parents=True)
         logger_args.save_dir = str(save_dir)
 
     def _run_subcommand(self, subcommand: str):
-        torch.multiprocessing.set_start_method(self._get(self.config, 'mp_start_method'))
-        torch.multiprocessing.set_sharing_strategy(self._get(self.config, 'mp_sharing_strategy'))
-        torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
+        config = self.config_init[subcommand]
+        torch.multiprocessing.set_start_method(config.mp_start_method)
+        torch.multiprocessing.set_sharing_strategy(config.mp_sharing_strategy)
+        torch.set_float32_matmul_precision(config.float32_matmul_precision)
         super()._run_subcommand(subcommand)
 
     def fit(self, model: LightningModule, **kwargs):
