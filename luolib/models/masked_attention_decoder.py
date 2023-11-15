@@ -130,7 +130,7 @@ class MaskedAttentionDecoder(nn.Module):
         key_projection_channels: Sequence[int] | None = None,
         num_queries: int = 100,
         mask_attn_th: float = 0.5,
-        predict_bias: bool = True,
+        predict_bias: bool = False,
         predictor_num_layers: int = 1,
         share_predictor: bool = False,
         pre_norm: bool = False,
