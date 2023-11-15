@@ -16,6 +16,7 @@ from .blocks import (
     with_pos_embed,
 )
 from .init import init_common
+from .utils import forward_maybe_grad_ckpt
 
 __all__ = [
     'MaskedAttentionDecoder',
@@ -141,6 +142,7 @@ class MaskedAttentionDecoder(nn.Module):
             mask_start_layer: the layer from which to start restricting the cross-attention area using predicted mask.
             key_projection_channels: used for converting input feature map channels
             predict_bias: whether generating bias for predicting mask
+            share_predictor: whether all layers share the mask predictor
         """
         super().__init__()
         # attention mask interpolation
@@ -264,17 +266,11 @@ class MaskedAttentionDecoder(nn.Module):
                 attn_bias = self.get_attn_bias(key_feature_maps[level_index].shape[2:], mask_logits[0], manual_mask)
             else:
                 attn_bias = None
-            if self.training and self.gradient_checkpointing:
-                hidden_states = checkpoint.checkpoint(
-                    layer, hidden_states,
-                    key_hidden_states[level_index], key_position_embeddings[level_index], attn_bias,
-                )
-            else:
-                hidden_states = layer(
-                    hidden_states,
-                    key_hidden_states[level_index], key_position_embeddings[level_index], attn_bias,
-                )
 
+            hidden_states = forward_maybe_grad_ckpt(
+                layer, self.training and self.gradient_checkpointing,
+                hidden_states, key_hidden_states[level_index], key_position_embeddings[level_index], attn_bias,
+            )
             mask_embedding = self.mask_embedding_norms[idx](hidden_states)
             layers_mask_embeddings.append(mask_embedding)
             mask_logits = self.get_mask_predictor(idx)(mask_embedding, pixel_embeddings)

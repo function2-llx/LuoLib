@@ -2,6 +2,7 @@ from collections.abc import Iterable
 
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 
 from monai.config import PathLike
 
@@ -29,3 +30,8 @@ def load_ckpt(model: nn.Module, ckpt_or_path: dict | PathLike | None, state_dict
         print(f'Loaded {state_dict_key} from checkpoint {ckpt_or_path}')
     print('missing keys:', missing_keys)
     print('unexpected keys:', unexpected_keys)
+
+def forward_maybe_grad_ckpt(model: nn.Module, grad_ckpt: bool, *args, **kwargs):
+    if grad_ckpt:
+        return checkpoint(model, *args, **kwargs)
+    return model(*args, **kwargs)
