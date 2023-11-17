@@ -64,6 +64,7 @@ class UNetAdapter(nn.Module):
                 kernel_sizes[i], strides[i],
                 norm, act,
                 upsample_norm, upsample_act,
+                res_block,
             )
             for i in range(num_layers - num_up, num_layers)
         ])
