@@ -1,13 +1,18 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
 from typing import Callable, Iterable, TypedDict
 
 from torch import nn
 from torch.optim import Optimizer
 
+from luolib.scheduler import LRSchedulerConfigWithCallable
 from luolib.types import NoWeightDecayParameter
 from luolib.utils import partition_by_predicate
 
 __all__ = [
     'OptimizerCallable',
+    'OptimizationConf',
     'infer_weight_decay_keys',
     'NamedParamGroup',
     'normalize_param_groups',
@@ -110,3 +115,9 @@ def normalize_param_groups(param_groups: list[NamedParamGroup], decay_keys: set[
     for param_group in normalized_param_groups:
         param_group['params'] = [p for _, p in param_group.pop('params')]
     return normalized_param_groups
+
+@dataclass(kw_only=True)
+class OptimizationConf:
+    prefix: str | list[str] = ''
+    optimizer: OptimizerCallable
+    lr_scheduler: LRSchedulerConfigWithCallable

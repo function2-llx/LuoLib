@@ -1,0 +1,137 @@
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Callable, Literal
+
+from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary
+from lightning.pytorch.cli import LightningArgumentParser, LightningCLI as LightningCLIBase
+from lightning.pytorch.loggers import WandbLogger
+import torch
+
+from luolib.datamodule import CrossValDataModule, ExpDataModuleBase
+from ..optim.utils import OptimizationConf
+from .module import LightningModule
+from luolib.utils import fall_back_none
+from .trainer import Trainer
+
+class LightningCLI(LightningCLIBase):
+    _subcommand_preparing: str | None = None
+    trainer: Trainer
+
+    def __init__(
+        self,
+        *,
+        model_class: type[LightningModule] | Callable[..., LightningModule] | None = LightningModule,
+        datamodule_class: type[ExpDataModuleBase] | Callable[..., ExpDataModuleBase] | None = ExpDataModuleBase,
+        save_config_kwargs: dict[str, ...] | None = None,
+        trainer_class: type[Trainer] | Callable[..., Trainer] = Trainer,
+        trainer_defaults: dict[str, ...] | None = None,
+        seed_everything_default: bool | int = 42,
+        parser_kwargs: dict[str, ...] | dict[str, dict[str, ...]] | None = None,
+        subclass_mode_model: bool = True,
+        subclass_mode_data: bool = True,
+        auto_configure_optimizers: bool = False,
+        **kwargs,
+    ):
+        save_config_kwargs = fall_back_none(save_config_kwargs, {'config_filename': 'conf.yaml'})
+        trainer_defaults = fall_back_none(trainer_defaults, {
+            'callbacks': [
+                LearningRateMonitor(),
+                ModelSummary(max_depth=2),
+
+            ]
+        })
+        parser_kwargs = fall_back_none(parser_kwargs, {'parser_mode': "omegaconf"})
+        super().__init__(
+            model_class=model_class,
+            datamodule_class=datamodule_class,
+            save_config_kwargs=save_config_kwargs,
+            trainer_class=trainer_class,
+            trainer_defaults=trainer_defaults,
+            seed_everything_default=seed_everything_default,
+            parser_kwargs=parser_kwargs,
+            subclass_mode_model=subclass_mode_model,
+            subclass_mode_data=subclass_mode_data,
+            auto_configure_optimizers=auto_configure_optimizers,
+            **kwargs,
+        )
+
+    @staticmethod
+    def subcommands() -> dict[str, set[str]]:
+        """Defines the list of available subcommands and the arguments to skip."""
+        subcommands = LightningCLIBase.subcommands()
+        return {
+            **subcommands,
+            'play': set(),
+        }
+
+    def _prepare_subcommand_parser(self, klass: type, subcommand: str, **kwargs) -> LightningArgumentParser:
+        # make current subcommand available in `add_arguments_to_parser`
+        self._subcommand_preparing = subcommand
+        return super()._prepare_subcommand_parser(klass, subcommand, **kwargs)
+
+    def add_arguments_to_parser(self, parser: LightningArgumentParser):
+        parser.add_argument('--float32_matmul_precision', type=Literal['medium', 'high', 'highest'], default='high')
+        parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
+        parser.add_argument('--compile', type=bool, default=True)
+        parser.add_argument('--trace_numpy', type=bool, default=False)
+        parser.add_argument('--logger', type=WandbLogger, enable_path=True)
+        parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
+        parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
+        parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
+        if self._subcommand_preparing in {'fit', 'play'}:
+            parser.add_argument('--optimization', type=list[OptimizationConf], enable_path=True)
+
+    def before_instantiate_classes(self):
+        config = self.config[self.subcommand]
+        logger_args = config.logger.init_args
+        save_dir = Path(logger_args.save_dir) / logger_args.name
+        # wandb wants to use a directory already existing: https://github.com/wandb/wandb/issues/714#issuecomment-565870686
+        Path(save_dir).mkdir(exist_ok=True, parents=True)
+        logger_args.save_dir = str(save_dir)
+
+    def _run_subcommand(self, subcommand: str):
+        config = self.config_init[subcommand]
+        torch.multiprocessing.set_start_method(config.mp_start_method)
+        torch.multiprocessing.set_sharing_strategy(config.mp_sharing_strategy)
+        torch.set_float32_matmul_precision(config.float32_matmul_precision)
+        super()._run_subcommand(subcommand)
+
+    def fit(self, model: LightningModule, **kwargs):
+        model.optimization = self._get(self.config_init, 'optimization')
+        # https://github.com/Lightning-AI/lightning/issues/17283
+        if self._get(self.config, 'compile'):
+            # https://github.com/pytorch/pytorch/issues/112335
+            from torch._dynamo import config
+            config.trace_numpy = self._get(self.config, 'trace_numpy')
+            model = torch.compile(model)
+        self.trainer.fit(model, **kwargs)
+
+class LightningCLICrossVal(LightningCLI):
+    datamodule: CrossValDataModule
+
+    def __init__(
+        self,
+        *,
+        datamodule_class: type[CrossValDataModule] | Callable[..., CrossValDataModule] | None = CrossValDataModule,
+        **kwargs,
+    ):
+        super().__init__(datamodule_class=datamodule_class, **kwargs)
+
+    def add_arguments_to_parser(self, parser: LightningArgumentParser):
+        if self._subcommand_preparing in {'fit', 'validate', 'play'}:
+            parser.add_argument('fold_id', type=int)
+        super().add_arguments_to_parser(parser)
+
+    def before_instantiate_classes(self):
+        if self.subcommand in {'fit', 'validate', 'play'}:
+            config = self.config[self.subcommand]
+            logger_args = config.logger.init_args
+            logger_args.name = str(Path(logger_args.name) / f'fold-{config.fold_id}')
+        super().before_instantiate_classes()
+
+    def _run_subcommand(self, subcommand: str):
+        torch.set_float32_matmul_precision(self._get(self.config, 'float32_matmul_precision'))
+        if subcommand in {'fit', 'validate', 'play'}:
+            self.datamodule.fold_id = self._get(self.config, 'fold_id')
+        super()._run_subcommand(subcommand)

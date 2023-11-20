@@ -4,7 +4,6 @@ import cytoolz
 import torch
 from torch import nn
 
-from luolib.lightning import LightningModule
 from .backbones import BackboneProtocol
 from .masked_attention_decoder import MaskedAttentionDecoder
 
