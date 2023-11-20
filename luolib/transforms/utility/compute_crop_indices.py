@@ -122,7 +122,7 @@ class ComputeCropIndicesD(mt.MapTransform):
 
     def __call__(self, data: Mapping):
         data = dict(data)
-        cache_path_base: Path | None = None if self.cache_path_base_key is None else data[self.cache_path_base_key]
+        cache_path_base = None if self.cache_path_base_key is None else Path(data[self.cache_path_base_key])
         name = None if cache_path_base is None else cache_path_base.name
         for key in self.key_iterator(data):
             indices_key = f'{key}{self.indices_postfix}'

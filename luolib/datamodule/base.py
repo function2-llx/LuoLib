@@ -1,16 +1,16 @@
 from collections.abc import Hashable, Mapping
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Callable, Sequence
+from typing import Callable, Sequence, final
 
 import cytoolz
 from lightning import LightningDataModule
-from lightning.pytorch.utilities.types import TRAIN_DATALOADERS
+from lightning.pytorch.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from torch.utils.data import Dataset as TorchDataset, RandomSampler
 
 from luolib.utils import DataKey
 from monai.config import PathLike
-from monai.data import CacheDataset, DataLoader
+from monai.data import CacheDataset, DataLoader, Dataset
 
 @dataclass
 class CacheDatasetConf:
@@ -109,6 +109,15 @@ class ExpDataModuleBase(LightningDataModule):
     def predict_data(self) -> Sequence:
         raise NotImplementedError
 
+    def predict_transform(self) -> Callable:
+        raise NotImplementedError
+
+    def predict_dataset(self):
+        return Dataset(self.predict_data(), self.predict_transform())
+
+    def predict_dataloader(self):
+        return self.build_eval_dataloader(self.predict_dataset(), 1)
+
 class CrossValDataModule(ExpDataModuleBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -118,13 +127,19 @@ class CrossValDataModule(ExpDataModuleBase):
         raise NotImplementedError
 
     @cached_property
+    @final
     def _fit_data(self):
         return self.fit_data()
 
     def splits(self) -> Sequence[tuple[Sequence[Hashable], Sequence[Hashable]]]:
+        """
+        Returns:
+            a sequence of folds, each fold is a tuple of (train keys, val keys)
+        """
         raise NotImplementedError
 
     @cached_property
+    @final
     def _splits(self):
         return self.splits()
 

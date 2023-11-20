@@ -34,8 +34,8 @@ class Trainer(TrainerBase):
         """
         You must call this on all processes. Failing to do so will cause your program to stall forever.
         """
-        if self.is_global_zero:
-            logger = self.logger
+        logger = self.logger
+        if logger is not None and self.is_global_zero:
             assert isinstance(logger, WandbLogger)
             seed = os.getenv('PL_GLOBAL_SEED')
             root_dir = Path(logger.save_dir)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import final
+from typing import Generic, TypeVar, final
 
 from lightning import LightningDataModule, LightningModule as LightningModuleBase
 from lightning.pytorch.utilities.types import LRSchedulerConfigType, STEP_OUTPUT
@@ -12,9 +12,9 @@ from torch.optim import Optimizer
 from monai.utils import ensure_tuple
 
 from luolib.optim import (
-    HybridOptim, NamedParamGroup, OptimizationConf,
-    infer_weight_decay_keys, normalize_param_groups,
+    HybridOptim, NamedParamGroup, infer_weight_decay_keys, normalize_param_groups,
 )
+from .utils import OptimizationConf
 from luolib.scheduler import HybridScheduler, LRSchedulerConfig
 from luolib.utils.grad import grad_norm
 from .trainer import Trainer
@@ -23,6 +23,7 @@ class LightningModule(LightningModuleBase):
     trainer: Trainer
 
     def __init__(self, *, log_grad_norm: bool = True, **kwargs):
+        # TODO: move log_grad_norm to some callback
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
 
@@ -32,13 +33,13 @@ class LightningModule(LightningModuleBase):
             if p.requires_grad:
                 yield pn, p
 
-    def _get_decay_keys(self) -> set[str]:
+    def get_decay_keys(self) -> set[str]:
         return infer_weight_decay_keys(self)
 
     @cache
     @final
-    def get_decay_keys(self) -> set[str]:
-        return self._get_decay_keys()
+    def _get_decay_keys(self) -> set[str]:
+        return self.get_decay_keys()
 
     @property
     def optimization(self):
@@ -49,7 +50,7 @@ class LightningModule(LightningModuleBase):
         self._optimization = optimization
 
     def build_optimization(self, param_groups: list[NamedParamGroup], optimization: OptimizationConf) -> tuple[Optimizer, LRSchedulerConfigType]:
-        normalized_param_groups = normalize_param_groups(param_groups, self.get_decay_keys())
+        normalized_param_groups = normalize_param_groups(param_groups, self._get_decay_keys())
         # optimizer_callable, lr_scheduler_config_with_callable = optimization.optimizer
         optimizer = optimization.optimizer(normalized_param_groups)
         lr_scheduler_config = LRSchedulerConfig(**vars(optimization.lr_scheduler))  # no type checks here, thanks

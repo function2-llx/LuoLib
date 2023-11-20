@@ -1,18 +1,29 @@
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Callable, Literal
 
+from jsonargparse import Namespace
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary
-from lightning.pytorch.cli import LightningArgumentParser, LightningCLI as LightningCLIBase
+from lightning.pytorch.cli import (
+    LightningArgumentParser,
+    LightningCLI as LightningCLIBase,
+    SaveConfigCallback as SaveConfigCallbackBase,
+)
 from lightning.pytorch.loggers import WandbLogger
 import torch
 
 from luolib.datamodule import CrossValDataModule, ExpDataModuleBase
-from ..optim.utils import OptimizationConf
-from .module import LightningModule
+from .utils import OptimizationConf
 from luolib.utils import fall_back_none
+from .module import LightningModule
 from .trainer import Trainer
+
+class SaveConfigCallback(SaveConfigCallbackBase):
+    def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str):
+        if self.already_saved:
+            return
+        if self.save_to_log_dir and trainer.log_dir is None:
+            return
+        return super().setup(trainer, pl_module, stage)
 
 class LightningCLI(LightningCLIBase):
     _subcommand_preparing: str | None = None
@@ -23,6 +34,7 @@ class LightningCLI(LightningCLIBase):
         *,
         model_class: type[LightningModule] | Callable[..., LightningModule] | None = LightningModule,
         datamodule_class: type[ExpDataModuleBase] | Callable[..., ExpDataModuleBase] | None = ExpDataModuleBase,
+        save_config_callback: type[SaveConfigCallback] | None = SaveConfigCallback,
         save_config_kwargs: dict[str, ...] | None = None,
         trainer_class: type[Trainer] | Callable[..., Trainer] = Trainer,
         trainer_defaults: dict[str, ...] | None = None,
@@ -34,17 +46,18 @@ class LightningCLI(LightningCLIBase):
         **kwargs,
     ):
         save_config_kwargs = fall_back_none(save_config_kwargs, {'config_filename': 'conf.yaml'})
-        trainer_defaults = fall_back_none(trainer_defaults, {
-            'callbacks': [
-                LearningRateMonitor(),
-                ModelSummary(max_depth=2),
-
-            ]
-        })
+        if trainer_defaults is None:
+            trainer_defaults = {
+                'callbacks': [
+                    LearningRateMonitor(),
+                    ModelSummary(max_depth=2),
+                ]
+            }
         parser_kwargs = fall_back_none(parser_kwargs, {'parser_mode': "omegaconf"})
         super().__init__(
             model_class=model_class,
             datamodule_class=datamodule_class,
+            save_config_callback=save_config_callback,
             save_config_kwargs=save_config_kwargs,
             trainer_class=trainer_class,
             trainer_defaults=trainer_defaults,
@@ -75,20 +88,27 @@ class LightningCLI(LightningCLIBase):
         parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
         parser.add_argument('--compile', type=bool, default=True)
         parser.add_argument('--trace_numpy', type=bool, default=False)
-        parser.add_argument('--logger', type=WandbLogger, enable_path=True)
-        parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
+        if self._subcommand_preparing in {'fit', 'play'}:
+            parser.add_argument('--logger', type=WandbLogger, enable_path=True)
+            parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
+        else:
+            parser.add_argument('--logger', type=Literal[False], default=False)
+            parser.link_arguments('logger', 'trainer.logger')
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
         parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
         if self._subcommand_preparing in {'fit', 'play'}:
             parser.add_argument('--optimization', type=list[OptimizationConf], enable_path=True)
+        super().add_arguments_to_parser(parser)
 
     def before_instantiate_classes(self):
         config = self.config[self.subcommand]
-        logger_args = config.logger.init_args
-        save_dir = Path(logger_args.save_dir) / logger_args.name
-        # wandb wants to use a directory already existing: https://github.com/wandb/wandb/issues/714#issuecomment-565870686
-        Path(save_dir).mkdir(exist_ok=True, parents=True)
-        logger_args.save_dir = str(save_dir)
+        if self.subcommand in {'fit', 'validate', 'play'}:
+            logger_args = config.logger.init_args
+            save_dir = Path(logger_args.save_dir) / logger_args.name
+            # wandb wants to use a directory already existing: https://github.com/wandb/wandb/issues/714#issuecomment-565870686
+            Path(save_dir).mkdir(exist_ok=True, parents=True)
+            logger_args.save_dir = str(save_dir)
+        super().before_instantiate_classes()
 
     def _run_subcommand(self, subcommand: str):
         config = self.config_init[subcommand]
