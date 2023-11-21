@@ -10,6 +10,8 @@ import torch
 
 from .enums import DataSplit, DataKey
 from .index_tracker import IndexTracker
+from .device_map import *
+from .process_map import *
 
 PathLike = str | bytes | os.PathLike
 
