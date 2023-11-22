@@ -200,8 +200,8 @@ class MaskedAttentionDecoder(nn.Module):
     def get_attn_bias(
         self,
         target_shape: spatial_shape_t,
-        mask_logits: torch.Tensor,
-        manual_mask: torch.Tensor | None = None,
+        mask_logits: torch.Tensor | None,
+        manual_mask: torch.Tensor | None,
     ):
         def from_prob(mask_prob: torch.Tensor):
             ignore_mask = einops.rearrange(mask_prob < self.mask_attn_th, 'n nq ... -> n nq (...)')
@@ -211,6 +211,7 @@ class MaskedAttentionDecoder(nn.Module):
             return attn_bias
 
         if manual_mask is None:
+            assert mask_logits is not None
             mask_logits = nnf.interpolate(mask_logits, target_shape, mode=self.interpolate_mode)
             if self.soft_mask:
                 attn_bias = einops.rearrange(mask_logits, 'n nq ... -> n nq (...)')
@@ -255,15 +256,20 @@ class MaskedAttentionDecoder(nn.Module):
         batch_size = key_feature_maps[0].shape[0]
         hidden_states = einops.repeat(self.query_embedding, '... -> n ...', n=batch_size)
         layers_mask_embeddings = [hidden_states]
-        mask_logits = self.get_mask_predictor(-1)(hidden_states, pixel_embeddings)
+        if manual_mask is None:
+            mask_logits = self.get_mask_predictor(-1)(hidden_states, pixel_embeddings)
+        else:
+            mask_logits = None
         layers_mask_logits = [mask_logits]
 
         for idx, layer in enumerate(self.layers):
             if self.training and (random.uniform(0, 1) < self.layer_drop):
                 continue
             level_index = idx % self.num_feature_levels
-            if manual_mask is not None or idx >= self.mask_start_layer:
-                attn_bias = self.get_attn_bias(key_feature_maps[level_index].shape[2:], mask_logits[0], manual_mask)
+            if manual_mask is not None:
+                attn_bias = self.get_attn_bias(key_feature_maps[level_index].shape[2:], None, manual_mask)
+            elif idx >= self.mask_start_layer:
+                attn_bias = self.get_attn_bias(key_feature_maps[level_index].shape[2:], mask_logits[0], None)
             else:
                 attn_bias = None
 
@@ -273,7 +279,10 @@ class MaskedAttentionDecoder(nn.Module):
             )
             mask_embedding = self.mask_embedding_norms[idx](hidden_states)
             layers_mask_embeddings.append(mask_embedding)
-            mask_logits = self.get_mask_predictor(idx)(mask_embedding, pixel_embeddings)
+            if manual_mask is None:
+                mask_logits = self.get_mask_predictor(idx)(mask_embedding, pixel_embeddings)
+            else:
+                mask_logits = None
             layers_mask_logits.append(mask_logits)
 
         return layers_mask_embeddings, layers_mask_logits
