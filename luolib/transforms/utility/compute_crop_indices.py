@@ -48,14 +48,15 @@ def compute_crop_indices(
     crop_size: Sequence[int] | int,
     th_abs: float,
     th_rel: float,
+    is_onehot: bool = False,
     num_classes: int | None = None,
     include_background: bool = False,
 ) -> list[NdarrayOrTensor]:
-    mt.check_non_lazy_pending_ops(label, name="compute_crop_indices")
+    mt.check_non_lazy_pending_ops(label, name='compute_crop_indices')
     label_t: torch.Tensor = convert_to_tensor(label)
-    if label.shape[0] == 1:
+    if not is_onehot and label.shape[0] == 1:
         if num_classes is None:
-            raise ValueError("channels==1 indicates not using One-Hot format label, must provide ``num_classes``.")
+            raise ValueError("when not using one-hot format label, must provide ``num_classes``.")
         label_t = one_hot(label_t, num_classes, dim=0, dtype=torch.bool)
         if not include_background:
             label_t = label_t[1:]
@@ -101,6 +102,7 @@ class ComputeCropIndicesD(mt.MapTransform):
         th_abs: float = 0.7,
         th_rel: float = 0.7,
         indices_postfix: str = "_indices",
+        is_onehot: bool = False,
         num_classes: int | None = None,
         include_background: bool = False,
         cache_path_base_key: Hashable | None = None,
@@ -116,6 +118,7 @@ class ComputeCropIndicesD(mt.MapTransform):
         self.crop_size = crop_size
         self.th_abs = th_abs
         self.th_rel = th_rel
+        self.is_onehot = is_onehot
         self.num_classes = num_classes
         self.include_background = include_background
         self.cache_path_base_key = cache_path_base_key
@@ -133,7 +136,7 @@ class ComputeCropIndicesD(mt.MapTransform):
                 indices = compute_crop_indices(
                     data[key],
                     self.crop_size, self.th_abs, self.th_rel,
-                    self.num_classes, self.include_background,
+                    self.is_onehot, self.num_classes, self.include_background,
                 )
                 if cache_path is not None:
                     pd.to_pickle(indices, cache_path)
