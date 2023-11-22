@@ -13,13 +13,15 @@ class IndexTracker:
     def __init__(
         self,
         img: NdarrayOrTensor,
-        seg: Optional[npt.NDArray] = None,
+        seg: NdarrayOrTensor | None = None,
         block: bool = True,
         title: str = "",
         zyx: bool = False,
         choose_max: bool = False,
     ):
         img = convert_to_numpy(img)
+        if seg is not None:
+            seg = convert_to_numpy(seg, dtype=np.int64)
         fig, ax = plt.subplots()
         fig: plt.Figure
         ax: plt.Axes
@@ -28,7 +30,6 @@ class IndexTracker:
         if zyx:
             img = img.transpose(2, 1, 0)
             if seg is not None:
-                seg = convert_to_numpy(seg)
                 seg = seg.transpose(2, 1, 0)
 
         self.img = img
@@ -40,7 +41,6 @@ class IndexTracker:
         if self.seg is None:
             self.ax_seg = None
         else:
-            seg = np.array(seg).astype(np.int64)
             num_classes = seg.max() + 1
             if choose_max:
                 self.ind = (self.seg > 0).sum(axis=(0, 1)).argmax().item()
