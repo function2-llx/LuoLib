@@ -6,6 +6,7 @@ from torch import nn
 from luolib.types import spatial_param_t
 from ..blocks import BasicConvLayer
 from ..layers import Act, Norm
+from ..utils import forward_maybe_grad_ckpt
 
 __all__ = [
     'UNetBackbone',
@@ -24,6 +25,7 @@ class UNetBackbone(nn.Module):
         norm: str | tuple = (Norm.INSTANCE, {'affine': True}),
         act: str | tuple = Act.LEAKYRELU,
         res_block: bool = False,
+        grad_ckpt: bool = False,
     ):
         super().__init__()
         num_layers = len(layer_channels)
@@ -42,9 +44,11 @@ class UNetBackbone(nn.Module):
             for i in range(num_layers)
         ])
 
+        self.grad_ckpt = grad_ckpt
+
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
         feature_maps = []
         for layer in self.layers:
-            x = layer(x)
+            x = forward_maybe_grad_ckpt(layer, self.training and self.grad_ckpt, x)
             feature_maps.append(x)
         return feature_maps

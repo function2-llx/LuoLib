@@ -5,7 +5,6 @@ from typing import Callable, Sequence, final
 
 import cytoolz
 from lightning import LightningDataModule
-from lightning.pytorch.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 from torch.utils.data import Dataset as TorchDataset, RandomSampler
 
 from luolib.utils import DataKey
@@ -18,7 +17,7 @@ class CacheDatasetConf:
     train_num: int = 200
     val_num: int = 100
 
-@dataclass
+@dataclass(kw_only=True)
 class DataLoaderConf:
     train_batch_size: int
     val_batch_size: int
@@ -57,7 +56,7 @@ class ExpDataModuleBase(LightningDataModule):
         from luolib.data.utils import list_data_collate
         return list_data_collate
 
-    def train_dataloader(self) -> TRAIN_DATALOADERS:
+    def train_dataloader(self):
         dataset = self.train_dataset()
         conf = self.dataloader_conf
         return DataLoader(
