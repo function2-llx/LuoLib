@@ -21,7 +21,7 @@ class RandSimulateLowResolution(mt.RandomizableTransform):
     def __init__(
         self,
         prob: float = 0.25,
-        prob_per_channel: float = 0.25,
+        prob_per_channel: float = 0.5,
         downsample_mode: str | int = GridSampleMode.NEAREST,
         upsample_mode: str | int = GridSampleMode.BICUBIC,
         zoom_range: Sequence[float] = (0.5, 1.0),
@@ -46,7 +46,7 @@ class RandSimulateLowResolution(mt.RandomizableTransform):
         if not self._do_transform:
             return
         self.zoom_factor = [
-            self.R.uniform(self.zoom_range[0], self.zoom_range[1]) if self.prob_per_channel < self.R.uniform()
+            self.R.uniform(self.zoom_range[0], self.zoom_range[1]) if self.R.uniform() < self.prob_per_channel
             else None
         ]
 
@@ -67,13 +67,13 @@ class RandSimulateLowResolution(mt.RandomizableTransform):
                     continue
                 downsample_shape = np.round(np.array(input_shape) * zoom_factor).astype(np.int32)
                 downsample = mt.Affine(
-                    scale_params=np.full(len(input_shape), zoom_factor).tolist(),
+                    scale_params=np.full(len(input_shape), 1 / zoom_factor).tolist(),
                     spatial_size=downsample_shape,
                     mode=self.downsample_mode,
                     image_only=True,
                 )
                 upsample = mt.Affine(
-                    scale_params=np.full(len(input_shape), 1 / zoom_factor).tolist(),
+                    scale_params=np.full(len(input_shape), zoom_factor).tolist(),
                     spatial_size=input_shape,
                     mode=self.upsample_mode,
                     image_only=True,
