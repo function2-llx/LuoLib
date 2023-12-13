@@ -1,23 +1,19 @@
 from __future__ import annotations
 
 from functools import cache
-from typing import Generic, TypeVar, final
+from typing import final
 
 from lightning import LightningDataModule, LightningModule as LightningModuleBase
-from lightning.pytorch.utilities.types import LRSchedulerConfigType, STEP_OUTPUT
+from lightning.pytorch.utilities.types import STEP_OUTPUT
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
 from torch.optim import Optimizer
 
-from monai.utils import ensure_tuple
-
-from luolib.optim import (
-    HybridOptim, NamedParamGroup, infer_weight_decay_keys, normalize_param_groups,
-)
-from .utils import OptimizationConf
-from luolib.scheduler import HybridScheduler, LRSchedulerConfig
+from luolib.optim import infer_weight_decay_keys
+from luolib.scheduler import HybridScheduler
 from luolib.utils.grad import grad_norm
 from .trainer import Trainer
+from .utils import OptimizationConf, build_hybrid_optimization
 
 class LightningModule(LightningModuleBase):
     trainer: Trainer
@@ -26,12 +22,6 @@ class LightningModule(LightningModuleBase):
         # TODO: move log_grad_norm to some callback
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
-
-    def grad_named_parameters(self):
-        # will I ever encounter the abstract case that some parameter is optimized without gradient?
-        for pn, p in self.named_parameters():
-            if p.requires_grad:
-                yield pn, p
 
     def get_decay_keys(self) -> set[str]:
         return infer_weight_decay_keys(self)
@@ -49,53 +39,14 @@ class LightningModule(LightningModuleBase):
     def optimization(self, optimization: list[OptimizationConf]):
         self._optimization = optimization
 
-    def build_optimization(self, param_groups: list[NamedParamGroup], optimization: OptimizationConf) -> tuple[Optimizer, LRSchedulerConfigType]:
-        normalized_param_groups = normalize_param_groups(param_groups, self._get_decay_keys())
-        # optimizer_callable, lr_scheduler_config_with_callable = optimization.optimizer
-        optimizer = optimization.optimizer(normalized_param_groups)
-        lr_scheduler_config = LRSchedulerConfig(**vars(optimization.lr_scheduler))  # no type checks here, thanks
-        if lr_scheduler_config.frequency == 0:
-            # set default frequency
-            if lr_scheduler_config.interval == 'step':
-                lr_scheduler_config.frequency = self.trainer.val_check_interval
-            else:
-                lr_scheduler_config.frequency = self.trainer.check_val_every_n_epoch
-        scheduler = optimization.lr_scheduler.scheduler(optimizer)
-        lr_scheduler_config.scheduler = scheduler
-        # vars(scheduler) due to: https://github.com/Lightning-AI/lightning/issues/18870
-        return optimizer, vars(lr_scheduler_config)
-
     def configure_optimizers(self):
-        # https://github.com/Lightning-AI/lightning/issues/3346
-        param_groups = [[] for _ in range(len(self.optimization))]
-        for pn, p in self.grad_named_parameters():
-            for i, optimization in enumerate(self.optimization):
-                if any(pn.startswith(prefix) for prefix in ensure_tuple(optimization.prefix)):
-                    param_groups[i].append((pn, p))
-                    break
-            else:
-                raise ValueError(f'unable to match optimization for {pn}')
-
-        optimizations = [
-            self.build_optimization([{'params': param_group}], optimization)
-            for param_group, optimization in zip(param_groups, self.optimization)
-        ]
-        optimizers, lr_scheduler_configs = zip(*optimizations)
-        optimizer = HybridOptim(optimizers)
-        # check and combine lr scheduler configs
-        ref_config = lr_scheduler_configs[0]
-        schedulers = [ref_config['scheduler']]
-        # TODO: check monitor
-        for config in lr_scheduler_configs[1:]:
-            for key in ['interval', 'frequency']:
-                assert ref_config[key] == config[key], ("hey, inconsistent scheduler config is not supported. "
-                                                        "you don't want some abstract stuff like manual optimization, do you?")
-            schedulers.append(config['scheduler'])
-        ref_config['scheduler'] = HybridScheduler(optimizer, schedulers)
-        # when returning a dict, PL won't check if optimizer is an "Optimizable"
+        optimizer, lr_scheduler_config = build_hybrid_optimization(
+            self, self.optimization, self._get_decay_keys(), self.trainer,
+        )
         return {
             'optimizer': optimizer,
-            'lr_scheduler': ref_config,
+            # call `vars` due to: https://github.com/Lightning-AI/lightning/issues/18870
+            'lr_scheduler': vars(lr_scheduler_config),
         }
 
     def on_fit_start(self) -> None:

@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import TypeAlias, TypeVar
 
@@ -44,3 +44,5 @@ def get_conv_t(spatial_dims) -> type[nn.Conv2d | nn.Conv3d]:
     return Conv[Conv.CONV, spatial_dims]
 
 spatial_shape_t: TypeAlias = tuple2_t[int] | tuple3_t[int]
+
+named_params_t = Iterable[tuple[str, nn.Parameter]]
