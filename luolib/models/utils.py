@@ -1,5 +1,3 @@
-from collections.abc import Iterable
-
 import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint

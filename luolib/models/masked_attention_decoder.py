@@ -5,17 +5,17 @@ import einops
 import torch
 from torch import nn
 from torch.nn import functional as nnf
-from torch.utils import checkpoint
 
 from monai.networks.blocks import MLPBlock
 
-from luolib.types import NoWeightDecayParameter, spatial_shape_t
+from luolib.types import spatial_shape_t
 from luolib.utils import fall_back_none, flatten
 from .blocks import (
     get_conv_layer, transformer_block_forward, MemoryEfficientAttention, SpatialSinusoidalPositionEmbedding,
     with_pos_embed,
 )
 from .init import init_common
+from .param import NoWeightDecayParameter
 from .utils import forward_maybe_grad_ckpt
 
 __all__ = [

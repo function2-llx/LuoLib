@@ -5,7 +5,7 @@ from typing import Callable, Iterable, TypedDict
 from torch import nn
 from torch.optim import Optimizer
 
-from luolib.types import NoWeightDecayParameter
+from luolib.models.param import NoWeightDecayParameter
 from luolib.utils import partition_by_predicate
 
 __all__ = [

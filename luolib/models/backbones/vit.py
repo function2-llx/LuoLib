@@ -12,8 +12,10 @@ from torch.utils import checkpoint
 
 from monai.utils import ensure_tuple_rep
 
-from luolib.types import NoWeightDecayParameter, param3_t, tuple2_t, tuple3_t
-from ..blocks import sac, SpatialRotaryEmbedding, MemoryEfficientAttention
+from luolib.types import param3_t, tuple2_t, tuple3_t
+from luolib.models import spadop
+from ..param import NoWeightDecayParameter
+from ..blocks import SpatialRotaryEmbedding, MemoryEfficientAttention
 from ..utils import load_ckpt
 
 __all__ = [
@@ -26,7 +28,7 @@ class PatchEmbed(nn.Module):
         super().__init__()
         self.patch_size: tuple3_t[int] = ensure_tuple_rep(patch_size, 3)
         self.adaptive = adaptive
-        self.proj = sac.InflatableInputConv3d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, adaptive=adaptive)
+        self.proj = spadop.InputConv3D(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size, adaptive=adaptive)
         self.flatten = flatten
 
     def forward(self, x: torch.Tensor, flatten: bool | None = None) -> torch.Tensor:
@@ -157,7 +159,7 @@ class ViT(nn.Module):
     def prepare_seq_input(self, x: torch.Tensor):
         x = self.patch_embed(x)
         shape = x.shape[2:]
-        x += sac.resample(self.pos_embed, shape)
+        x += spadop.resample(self.pos_embed, shape)
         x = self.pos_drop(x)
         x = torch.cat(
             [
@@ -215,7 +217,7 @@ class ViT(nn.Module):
                     pos_embed, '1 (h w) c -> 1 c d h w',
                     d=self.pos_embed.shape[2], h=h, w=w,
                 )
-            state_dict['pos_embed'] = sac.resample(pos_embed, self.pos_embed.shape[2:])
+            state_dict['pos_embed'] = spadop.resample(pos_embed, self.pos_embed.shape[2:])
 
         return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 

@@ -9,10 +9,11 @@ from torch.utils import checkpoint
 
 from monai.networks.blocks import MLPBlock
 
-from luolib.types import NoWeightDecayParameter, get_conv_t
+from luolib.types import get_conv_t
 from luolib.utils import fall_back_none, flatten
-from ..init import init_common
 from ..blocks import SpatialSinusoidalPositionEmbedding, transformer_block_forward
+from ..init import init_common
+from ..param import NoWeightDecayParameter
 
 __all__ = [
     'MultiscaleDeformablePixelDecoder',

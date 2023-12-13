@@ -7,9 +7,9 @@ from torch import nn
 from torch.nn import functional as nnf
 from xformers import ops as xops
 
-from luolib.models.blocks import SpatialRotaryEmbedding
-from luolib.types import NoWeightDecayParameter
 from luolib.utils import fall_back_none
+from ..param import NoWeightDecayParameter
+from .rope import SpatialRotaryEmbedding
 
 __all__ = [
     'transformer_block_forward',
@@ -88,6 +88,7 @@ class MemoryEfficientAttention(nn.Module):
 
     def apply_rope(self, x: torch.Tensor):
         if self.rope is not None:
+            # exclude [CLS] token when applying RoPE
             x = torch.cat([x[:, :1], self.rope(x[:, 1:])], dim=1)
         return x
 

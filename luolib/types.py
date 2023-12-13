@@ -31,10 +31,6 @@ class RangeTuple:
         yield self.min
         yield self.max
 
-# explicitly indicate that a parameter requires no weight decay
-class NoWeightDecayParameter(nn.Parameter):
-    pass
-
 F = TypeVar('F', bound=type)
 partial_t: TypeAlias = type[F] | tuple[type[F], dict]
 

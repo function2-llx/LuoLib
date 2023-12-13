@@ -9,6 +9,7 @@ __all__ = [
 ]
 
 def process_map(fn, *iterables, **tqdm_kwargs):
+    """When max_workers = 0, this function will call normal tqdm"""
     max_workers = tqdm_kwargs.pop('max_workers', None)
     if max_workers is not None and max_workers == 0:
         longest_iterable_len = max(map(length_hint, iterables))
