@@ -151,6 +151,7 @@ class InflatableConv3d(nn.Conv3d):
             return super().forward(x)
 
 class InflatableInputConv3d(InflatableConv3d):
+    """This class additionally handles pre-trained weights for input stem layer"""
     def __init__(self, *args, force: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
         self.force = force
