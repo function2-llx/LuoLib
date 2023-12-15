@@ -3,13 +3,14 @@ import os
 import torch.cuda
 
 __all__ = [
-    'device_map',
+    'get_cuda_device',
 ]
 
 num_devices = torch.cuda.device_count()
 
-class DeviceMap:
+class DeviceMapper:
     def __init__(self):
+        # don't import these stuffs globally or multiprocessing context will be implicitly set
         from multiprocessing import Manager
         from multiprocessing.managers import SyncManager
         manager: SyncManager = Manager()
@@ -27,10 +28,10 @@ class DeviceMap:
             torch.cuda.set_device(device_id)
         return torch.device(device_id)
 
-_device_map: DeviceMap | None = None
+_mapper: DeviceMapper | None = None
 
-def device_map():
-    global _device_map
-    if _device_map is None:
-        _device_map = DeviceMap()
-    return _device_map.get()
+def get_cuda_device() -> torch.device:
+    global _mapper
+    if _mapper is None:
+        _mapper = DeviceMapper()
+    return _mapper.get()

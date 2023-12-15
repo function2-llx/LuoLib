@@ -9,14 +9,14 @@ from torch import nn
 from xformers import ops as xops
 
 from monai.networks.blocks import MLPBlock
-from monai.networks.layers import DropPath, get_norm_layer
+from monai.networks.layers import DropPath
 from monai.utils import ensure_tuple_rep
 
 from luolib.utils import channel_first, channel_last
-from .tensor import SpatialTensor
-from ..layers import Act, Norm
+from ..layers import Act
 from ..utils import forward_maybe_grad_ckpt
 from ..param import NoWeightDecayParameter
+from .tensor import SpatialTensor
 
 __all__ = [
     'SwinLayer',

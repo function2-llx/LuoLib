@@ -2,7 +2,7 @@ import importlib
 from collections.abc import Mapping
 
 from luolib.conf import parse_node
-from luolib.utils import PathLike
+from luolib.types import PathLike
 
 def get_obj_from_str(string: str, reload: bool = False):
     module, cls = string.rsplit(".", 1)

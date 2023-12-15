@@ -12,8 +12,8 @@ from lightning.pytorch.loggers import WandbLogger
 import torch
 
 from luolib.datamodule import CrossValDataModule, ExpDataModuleBase
-from .utils import OptimizationConf
 from luolib.utils import fall_back_none
+from .utils import OptimizationConf
 from .module import LightningModule
 from .trainer import Trainer
 

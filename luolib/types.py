@@ -1,5 +1,6 @@
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+import os
 from typing import TypeAlias, TypeVar
 
 from torch import nn
@@ -46,3 +47,4 @@ def get_conv_t(spatial_dims) -> type[nn.Conv2d | nn.Conv3d]:
 spatial_shape_t: TypeAlias = tuple2_t[int] | tuple3_t[int]
 
 named_params_t = Iterable[tuple[str, nn.Parameter]]
+PathLike = str | bytes | os.PathLike
