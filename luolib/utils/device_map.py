@@ -1,3 +1,4 @@
+from functools import cache
 import os
 
 import torch.cuda
@@ -18,10 +19,11 @@ class DeviceMapper:
         self.device_ref_count = manager.list([0 for _ in range(num_devices)])
         self.lock = manager.Lock()
 
+    @cache
     def get(self):
         pid = os.getpid()
-        if (device_id := self.pid_to_device_id.get(pid)) is None:
-            with self.lock:
+        with self.lock:
+            if (device_id := self.pid_to_device_id.get(pid)) is None:
                 device_id = min(range(num_devices), key=lambda i: self.device_ref_count[i])
                 self.pid_to_device_id[pid] = device_id
                 self.device_ref_count[device_id] += 1
@@ -30,8 +32,9 @@ class DeviceMapper:
 
 _mapper: DeviceMapper | None = None
 
-def get_cuda_device() -> torch.device:
+def init_mapper():
     global _mapper
-    if _mapper is None:
-        _mapper = DeviceMapper()
+    _mapper = DeviceMapper()
+
+def get_cuda_device() -> torch.device:
     return _mapper.get()

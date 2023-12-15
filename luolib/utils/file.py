@@ -27,6 +27,9 @@ class SavedSet:
         return item in self.set
 
     def save(self, item: str):
-        """be careful that self.set is not updated accordingly"""
+        """be careful that `self.set` is not updated accordingly"""
         if item not in self.set:
             file_append(self.save_path, item)
+
+    def save_list(self, items: list[str]):
+        self.save('\n'.join(items))
