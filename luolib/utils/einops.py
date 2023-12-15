@@ -5,6 +5,15 @@ from einops import rearrange
 from einops.layers.torch import Rearrange
 import torch
 
+__all__ = [
+    'ChannelFirst',
+    'channel_first',
+    'ChannelLast',
+    'channel_last',
+    'flatten',
+    'spatialize',
+]
+
 class ChannelFirst(Rearrange):
     def __init__(self):
         super().__init__('n ... c -> n c ...')

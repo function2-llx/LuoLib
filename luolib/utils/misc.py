@@ -1,5 +1,9 @@
 from typing import TypeVar
 
+__all__ = [
+    'fall_back_none',
+]
+
 T = TypeVar('T')
 U = TypeVar('U')
 

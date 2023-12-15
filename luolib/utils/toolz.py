@@ -2,6 +2,10 @@ from typing import Callable, Hashable, Iterable, TypeVar
 
 import cytoolz
 
+__all__ = [
+    'partition_by_predicate',
+]
+
 T = TypeVar('T')
 
 def partition_by_predicate(pred: Callable[[T], bool] | Hashable, seq: Iterable[T]) -> tuple[list[T], list[T]]:

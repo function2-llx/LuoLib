@@ -5,6 +5,7 @@ import torch.cuda
 
 __all__ = [
     'get_cuda_device',
+    'init_mapper',
 ]
 
 num_devices = torch.cuda.device_count()
@@ -30,7 +31,7 @@ class DeviceMapper:
             torch.cuda.set_device(device_id)
         return torch.device(device_id)
 
-_mapper: DeviceMapper | None = None
+_mapper: DeviceMapper
 
 def init_mapper():
     global _mapper
