@@ -1,7 +1,6 @@
 from typing import TypeVar
 
-from luolib.utils import T
-
+T = TypeVar('T')
 U = TypeVar('U')
 
 def fall_back_none(x: T | None, default: U) -> T | U:
