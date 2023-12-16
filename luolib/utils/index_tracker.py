@@ -16,7 +16,7 @@ class IndexTracker:
         seg: NdarrayOrTensor | None = None,
         block: bool = True,
         title: str = "",
-        zyx: bool = False,
+        zyx: bool = True,
         choose_max: bool = False,
     ):
         img = convert_to_numpy(img)
