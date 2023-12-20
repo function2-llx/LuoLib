@@ -40,8 +40,9 @@ class RandAdjustContrast(mt.RandomizableTransform):
             return img_t
         spatial_size = img_t.shape[1:]
         img_t = einops.rearrange(img_t, 'c ... -> c (...)')
-        min_v = img_t.amin(1, True)
-        max_v = img_t.amax(1, True)
+        if self.preserve_intensity_range:
+            min_v = img_t.amin(1, True)
+            max_v = img_t.amax(1, True)
         mean = img_t.mean(1, True)
         factor = img_t.new_tensor(self.factor)
         ret = img_t * factor + mean * (1 - factor)
