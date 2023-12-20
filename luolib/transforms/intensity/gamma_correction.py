@@ -23,12 +23,23 @@ class RandGammaCorrection(mt.RandomizableTransform):
         gamma_range: tuple2_t[float],
         prob_invert: float,
         retain_stats: bool,
+        rescale: bool,
         eps: float = 1e-7,
-    ) -> None:
+    ):
+        """
+        Args:
+            prob:
+            gamma_range:
+            prob_invert:
+            retain_stats:
+            rescale: whether to rescale the intensity to [0, 1], only use this if the intensity is between [0, 1]
+            eps:
+        """
         mt.RandomizableTransform.__init__(self, prob)
         self.gamma_range = gamma_range
         self.prob_invert = prob_invert
         self.retain_stats = retain_stats
+        self.rescale = rescale
         self.eps = eps
 
     def randomize(self, num_channels: int):
@@ -51,19 +62,21 @@ class RandGammaCorrection(mt.RandomizableTransform):
             return img_t
         spatial_shape = img_t.shape[1:]
         img_t = einops.rearrange(img_t, 'c ... -> c (...)')
-        if self.invert:
-            img_t = -img_t
         if self.retain_stats:
             mean = img_t.mean(1, True)
             std = img_t.std(1, keepdim=True, correction=0)
-        min_v = img_t.amin(1, True)
-        range_v = img_t.amax(1, True) - min_v + self.eps
-        img_t = ((img_t - min_v) / range_v).pow(img_t.new_tensor(self.gamma))
+        if self.rescale:
+            min_v = img_t.amin(1, True)
+            range_v = img_t.amax(1, True) - min_v + self.eps
+            img_t = (img_t - min_v) / range_v
+        if self.invert:
+            img_t = 1 - img_t
+        img_t = img_t.pow(img_t.new_tensor(self.gamma))
+        if self.invert:
+            img_t = 1 - img_t
+        if self.rescale:
+            img_t = img_t * range_v + min_v
         if self.retain_stats:
             img_t = (img_t - img_t.mean(1, True)) / (img_t.std(keepdim=True, correction=0) + 1e-8)
             img_t = img_t * std + mean
-        else:
-            img_t = img_t * range_v + min_v
-        if self.invert:
-            img_t = -img_t
         return img_t.view(img_t.shape[0], *spatial_shape)
