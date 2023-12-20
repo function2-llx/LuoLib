@@ -18,6 +18,8 @@ class IndexTracker:
         title: str = "",
         zyx: bool = True,
         choose_max: bool = False,
+        vmin: float | None = None,
+        vmax: float | None = None,
     ):
         img = convert_to_numpy(img)
         if seg is not None:
@@ -37,7 +39,7 @@ class IndexTracker:
         rows, cols, self.slices = img.shape
         self.ind = self.slices // 2
 
-        self.ax_img = ax.imshow(np.rot90(self.img[:, :, self.ind]), cmap='gray')
+        self.ax_img = ax.imshow(np.rot90(self.img[:, :, self.ind]), 'gray', vmin=vmin, vmax=vmax)
         if self.seg is None:
             self.ax_seg = None
         else:
@@ -46,8 +48,8 @@ class IndexTracker:
                 self.ind = (self.seg > 0).sum(axis=(0, 1)).argmax().item()
             self.ax_seg = ax.imshow(
                 np.rot90(self.seg[:, :, self.ind]),
+                ListedColormap(['none', *matplotlib.colormaps['tab20'].colors[:num_classes - 1]]),
                 vmax=num_classes,
-                cmap=ListedColormap(['none', *matplotlib.colormaps['tab20'].colors[:num_classes - 1]]),
                 alpha=0.5,
             )
             from matplotlib.colorbar import Colorbar

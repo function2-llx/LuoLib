@@ -17,15 +17,11 @@ __all__ = [
 
 from monai.utils import convert_to_tensor
 
-class RandomizableTransformProtocol(Protocol):
-    def __call__(self, data, randomize: bool, *args, **kwargs) -> ...:
-        ...
-
 class DictWrapper(mt.MapTransform):
     def __init__(
         self,
         keys: KeysCollection,
-        trans: Callable[..., ...],
+        trans: Callable,
         allow_missing_keys: bool = False,
     ):
         super().__init__(keys, allow_missing_keys)
@@ -41,7 +37,7 @@ class RandDictWrapper(DictWrapper, mt.Randomizable):
     def __init__(
         self,
         keys: KeysCollection,
-        trans: RandomizableTransformProtocol,
+        trans: Callable,
         allow_missing_keys: bool = False,
     ):
         DictWrapper.__init__(self, keys, trans, allow_missing_keys)
@@ -62,7 +58,7 @@ class RandUniformDictWrapper(DictWrapper, mt.RandomizableTransform):
         self,
         keys: KeysCollection,
         prob: float,
-        trans: RandomizableTransformProtocol,
+        trans: Callable,
         allow_missing_keys: bool = False
     ):
         DictWrapper.__init__(self, keys, trans, allow_missing_keys)
