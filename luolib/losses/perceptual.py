@@ -44,4 +44,4 @@ class SlicePerceptualLoss(PerceptualLoss):
         else:
             self.fake_3d_ratio = self.max_slices / input.shape[2] + 1e-8
         loss = self._calculate_axis_loss(input, target, spatial_axis=2)
-        return loss.mean()
+        return loss
