@@ -23,6 +23,7 @@ class RandAdjustContrast(mt.RandomizableTransform):
     ):
         mt.RandomizableTransform.__init__(self, prob)
         self.contrast_range = contrast_range
+        # TODO: when adjusting contract, range is always preserved, isn't it?
         self.preserve_intensity_range = preserve_intensity_range
 
     def randomize(self, num_channels: int):

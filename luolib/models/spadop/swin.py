@@ -74,7 +74,9 @@ class WindowAttention(nn.Module):
         if mask is not None:
             attn_bias.masked_fill_(~mask[:, None], -torch.inf)
         x = einops.rearrange(
-            xops.memory_efficient_attention(q, k, v, attn_bias, self.attn_drop, self.scale),
+            xops.memory_efficient_attention(
+                q, k, v, attn_bias.type(v.dtype), self.attn_drop, self.scale
+            ),
             'n l nh d -> n l (nh d)',
         )
         x = self.proj(x)
@@ -322,4 +324,4 @@ class SwinLayer(nn.Module):
         return channel_first(x)
 
     def extra_repr(self) -> str:
-        return f'max_window_size={_to_tuple(self.max_window_size)},slide={self.slide}'
+        return f'max_window_size={_to_tuple(self.max_window_size)}, slide={self.slide}'

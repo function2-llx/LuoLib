@@ -26,7 +26,7 @@ class SpatialTensor(torch.Tensor):
     def __repr__(self, *args, **kwargs):
         aniso_d = getattr(self, 'aniso_d', 'missing')
         num_downsamples = getattr(self, 'num_downsamples', 'missing')
-        return f'shape={self.shape}, aniso_d={aniso_d}, num_downsamples={num_downsamples}\n{super().__repr__()}'
+        return f'{super().__repr__()}\nshape={self.shape}, aniso_d={aniso_d}, num_downsamples={num_downsamples}'
 
     @property
     def num_pending_hw_downsamples(self):

@@ -19,7 +19,7 @@ LRSchedulerCallable = Callable[[Optimizer], LRScheduler]
 
 @dataclass
 class LRSchedulerConfig(LRSchedulerConfigBase):
-    scheduler: LRScheduler
+    scheduler: LRScheduler  # this can be set to `HybridScheduler`, which is not a subclass
     frequency: int = 0  # 0: set to some default value in `build_optimization`
     interval: Literal['step', 'epoch'] = 'step'
 

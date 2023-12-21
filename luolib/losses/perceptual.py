@@ -33,10 +33,10 @@ class FixedRadImageNetPerceptualSimilarity(RadImageNetPerceptualSimilarity):
 class SlicePerceptualLoss(PerceptualLoss):
     def __init__(self, *args, max_slices: int, **kwargs):
         super().__init__(*args, **kwargs)
+        assert self.is_fake_3d
         if isinstance(self.perceptual_function, RadImageNetPerceptualSimilarity):
             self.perceptual_function.forward = partial(FixedRadImageNetPerceptualSimilarity.forward, self.perceptual_function)
         self.max_slices = max_slices
-        assert self.is_fake_3d
 
     def forward(self, input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         if self.max_slices >= input.shape[2]:
