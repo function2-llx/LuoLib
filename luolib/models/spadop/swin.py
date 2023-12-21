@@ -321,7 +321,7 @@ class SwinLayer(nn.Module):
                 x, window_size, block_shift_size, block_attn_mask, relative_position_index,
             )
         x = self.last_norm(x)
-        return channel_first(x)
+        return channel_first(x).contiguous()
 
     def extra_repr(self) -> str:
         return f'max_window_size={_to_tuple(self.max_window_size)}, slide={self.slide}'
