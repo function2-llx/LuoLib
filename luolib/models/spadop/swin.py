@@ -224,10 +224,6 @@ def _to_tuple(x: np.ndarray):
     return tuple(x.tolist())
 
 class SwinLayer(nn.Module):
-    """
-    better padding & more concise implementation
-    """
-
     blocks: Sequence[SwinTransformerBlock] | nn.ModuleList
 
     def __init__(
@@ -291,7 +287,7 @@ class SwinLayer(nn.Module):
     def forward(self, x: SpatialTensor):
         spatial_shape = np.array(x.shape[2:])
         window_size = self.max_window_size.copy()
-        window_size[0] = max(window_size[0] >> x.num_pending_hw_downsamples, 1)
+        window_size[0] = min(max(window_size[0] >> x.num_pending_hw_downsamples, 1), x.shape[2])
         relative_position_index = compute_relative_position_index(_to_tuple(window_size))
         assert (spatial_shape % window_size == 0).all(), "I don't want to support padding, do you?"
         if self.slide:

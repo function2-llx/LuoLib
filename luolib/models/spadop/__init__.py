@@ -4,3 +4,4 @@ from .tensor import *
 from .swin import *
 from .conv import *
 from .resample import *
+from .patch_embed import *
