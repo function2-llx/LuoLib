@@ -34,7 +34,7 @@ class PatchEmbed(nn.Sequential):
                     Conv3d(
                         out_channels >> num_downsamples - i,
                         out_channels >> num_downsamples - i - 1,
-                        kernel_size, 2, kernel_size + 1 >> 1,
+                        kernel_size, 2, kernel_size - 1 >> 1,
                     ),
                 ])
 
