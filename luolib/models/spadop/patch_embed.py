@@ -16,6 +16,7 @@ class PatchEmbed(nn.Sequential):
         in_channels: int,
         out_channels: int,
         patch_size: int,
+        kernel_size: int,
         hierarchical: bool,
         act: str = '',
     ):
@@ -33,7 +34,7 @@ class PatchEmbed(nn.Sequential):
                     Conv3d(
                         out_channels >> num_downsamples - i,
                         out_channels >> num_downsamples - i - 1,
-                        2, 2,
+                        kernel_size, 2, kernel_size + 1 >> 1,
                     ),
                 ])
 
