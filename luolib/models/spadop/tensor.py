@@ -18,6 +18,7 @@ class SpatialTensor(torch.Tensor):
         """
         Args:
             aniso_d: degree of anisotropy, i.e., log2(spacing_slice / spacing_in-plane)
+            num_downsamples:  how many downsamples have been performed in-plane
         """
         super().__init__()
         self.aniso_d = aniso_d

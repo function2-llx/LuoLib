@@ -20,6 +20,7 @@ __all__ = [
     'InputConv3D',
     'OutputConv3D',
     'TransposedConv3d',
+    'MaxPool',
 ]
 
 class Conv3d(nn.Conv3d):
@@ -331,3 +332,30 @@ class AdaptiveTransposedConvUpsample(nn.Module):
     def forward(self, x: SpatialTensor):
         x = self.transposed_conv(x)
         return self.conv(x)
+
+class MaxPool(nn.MaxPool3d):
+    def __init__(
+        self,
+        kernel_size: param3_t,
+        stride: param3_t | None = None,
+        padding: param3_t = 0,
+        dilation: param3_t = 1,
+        return_indices: bool = False,
+        ceil_mode: bool = False,
+    ):
+        super().__init__(kernel_size, stride, padding, dilation, return_indices, ceil_mode)
+        assert self.kernel_size == (2, 2, 2) or self.kernel_size == 2
+        assert stride is None
+        assert self.padding == (0, 0, 0) or self.padding == 0
+        assert self.dilation == (1, 1, 1) or self.dilation == 1
+
+    def forward(self, x: SpatialTensor):
+        x: SpatialTensor
+        kernel_size = list(self.kernel_size)
+        kernel_size[0] = max(self.kernel_size[0] >> x.num_pending_hw_downsamples, 1)
+        x = nnf.max_pool3d(
+            x, kernel_size, kernel_size,
+            self.padding, self.dilation, ceil_mode=self.ceil_mode, return_indices=self.return_indices,
+        )
+        x.num_downsamples += 1
+        return x
