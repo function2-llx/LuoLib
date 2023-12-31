@@ -27,10 +27,10 @@ class PatchEmbed(nn.Sequential):
         assert patch_size & patch_size - 1 == 0, 'only power of 2 is supported'
         if hierarchical:
             padding = kernel_size - 1 >> 1
-            num_downsamples = patch_size.bit_length() - 3
+            num_downsamples = patch_size.bit_length() - 1
             super().__init__(
                 InputConv3D(
-                    in_channels, out_channels >> num_downsamples,
+                    in_channels, out_channels >> num_downsamples - 1,
                     kernel_size, 2, padding,
                 ),
                 *[
@@ -43,7 +43,7 @@ class PatchEmbed(nn.Sequential):
                             kernel_size, 2, padding,
                         ),
                     )
-                    for i in range(num_downsamples)
+                    for i in range(1, num_downsamples)
                 ],
             )
         else:

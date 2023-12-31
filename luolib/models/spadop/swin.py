@@ -262,6 +262,7 @@ class SwinLayer(nn.Module):
         assert (self.max_window_size & self.max_window_size - 1 == 0).all(), 'only power of 2 is supported'
         assert (self.max_window_size[1:] > 1).any(), 'unit in-plane window is not supported'
         assert dim % num_heads == 0
+        self.num_heads = num_heads
 
         self.grad_ckpt = grad_ckpt
         if isinstance(drop_path_rates, float):
@@ -321,4 +322,4 @@ class SwinLayer(nn.Module):
         return channel_first(x).contiguous()
 
     def extra_repr(self) -> str:
-        return f'max_window_size={_to_tuple(self.max_window_size)}, slide={self.slide}'
+        return f'max_window_size={_to_tuple(self.max_window_size)}, num_heads={self.num_heads}, slide={self.slide}'
