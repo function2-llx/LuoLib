@@ -20,23 +20,34 @@ class PatchEmbed(nn.Sequential):
         hierarchical: bool,
         act: str = '',
     ):
-        super().__init__()
+        """
+        Args:
+            kernel_size: convolution kernel size in hierarchical structure
+        """
         assert patch_size & patch_size - 1 == 0, 'only power of 2 is supported'
-        if not hierarchical or patch_size <= 4:
-            self.append(InputConv3D(in_channels, out_channels, patch_size, patch_size))
-        else:
+        if hierarchical:
+            padding = kernel_size - 1 >> 1
             num_downsamples = patch_size.bit_length() - 3
-            self.append(InputConv3D(in_channels, out_channels >> num_downsamples, 4, 4))
-            for i in range(num_downsamples):
-                self.extend([
-                    LayerNormNd(out_channels >> num_downsamples - i),
-                    get_act_layer(act),
-                    Conv3d(
-                        out_channels >> num_downsamples - i,
-                        out_channels >> num_downsamples - i - 1,
-                        kernel_size, 2, kernel_size - 1 >> 1,
-                    ),
-                ])
+            super().__init__(
+                InputConv3D(
+                    in_channels, out_channels >> num_downsamples,
+                    kernel_size, 2, padding,
+                ),
+                *[
+                    nn.Sequential(
+                        LayerNormNd(out_channels >> num_downsamples - i),
+                        get_act_layer(act),
+                        Conv3d(
+                            out_channels >> num_downsamples - i,
+                            out_channels >> num_downsamples - i - 1,
+                            kernel_size, 2, padding,
+                        ),
+                    )
+                    for i in range(num_downsamples)
+                ],
+            )
+        else:
+            super().__init__(InputConv3D(in_channels, out_channels, patch_size, patch_size))
 
 class InversePatchEmbed(nn.Sequential):
     def __init__(
