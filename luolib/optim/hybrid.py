@@ -22,9 +22,15 @@ class HybridOptim(Optimizer):
         # not calling super().__init__() because this one is abstract
         # super().__init__()
         self.optimizers = list(optimizers)
-        self.param_groups = list(cytoolz.concat([optimizer.param_groups for optimizer in self.optimizers]))
+        # self.param_groups = list(cytoolz.concat([optimizer.param_groups for optimizer in self.optimizers]))
         self.state = {}
         self.defaults = {}
+
+    @property
+    def param_groups(self):
+        """Return the combined parameter groups for each optimizer in ``self.optimizers``."""
+        # using property and tuple here for safety
+        return tuple(cytoolz.concat([optimizer.param_groups for optimizer in self.optimizers]))
 
     # @property
     # def state(self) -> dict[str, torch.Tensor]:
