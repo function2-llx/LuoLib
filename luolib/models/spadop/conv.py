@@ -1,10 +1,12 @@
 from typing import Literal
+import warnings
 
 import einops
 import torch
 from torch import nn
 from torch.nn import functional as nnf
 
+from monai.networks.blocks import get_output_padding, get_padding
 from monai.utils import InterpolateMode, ensure_tuple_rep
 
 from luolib.types import param3_t
@@ -21,9 +23,9 @@ __all__ = [
 
 class Conv3d(nn.Conv3d):
     @staticmethod
-    def _adaptable(kernel_size: int, stride: int):
-        return stride == 1 or kernel_size == stride or (kernel_size, stride) in {(3, 2), (4, 2)}
-        # return kernel_size % stride == 0 or (kernel_size, stride) == (3, 2)
+    def _check_depth_adaptable(kernel_size: int, stride: int):
+        assert stride & stride - 1 == 0, 'only power of 2 is supported'
+        assert kernel_size == stride or (kernel_size, stride) in {(3, 1), (3, 2)}
 
     def __init__(
         self,
@@ -42,16 +44,19 @@ class Conv3d(nn.Conv3d):
         d_inflation: Literal['average', 'center'] = 'average',
         **kwargs,
     ):
-        # TODO: remove padding parameter
+        if padding != 0:
+            warnings.warn('specifying padding will have no effect', DeprecationWarning, stacklevel=2)
         super().__init__(
             in_channels, out_channels, kernel_size, stride, padding,
             dilation, groups, bias, padding_mode, device, dtype,
         )
         self.adaptive = adaptive
         if adaptive:
-            assert self.stride[0] == self.stride[1] == self.stride[2], 'only support isotropic stride'
-            assert self.stride[0] & self.stride[0] - 1 == 0, 'only support power of 2'
+            # TODO: remove padding parameter, always calculate it dynamically
+            assert self.stride[0] == self.stride[1] == self.stride[2], 'only isotropic stride is supported'
+            self._check_depth_adaptable(self.kernel_size[0], self.stride[0])
             self.num_downsamples = self.stride[0].bit_length() - 1
+            self.padding = get_padding(self.kernel_size, self.stride)
             assert self.padding_mode == 'zeros'
         self.inflation = d_inflation
         assert d_inflation in ['average', 'center']
@@ -76,27 +81,31 @@ class Conv3d(nn.Conv3d):
         return super()._load_from_state_dict(state_dict, prefix, *args, **kwargs)
 
     def forward(self, x: torch.Tensor):
+        """
+        output shape: x.shape / adapted stride
+        """
         if self.adaptive:
             x: SpatialTensor
             stride = list(self.stride)
             padding = list(self.padding)
-            stride[0] = max(self.stride[0] >> x.num_pending_hw_downsamples, 1)
-            if stride[0] == self.stride[0] and x.num_pending_hw_downsamples == 0:
+            if (self.kernel_size[0], self.stride[0]) == (1, 1) or x.num_pending_hw_downsamples == 0:
+                # no adaption
                 weight = self.weight
+            elif self.kernel_size[0] == self.stride[0]:
+                # KpSp -> KqSq, where q | p
+                stride[0] = self.stride[0] >> min(x.num_pending_hw_downsamples, self.num_downsamples)
+                weight = einops.reduce(
+                    self.weight,
+                    'co ci (dr dc) ... -> co ci dr ...',
+                    'sum',
+                    dr=stride[0],
+                )
             else:
+                assert self.kernel_size[0] == 3
+                # K3S1, K3S2 -> K1S1
+                stride[0] = 1
+                weight = self.weight.sum(dim=2, keepdim=True)
                 padding[0] = 0
-                if stride[0] == 1:
-                    assert self.stride[0] == self.kernel_size[0] or self.kernel_size[0] == 3, "don't do this or teach me how to do this /kl"
-                    weight = self.weight.sum(dim=2, keepdim=True)
-                else:
-                    assert self.stride[0] == self.kernel_size[0], "don't do this or teach me how to do this /kl"
-                    dr = self.kernel_size[0] >> self.num_upsamples - num_d_upsamples,
-                    weight = einops.reduce(
-                        self.weight,
-                        'co ci (dr dc) ... -> co ci dr ...',
-                        'sum',
-                        dr=stride[0],
-                    )
             x: SpatialTensor = nnf.conv3d(x, weight, self.bias, stride, padding, self.dilation, self.groups)
             x.num_downsamples += self.num_downsamples
             return x
@@ -275,8 +284,9 @@ class AdaptiveInterpolationUpsampleWithPostConv(AdaptiveInterpolationUpsample):
 
 class TransposedConv3d(nn.ConvTranspose3d):
     @staticmethod
-    def _adaptable(kernel_size: int, stride: int):
-        return kernel_size == stride or (kernel_size, stride) in {(3, 2), (4, 2)}
+    def _check_depth_adaptable(kernel_size: int, stride: int):
+        assert stride & stride - 1 == 0, 'only power of 2 is supported'
+        assert kernel_size == stride or (kernel_size, stride) in {(3, 2), (4, 2)}
 
     def __init__(
         self,
@@ -295,28 +305,36 @@ class TransposedConv3d(nn.ConvTranspose3d):
             in_channels, out_channels, kernel_size, stride, 0, 0,
             groups, bias, dilation, padding_mode, device, dtype,
         )
-        for s in self.stride:
-            assert s & s - 1 == 0, 'only support power of 2'
-        assert self.stride[1] == self.stride[2], 'only support stride_h == stride_w'
+        assert self.stride[0] == self.stride[1] == self.stride[2], 'only isotropic stride is supported'
+        self._check_depth_adaptable(self.kernel_size[0], self.stride[0])
         self.num_upsamples = self.stride[1].bit_length() - 1
-        assert self._conv_adaptable(kernel_size[0], stride[0])
+        self.padding = get_padding(self.kernel_size, self.stride)
+        self.output_padding = get_output_padding(self.kernel_size, self.stride, self.padding)
 
     def forward(self, x: SpatialTensor, output_size=None):
         assert output_size is None
         stride = list(self.stride)
-        num_d_upsamples = min(x.num_remained_d_upsamples, self.num_upsamples)
-        stride[0] = 1 << x.num_remained_d_upsamples
-        if stride[0] == self.stride[0]:
+        padding = list(self.padding)
+        output_padding = list(self.output_padding)
+        if self.num_upsamples <= x.num_remained_d_upsamples:
+            # no adaption
             weight = self.weight
-        else:
+        elif self.kernel_size[0] == self.stride[0]:
+            # KpSp -> KqSq, where q | p
+            stride[0] = 1 << x.num_remained_d_upsamples
             weight = einops.reduce(
                 self.weight,
                 'co ci (dr dc) ... -> co ci dr ...',
                 'sum',
-                dr=self.kernel_size[0] >> self.num_upsamples - num_d_upsamples,
+                dr=stride[0],
             )
+        else:
+            # K4S2, K3S2 -> K1S1
+            stride[0] = 1
+            weight = self.weight.sum(dim=2, keepdim=True)
+            padding[0] = output_padding[0]
         x: SpatialTensor = nnf.conv_transpose3d(
-            x, weight, self.bias, stride, self.padding, self.output_padding,
+            x, weight, self.bias, stride, padding, output_padding,
             self.groups, self.dilation,
         )
         x.num_downsamples -= self.num_upsamples

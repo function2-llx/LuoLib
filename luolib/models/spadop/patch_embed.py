@@ -45,7 +45,7 @@ class PatchEmbed(nn.Sequential):
                             out_channels >> num_downsamples - i - 1,
                             kernel_size, 2, padding,
                         ),
-                        nn.GroupNorm(1, out_channels >> num_downsamples - i),
+                        nn.GroupNorm(1, out_channels >> num_downsamples - i - 1),
                         get_act_layer(act),
                     )
                     for i in range(num_downsamples)
