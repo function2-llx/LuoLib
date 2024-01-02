@@ -18,7 +18,8 @@ class PatchEmbed(nn.Sequential):
         patch_size: int,
         kernel_size: int,
         hierarchical: bool,
-        act: str = '',
+        act: str = 'gelu',
+        last_norm: bool = False,
     ):
         """
         Args:
@@ -26,28 +27,35 @@ class PatchEmbed(nn.Sequential):
         """
         assert patch_size & patch_size - 1 == 0, 'only power of 2 is supported'
         if hierarchical:
+            # references:
+            # - [Early Convolutions Help Transformers See Better](https://arxiv.org/abs/2106.14881)
+            # - [Three things everyone should know about Vision Transformers](https://arxiv.org/abs/2203.09795)
+            # - [Unleashing Vanilla Vision Transformer with Masked Image Modeling for Object Detection](https://arxiv.org/abs/2204.02964)
+            # - [All in Tokens: Unifying Output Space of Visual Tasks via Soft Token](https://arxiv.org/abs/2301.02229)
             padding = kernel_size - 1 >> 1
             num_downsamples = patch_size.bit_length() - 1
             super().__init__(
-                InputConv3D(
-                    in_channels, out_channels >> num_downsamples - 1,
-                    kernel_size, 2, padding,
-                ),
                 *[
                     nn.Sequential(
-                        LayerNormNd(out_channels >> num_downsamples - i),
-                        get_act_layer(act),
-                        Conv3d(
+                        InputConv3D(
+                            in_channels, out_channels >> num_downsamples - i - 1,
+                            kernel_size, 2, padding,
+                        ) if i == 0 else Conv3d(
                             out_channels >> num_downsamples - i,
                             out_channels >> num_downsamples - i - 1,
                             kernel_size, 2, padding,
                         ),
+                        nn.GroupNorm(1, out_channels >> num_downsamples - i),
+                        get_act_layer(act),
                     )
-                    for i in range(1, num_downsamples)
+                    for i in range(num_downsamples)
                 ],
+                Conv3d(out_channels, out_channels, 1),
             )
         else:
             super().__init__(InputConv3D(in_channels, out_channels, patch_size, patch_size))
+        if last_norm:
+            self.append(nn.GroupNorm(1, out_channels))
 
 class InversePatchEmbed(nn.Sequential):
     def __init__(
@@ -55,19 +63,23 @@ class InversePatchEmbed(nn.Sequential):
         in_channels: int,
         out_channels: int,
         patch_size: int,
+        kernel_size: int,
         hierarchical: bool,
-        act: str = '',
+        act: str = 'gelu',
     ):
-        super().__init__()
         assert patch_size & patch_size - 1 == 0, 'only power of 2 is supported'
-        if not hierarchical or patch_size <= 4:
-            self.append(TransposedConv3d(in_channels, out_channels, patch_size, patch_size))
-        else:
-            num_upsamples = patch_size.bit_length() - 3
-            for i in range(num_upsamples):
-                self.extend([
-                    TransposedConv3d(in_channels >> i, in_channels >> i + 1, 2, 2),
-                    LayerNormNd(in_channels >> i + 1),
+        if hierarchical:
+            num_upsamples = patch_size.bit_length() - 1
+            super().__init__(*[
+                nn.Sequential(
+                    TransposedConv3d(in_channels >> i, in_channels >> i + 1, kernel_size, 2),
+                    nn.GroupNorm(1, in_channels >> i + 1),
                     get_act_layer(act),
-                ])
-            self.append(TransposedConv3d(in_channels >> num_upsamples, out_channels, 4, 4))
+                )
+                for i in range(num_upsamples)
+            ])
+            self.append(Conv3d(in_channels >> num_upsamples, out_channels, 1))
+        else:
+            super().__init__(
+                TransposedConv3d(in_channels, out_channels, patch_size, patch_size)
+            )

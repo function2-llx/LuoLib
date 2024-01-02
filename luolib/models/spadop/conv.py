@@ -1,5 +1,3 @@
-# sac stands for spatially adaptive convolution
-
 from typing import Literal
 
 import einops
@@ -10,10 +8,8 @@ from torch.nn import functional as nnf
 from monai.utils import InterpolateMode, ensure_tuple_rep
 
 from luolib.types import param3_t
+from luolib.utils import RGB_TO_GRAY_WEIGHT
 from .tensor import SpatialTensor
-
-# RGB to grayscale ref: https://www.itu.int/rec/R-REC-BT.601
-RGB_TO_GRAY_WEIGHT = (0.299, 0.587, 0.114)
 
 __all__ = [
     'Conv3d',
@@ -24,6 +20,11 @@ __all__ = [
 ]
 
 class Conv3d(nn.Conv3d):
+    @staticmethod
+    def _adaptable(kernel_size: int, stride: int):
+        return stride == 1 or kernel_size == stride or (kernel_size, stride) in {(3, 2), (4, 2)}
+        # return kernel_size % stride == 0 or (kernel_size, stride) == (3, 2)
+
     def __init__(
         self,
         in_channels: int,
@@ -41,6 +42,7 @@ class Conv3d(nn.Conv3d):
         d_inflation: Literal['average', 'center'] = 'average',
         **kwargs,
     ):
+        # TODO: remove padding parameter
         super().__init__(
             in_channels, out_channels, kernel_size, stride, padding,
             dilation, groups, bias, padding_mode, device, dtype,
@@ -88,6 +90,7 @@ class Conv3d(nn.Conv3d):
                     weight = self.weight.sum(dim=2, keepdim=True)
                 else:
                     assert self.stride[0] == self.kernel_size[0], "don't do this or teach me how to do this /kl"
+                    dr = self.kernel_size[0] >> self.num_upsamples - num_d_upsamples,
                     weight = einops.reduce(
                         self.weight,
                         'co ci (dr dc) ... -> co ci dr ...',
@@ -271,14 +274,16 @@ class AdaptiveInterpolationUpsampleWithPostConv(AdaptiveInterpolationUpsample):
         return x
 
 class TransposedConv3d(nn.ConvTranspose3d):
+    @staticmethod
+    def _adaptable(kernel_size: int, stride: int):
+        return kernel_size == stride or (kernel_size, stride) in {(3, 2), (4, 2)}
+
     def __init__(
         self,
         in_channels: int,
         out_channels: int,
         kernel_size: param3_t[int],
         stride: param3_t[int] = 1,
-        padding: param3_t[int] = 0,
-        output_padding: param3_t[int] = 0,
         groups: int = 1,
         bias: bool = True,
         dilation: param3_t[int] = 1,
@@ -287,22 +292,20 @@ class TransposedConv3d(nn.ConvTranspose3d):
         dtype=None,
     ):
         super().__init__(
-            in_channels, out_channels, kernel_size, stride, padding, output_padding,
+            in_channels, out_channels, kernel_size, stride, 0, 0,
             groups, bias, dilation, padding_mode, device, dtype,
         )
         for s in self.stride:
             assert s & s - 1 == 0, 'only support power of 2'
         assert self.stride[1] == self.stride[2], 'only support stride_h == stride_w'
         self.num_upsamples = self.stride[1].bit_length() - 1
-        assert self.kernel_size == self.stride
-        assert self.padding == (0, 0, 0)
-        assert self.output_padding == (0, 0, 0)
-        assert self.padding_mode == 'zeros'
+        assert self._conv_adaptable(kernel_size[0], stride[0])
 
     def forward(self, x: SpatialTensor, output_size=None):
         assert output_size is None
         stride = list(self.stride)
-        stride[0] = min(1 << x.num_remained_d_upsamples, self.stride[0])
+        num_d_upsamples = min(x.num_remained_d_upsamples, self.num_upsamples)
+        stride[0] = 1 << x.num_remained_d_upsamples
         if stride[0] == self.stride[0]:
             weight = self.weight
         else:
@@ -310,7 +313,7 @@ class TransposedConv3d(nn.ConvTranspose3d):
                 self.weight,
                 'co ci (dr dc) ... -> co ci dr ...',
                 'sum',
-                dr=stride[0],
+                dr=self.kernel_size[0] >> self.num_upsamples - num_d_upsamples,
             )
         x: SpatialTensor = nnf.conv_transpose3d(
             x, weight, self.bias, stride, self.padding, self.output_padding,
