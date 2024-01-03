@@ -68,17 +68,20 @@ class InversePatchEmbed(nn.Sequential):
         act: str = 'gelu',
     ):
         assert patch_size & patch_size - 1 == 0, 'only power of 2 is supported'
+        # a normalization is assumed to precede current module
         if hierarchical:
             num_upsamples = patch_size.bit_length() - 1
-            super().__init__(*[
-                nn.Sequential(
-                    TransposedConv3d(in_channels >> i, in_channels >> i + 1, kernel_size, 2),
-                    nn.GroupNorm(1, in_channels >> i + 1),
-                    get_act_layer(act),
-                )
-                for i in range(num_upsamples)
-            ])
-            self.append(Conv3d(in_channels >> num_upsamples, out_channels, 1))
+            super().__init__(
+                *[
+                    nn.Sequential(
+                        TransposedConv3d(in_channels >> i, in_channels >> i + 1, kernel_size, 2),
+                        nn.GroupNorm(1, in_channels >> i + 1),
+                        get_act_layer(act),
+                    )
+                    for i in range(num_upsamples - 1)
+                ],
+                TransposedConv3d(in_channels >> num_upsamples - 1, out_channels, kernel_size, 2),
+            )
         else:
             super().__init__(
                 TransposedConv3d(in_channels, out_channels, patch_size, patch_size)
