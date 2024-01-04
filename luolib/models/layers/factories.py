@@ -34,3 +34,6 @@ class Contiguous(nn.Module):
 @Norm.factory_function("layernd")
 def layer_factory(_dim) -> Type[LayerNormNd]:
     return LayerNormNd
+
+
+Act.add_factory_class("silu", nn.SiLU)
