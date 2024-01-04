@@ -25,7 +25,7 @@ class Conv3d(nn.Conv3d):
     @staticmethod
     def _check_depth_adaptable(kernel_size: int, stride: int):
         assert stride & stride - 1 == 0, 'only power of 2 is supported'
-        assert kernel_size == stride or (kernel_size, stride) in {(3, 1), (3, 2)}
+        assert kernel_size == stride or (kernel_size, stride) in {(3, 1), (3, 2), (4, 2)}
 
     def __init__(
         self,
@@ -101,8 +101,8 @@ class Conv3d(nn.Conv3d):
                     dr=stride[0],
                 )
             else:
-                assert self.kernel_size[0] == 3
-                # K3S1, K3S2 -> K1S1
+                assert (self.kernel_size[0], self.stride[0]) in {(3, 1), (3, 2), (4, 2)}
+                # K3S1, K3S2, K4S2 -> K1S1
                 stride[0] = 1
                 weight = self.weight.sum(dim=2, keepdim=True)
                 padding[0] = 0
