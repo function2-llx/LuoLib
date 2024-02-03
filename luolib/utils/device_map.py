@@ -38,4 +38,5 @@ def init_mapper():
     _mapper = DeviceMapper()
 
 def get_cuda_device() -> torch.device:
+    """get the cuda device allocated for the current worker process"""
     return _mapper.get()
