@@ -22,9 +22,8 @@ def sliding_window_sum(x: torch.Tensor, window_size: Sequence[int]) -> torch.Lon
     Args:
         x: shape: (c, *spatial), integer type
     """
-    window_size = np.array(window_size)
+    window_size = np.minimum(window_size, x.shape[1:])
     ret_spatial_shape = x.shape[1:] - window_size + 1
-    assert (ret_spatial_shape > 0).all()
     spatial_dims = len(window_size)
 
     # multi-dimensional partial sum
