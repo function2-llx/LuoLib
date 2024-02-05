@@ -16,7 +16,7 @@ __all__ = [
     'ComputeCropIndicesD',
 ]
 
-def sliding_window_sum(x: torch.Tensor, window_size: Sequence[int]) -> torch.LongTensor:
+def sliding_window_sum(x: torch.Tensor, window_size: Sequence[int], dtype: torch.dtype = torch.int64) -> torch.LongTensor:
     """
     Make sure no value overflow for x.sum() under `torch.long`
     Args:
@@ -27,9 +27,9 @@ def sliding_window_sum(x: torch.Tensor, window_size: Sequence[int]) -> torch.Lon
     spatial_dims = len(window_size)
 
     # multi-dimensional partial sum
-    s = x.long()
+    s = x.to(dtype)
     for i in range(1, spatial_dims + 1):
-        s = s.cumsum(i)
+        s = s.cumsum(i, dtype=dtype)
     s = nnf.pad(s, (1, 0) * spatial_dims)
     ret = s.new_zeros(x.shape[0], *ret_spatial_shape)
 
@@ -38,8 +38,12 @@ def sliding_window_sum(x: torch.Tensor, window_size: Sequence[int]) -> torch.Lon
         if dim == spatial_dims:
             ret += sign * s[:, *index]
             return
-        dfs(dim + 1, index + (slice(window_size[dim], None), ), sign)
-        dfs(dim + 1, index + (slice(None, -window_size[dim]), ), -sign)
+        if sign > 0:
+            dfs(dim + 1, index + (slice(window_size[dim], None), ), sign)
+            dfs(dim + 1, index + (slice(None, -window_size[dim]), ), -sign)
+        else:
+            dfs(dim + 1, index + (slice(None, -window_size[dim]),), -sign)
+            dfs(dim + 1, index + (slice(window_size[dim], None),), sign)
 
     dfs(0, (), 1)
     return ret
