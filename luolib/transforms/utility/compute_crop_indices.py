@@ -18,7 +18,9 @@ __all__ = [
 
 def sliding_window_sum(x: torch.Tensor, window_size: Sequence[int]) -> torch.LongTensor:
     """
-    Be careful about value overflow
+    Make sure no value overflow for x.sum() under `torch.long`
+    Args:
+        x: shape: (c, *spatial), integer type
     """
     window_size = np.array(window_size)
     ret_spatial_shape = x.shape[1:] - window_size + 1

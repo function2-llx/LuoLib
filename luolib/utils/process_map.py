@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from itertools import starmap
 from operator import length_hint
 
@@ -10,7 +11,7 @@ __all__ = [
     'process_map',
 ]
 
-def process_map(fn, *iterables, new_mapper: bool = True, **tqdm_kwargs):
+def process_map(fn: Callable, *iterables, new_mapper: bool = True, **tqdm_kwargs):
     """When max_workers = 0, this function will call normal tqdm"""
     max_workers = tqdm_kwargs.pop('max_workers', None)
     if new_mapper:
