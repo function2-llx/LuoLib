@@ -20,7 +20,7 @@ class CacheDatasetConf:
 @dataclass(kw_only=True)
 class DataLoaderConf:
     train_batch_size: int
-    val_batch_size: int
+    val_batch_size: int = 1
     num_batches: int
     num_workers: int = 8
     pin_memory: bool = True
@@ -53,6 +53,7 @@ class ExpDataModuleBase(LightningDataModule):
         )
 
     def get_train_collate_fn(self):
+        # TODO: investigate whether `self` will be copied to worker processes and the memory consumption
         from luolib.data.utils import list_data_collate
         return list_data_collate
 
