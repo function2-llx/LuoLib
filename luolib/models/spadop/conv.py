@@ -9,19 +9,23 @@ from torch.nn import functional as nnf
 from monai.networks.blocks import get_output_padding, get_padding
 from monai.utils import InterpolateMode, ensure_tuple_rep
 
-from luolib.types import param3_t
+from luolib.types import param3_t, tuple3_t
 from luolib.utils import RGB_TO_GRAY_WEIGHT
 from .tensor import SpatialTensor
+from .resample import resample
 
 __all__ = [
     'Conv3d',
     'InputConv3D',
     'OutputConv3D',
     'TransposedConv3d',
+    'ConvTranspose3d',
     'MaxPool',
 ]
 
 class Conv3d(nn.Conv3d):
+    kernel_size: tuple3_t[int]
+
     @staticmethod
     def _check_depth_adaptable(kernel_size: int, stride: int):
         assert stride & stride - 1 == 0, 'only power of 2 is supported'
@@ -42,6 +46,7 @@ class Conv3d(nn.Conv3d):
         dtype=None,
         adaptive: bool = True,
         d_inflation: Literal['average', 'center'] = 'average',
+        interpolate_2d: bool = False,
         **kwargs,
     ):
         if padding != 0:
@@ -59,13 +64,14 @@ class Conv3d(nn.Conv3d):
             self.padding = get_padding(self.kernel_size, self.stride)
             assert self.padding_mode == 'zeros'
         self.inflation = d_inflation
+        self.interpolate_2d = interpolate_2d
         assert d_inflation in ['average', 'center']
 
     def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
         weight_key = f'{prefix}weight'
         if (weight := state_dict.get(weight_key)) is not None and weight.ndim + 1 == self.weight.ndim:
-            if weight.shape[2:] != self.kernel_size[1:]:
-                weight = nnf.interpolate(weight, self.kernel_size[1:], mode='bicubic')
+            if weight.shape[2:] != self.kernel_size[1:] and self.interpolate_2d:
+                weight = resample(weight, self.kernel_size[1:], scale=True)
             d = self.kernel_size[0]
             match self.inflation:
                 case 'average':
@@ -131,13 +137,14 @@ class InputConv3D(Conv3d):
         dtype=None,
         adaptive: bool = True,
         d_inflation: Literal['average', 'center'] = 'average',
+        interpolate_2d: bool = False,
         force: bool = False,
         **kwargs,
     ):
         super().__init__(
             in_channels, out_channels, kernel_size, stride, padding,
             dilation, groups, bias, padding_mode, device, dtype,
-            adaptive, d_inflation, **kwargs,
+            adaptive, d_inflation, interpolate_2d, **kwargs,
         )
         self.force = force
 
@@ -284,7 +291,7 @@ class AdaptiveInterpolationUpsampleWithPostConv(AdaptiveInterpolationUpsample):
         x = self.conv(x)
         return x
 
-class TransposedConv3d(nn.ConvTranspose3d):
+class ConvTranspose3d(nn.ConvTranspose3d):
     @staticmethod
     def _check_depth_adaptable(kernel_size: int, stride: int):
         assert stride & stride - 1 == 0, 'only power of 2 is supported'
@@ -302,45 +309,54 @@ class TransposedConv3d(nn.ConvTranspose3d):
         padding_mode: str = 'zeros',
         device=None,
         dtype=None,
+        adaptive: bool = True,
     ):
         super().__init__(
             in_channels, out_channels, kernel_size, stride, 0, 0,
             groups, bias, dilation, padding_mode, device, dtype,
         )
+        self.adaptive = adaptive
         assert self.stride[0] == self.stride[1] == self.stride[2], 'only isotropic stride is supported'
         self._check_depth_adaptable(self.kernel_size[0], self.stride[0])
         self.num_upsamples = self.stride[1].bit_length() - 1
         self.padding = get_padding(self.kernel_size, self.stride)
         self.output_padding = get_output_padding(self.kernel_size, self.stride, self.padding)
 
-    def forward(self, x: SpatialTensor, output_size=None):
-        assert output_size is None
-        stride = list(self.stride)
-        padding = list(self.padding)
-        output_padding = list(self.output_padding)
-        if self.num_upsamples <= x.num_remained_d_upsamples:
-            # no adaption
-            weight = self.weight
-        elif self.kernel_size[0] == self.stride[0]:
-            # KpSp -> KqSq, where q | p
-            stride[0] = 1 << x.num_remained_d_upsamples
-            weight = einops.reduce(
-                self.weight,
-                'co ci (dr dc) ... -> co ci dr ...',
-                'sum',
-                dr=stride[0],
+    def forward(self, x: torch.Tensor, output_size=None):
+        if self.adaptive:
+            x: SpatialTensor
+            assert output_size is None
+            stride = list(self.stride)
+            padding = list(self.padding)
+            output_padding = list(self.output_padding)
+            if self.num_upsamples <= x.num_remained_d_upsamples:
+                # no adaption
+                weight = self.weight
+            elif self.kernel_size[0] == self.stride[0]:
+                # KpSp -> KqSq, where q | p
+                stride[0] = 1 << x.num_remained_d_upsamples
+                weight = einops.reduce(
+                    self.weight,
+                    'co ci (dr dc) ... -> co ci dr ...',
+                    'sum',
+                    dr=stride[0],
+                )
+            else:
+                # K4S2, K3S2 -> K1S1
+                stride[0] = 1
+                weight = self.weight.sum(dim=2, keepdim=True)
+                padding[0] = output_padding[0]
+            x = nnf.conv_transpose3d(
+                x, weight, self.bias, stride, padding, output_padding,
+                self.groups, self.dilation,
             )
+            x.num_downsamples -= self.num_upsamples
         else:
-            # K4S2, K3S2 -> K1S1
-            stride[0] = 1
-            weight = self.weight.sum(dim=2, keepdim=True)
-            padding[0] = output_padding[0]
-        x: SpatialTensor = nnf.conv_transpose3d(
-            x, weight, self.bias, stride, padding, output_padding,
-            self.groups, self.dilation,
-        )
-        x.num_downsamples -= self.num_upsamples
+            x = super().forward(x)
         return x
+
+# TransposedConv3d is deprecated
+TransposedConv3d = ConvTranspose3d
 
 class AdaptiveTransposedConvUpsample(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, stride: int):
