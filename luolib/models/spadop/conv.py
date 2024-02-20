@@ -64,6 +64,8 @@ class Conv3d(nn.Conv3d):
     def _load_from_state_dict(self, state_dict: dict[str, torch.Tensor], prefix: str, *args, **kwargs):
         weight_key = f'{prefix}weight'
         if (weight := state_dict.get(weight_key)) is not None and weight.ndim + 1 == self.weight.ndim:
+            if weight.shape[2:] != self.kernel_size[1:]:
+                weight = nnf.interpolate(weight, self.kernel_size[1:], mode='bicubic')
             d = self.kernel_size[0]
             match self.inflation:
                 case 'average':
