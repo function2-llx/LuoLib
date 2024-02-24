@@ -6,6 +6,7 @@ import einops
 import numpy as np
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 from xformers import ops as xops
 
 from monai.networks.blocks import MLPBlock
@@ -14,7 +15,7 @@ from monai.utils import ensure_tuple_rep
 
 from luolib.utils import channel_first, channel_last
 from ..layers import Act
-from ..utils import forward_maybe_grad_ckpt
+from ..utils import forward_gc
 from ..param import NoWeightDecayParameter
 from .tensor import SpatialTensor
 
@@ -314,8 +315,8 @@ class SwinLayer(nn.Module):
             it.cycle([None, shift_attn_mask]),
         ):
             block: SwinTransformerBlock
-            x = forward_maybe_grad_ckpt(
-                block, self.training and self.grad_ckpt,
+            x = forward_gc(
+                block, self.training and self.grad_ckpt, checkpoint,
                 x, window_size, block_shift_size, block_attn_mask, relative_position_index,
             )
         x = self.last_norm(x)

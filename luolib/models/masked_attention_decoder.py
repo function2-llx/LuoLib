@@ -5,6 +5,7 @@ import einops
 import torch
 from torch import nn
 from torch.nn import functional as nnf
+from xformers import checkpoint
 
 from monai.networks.blocks import MLPBlock
 
@@ -16,7 +17,7 @@ from .blocks import (
 )
 from .init import init_common
 from .param import NoWeightDecayParameter
-from .utils import forward_maybe_grad_ckpt
+from .utils import forward_gc
 
 __all__ = [
     'MaskedAttentionDecoder',
@@ -273,8 +274,8 @@ class MaskedAttentionDecoder(nn.Module):
             else:
                 attn_bias = None
 
-            hidden_states = forward_maybe_grad_ckpt(
-                layer, self.training and self.gradient_checkpointing,
+            hidden_states = forward_gc(
+                layer, self.training and self.gradient_checkpointing, checkpoint,
                 hidden_states, key_hidden_states[level_index], key_position_embeddings[level_index], attn_bias,
             )
             mask_embedding = self.mask_embedding_norms[idx](hidden_states)

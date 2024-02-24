@@ -5,6 +5,7 @@ from typing import final
 
 from lightning import LightningDataModule, LightningModule as LightningModuleBase
 from lightning.pytorch.utilities.types import STEP_OUTPUT
+from peft import PeftModel
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
 from torch.optim import Optimizer
@@ -22,9 +23,18 @@ class LightningModule(LightningModuleBase):
         # TODO: move log_grad_norm to some callback
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
+        self._peft_model = None
 
     def get_decay_keys(self) -> set[str]:
         return infer_weight_decay_keys(self)
+
+    @property
+    def peft_model(self):
+        return self._peft_model
+
+    @peft_model.setter
+    def peft_model(self, peft_model: PeftModel):
+        self._peft_model = peft_model
 
     @cache
     @final

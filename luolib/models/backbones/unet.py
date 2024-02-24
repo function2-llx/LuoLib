@@ -2,11 +2,12 @@ from collections.abc import Sequence
 
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint
 
 from luolib.types import spatial_param_t
 from ..blocks import BasicConvLayer
 from ..layers import Act, Norm
-from ..utils import forward_maybe_grad_ckpt
+from ..utils import forward_gc
 
 __all__ = [
     'UNetBackbone',
@@ -49,6 +50,6 @@ class UNetBackbone(nn.Module):
     def forward(self, x: torch.Tensor) -> list[torch.Tensor]:
         feature_maps = []
         for layer in self.layers:
-            x = forward_maybe_grad_ckpt(layer, self.training and self.grad_ckpt, x)
+            x = forward_gc(layer, self.training and self.grad_ckpt, checkpoint, x)
             feature_maps.append(x)
         return feature_maps

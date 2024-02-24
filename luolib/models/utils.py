@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
@@ -29,7 +31,7 @@ def load_ckpt(model: nn.Module, ckpt_or_path: dict | PathLike | None, state_dict
     print('missing keys:', missing_keys)
     print('unexpected keys:', unexpected_keys)
 
-def forward_maybe_grad_ckpt(model: nn.Module, grad_ckpt: bool, *args, **kwargs):
-    if grad_ckpt:
-        return checkpoint(model, *args, **kwargs)
+def forward_gc(model: nn.Module, enable: bool, gc_func: Callable, *args, **kwargs):
+    if enable:
+        return gc_func(model, *args, **kwargs)
     return model(*args, **kwargs)

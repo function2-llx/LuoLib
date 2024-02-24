@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import Callable, Literal
 
-from jsonargparse import Namespace
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary
 from lightning.pytorch.cli import (
     LightningArgumentParser,
@@ -13,9 +12,9 @@ import torch
 
 from luolib.datamodule import CrossValDataModule, ExpDataModuleBase
 from luolib.utils import fall_back_none
-from .utils import OptimizationConf
 from .module import LightningModule
 from .trainer import Trainer
+from .utils import OptimizationConf
 
 class SaveConfigCallback(SaveConfigCallbackBase):
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str):
@@ -28,6 +27,8 @@ class SaveConfigCallback(SaveConfigCallbackBase):
 class LightningCLI(LightningCLIBase):
     _subcommand_preparing: str | None = None
     trainer: Trainer
+    model: LightningModule
+    datamodule: ExpDataModuleBase
 
     def __init__(
         self,
@@ -88,7 +89,7 @@ class LightningCLI(LightningCLIBase):
         return self._subcommand_preparing in {'fit', 'play'}
 
     def add_arguments_to_parser(self, parser: LightningArgumentParser):
-        parser.add_argument('--float32_matmul_precision', type=Literal['medium', 'high', 'highest'], default='high')
+        parser.add_argument('--float32_matmul_precision', type=Literal['medium', 'high', 'highest'], default='medium')
         parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
         parser.add_argument('--compile', type=bool, default=True)
         parser.add_argument('--trace_numpy', type=bool, default=False)
