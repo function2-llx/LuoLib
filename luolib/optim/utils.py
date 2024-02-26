@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Callable, Iterable, TypedDict
 
+from peft.tuners.lora import LoraLayer
 from torch import nn
 from torch.optim import Optimizer
 
@@ -28,6 +29,7 @@ def infer_weight_decay_keys(module: nn.Module):
       - weight of embedding
       - explicit NoWeightDecayParameter
       - defined in `no_weight_decay` method of a module
+      - weight from LoRA layer
     """
     # modify from https://github.com/karpathy/minGPT/blob/master/mingpt/model.py, `configure_optimizers`
     from torch.nn.modules.conv import _ConvNd
@@ -50,6 +52,9 @@ def infer_weight_decay_keys(module: nn.Module):
     for mn, m in module.named_modules():
         if hasattr(m, 'no_weight_decay'):
             no_decay |= {f'{mn}.{pn}' if mn else pn for pn in m.no_weight_decay()}
+        if isinstance(m, (LoraLayer, nn.Module)):
+            # weights from LoRA layers will not be decayed
+            no_decay |= {pn for pn, p in m.named_parameters(prefix=mn)}
         for pn, p in m.named_parameters(prefix=mn, recurse=False):
             if not p.requires_grad:
                 continue
@@ -61,7 +66,9 @@ def infer_weight_decay_keys(module: nn.Module):
                 no_decay.add(pn)
             elif pn.endswith('.weight') and isinstance(m, whitelist_weight_modules):
                 # weights of whitelist modules will be weight decayed
-                decay.add(pn)
+                if pn not in no_decay:
+                    # do not add LoRA weights again
+                    decay.add(pn)
             elif isinstance(m, nn.MultiheadAttention):
                 if pn.endswith('_proj_weight'):
                     # projection weights of MultiheadAttention modules will be weight decayed

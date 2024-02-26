@@ -101,7 +101,7 @@ class LightningCLI(LightningCLIBase):
             parser.link_arguments('logger', 'trainer.logger')
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
         parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
-        if self._subcommand_preparing in {'fit', 'play'}:
+        if self.is_preparing_fit:
             parser.add_argument('--optimization', type=list[OptimizationConf], enable_path=True)
         super().add_arguments_to_parser(parser)
 
@@ -109,18 +109,15 @@ class LightningCLI(LightningCLIBase):
         config = self.config[self.subcommand]
         if self.subcommand in {'fit', 'validate', 'play'}:
             logger_args = config.logger.init_args
-            save_dir = Path(logger_args.save_dir) / logger_args.name
+            save_dir = Path(logger_args.save_dir) / logger_args.name / f'seed-{config.seed_everything}'
             # wandb wants to use a directory already existing: https://github.com/wandb/wandb/issues/714#issuecomment-565870686
             Path(save_dir).mkdir(exist_ok=True, parents=True)
             logger_args.save_dir = str(save_dir)
-        super().before_instantiate_classes()
-
-    def _run_subcommand(self, subcommand: str):
-        config = self.config_init[subcommand]
+        # tqdm (and so on) may initialize multiprocessing context
         torch.multiprocessing.set_start_method(config.mp_start_method)
         torch.multiprocessing.set_sharing_strategy(config.mp_sharing_strategy)
         torch.set_float32_matmul_precision(config.float32_matmul_precision)
-        super()._run_subcommand(subcommand)
+        super().before_instantiate_classes()
 
     def fit(self, model: LightningModule, **kwargs):
         model.optimization = self._get(self.config_init, 'optimization')

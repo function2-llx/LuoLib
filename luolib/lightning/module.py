@@ -23,18 +23,23 @@ class LightningModule(LightningModuleBase):
         # TODO: move log_grad_norm to some callback
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
-        self._peft_model = None
 
     def get_decay_keys(self) -> set[str]:
         return infer_weight_decay_keys(self)
 
     @property
-    def peft_model(self):
-        return self._peft_model
+    def peft_model(self) -> PeftModel:
+        return self._peft_model[0]
 
     @peft_model.setter
-    def peft_model(self, peft_model: PeftModel):
-        self._peft_model = peft_model
+    def peft_model(self, value):
+        self._peft_model = value
+
+    def __setattr__(self, name: str, value: ...) -> None:
+        if name == 'peft_model':
+            # let nn.Module not register it as a submodule
+            value = (value, )
+        super().__setattr__(name, value)
 
     @cache
     @final

@@ -35,9 +35,9 @@ class Trainer(TrainerBase):
         logger = self.logger
         if logger is not None and self.is_global_zero:
             assert isinstance(logger, WandbLogger)
-            seed = os.getenv('PL_GLOBAL_SEED')
             root_dir = Path(logger.save_dir)
-            log_dir = root_dir / f'seed-{seed}' / f'{Path(logger.experiment.dir).parent.name}'
+            # append something like: run-{yyyymmdd_hhmmss}-{run_id}
+            log_dir = root_dir / f'{Path(logger.experiment.dir).parent.name}'
         else:
             log_dir = None
         log_dir = self.strategy.broadcast(log_dir)
