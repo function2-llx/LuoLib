@@ -10,14 +10,19 @@ from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
 from torch.optim import Optimizer
 
+from luolib import lightning as lpl
 from luolib.optim import infer_weight_decay_keys
 from luolib.scheduler import HybridScheduler
 from luolib.utils.grad import grad_norm
-from .trainer import Trainer
+
 from .utils import OptimizationConf, build_hybrid_optimization
 
+__all__ = [
+    'LightningModule',
+]
+
 class LightningModule(LightningModuleBase):
-    trainer: Trainer
+    trainer: lpl.Trainer
 
     def __init__(self, *, log_grad_norm: bool = True, **kwargs):
         # TODO: move log_grad_norm to some callback
