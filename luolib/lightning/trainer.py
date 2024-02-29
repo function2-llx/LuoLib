@@ -1,11 +1,18 @@
 from functools import cached_property
-import os
 from pathlib import Path
+from typing import Any, Optional
 import warnings
 
 from lightning import Trainer as TrainerBase
 from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT
 from lightning.pytorch.loggers import WandbLogger
+
+from luolib import lightning as lpl
+
+__all__ = [
+    'Trainer',
+    'PeftTrainer',
+]
 
 class Trainer(TrainerBase):
     def __init__(
@@ -14,12 +21,14 @@ class Trainer(TrainerBase):
         precision: _PRECISION_INPUT = '16-mixed',
         check_val_every_n_epoch: int | None = None,
         benchmark: bool = True,
+        use_distributed_sampler: bool = False,
         **kwargs,
     ):
         super().__init__(
             precision=precision,
             check_val_every_n_epoch=check_val_every_n_epoch,
             benchmark=benchmark,
+            use_distributed_sampler=use_distributed_sampler,
             **kwargs,
         )
 
@@ -45,3 +54,27 @@ class Trainer(TrainerBase):
 
     def play(self, *, ckpt_path: str | None, **kwargs):
         """have to define this function in Trainer or CLI can't find the `ckpt_path` parameter"""
+
+
+class PeftTrainer(Trainer):
+    lightning_module: lpl.LightningModule
+
+    @property
+    def peft_model(self):
+        return self.lightning_module.peft_model
+
+    def save_checkpoint(
+        self, filepath, weights_only: bool = False, storage_options: Optional[Any] = None,
+    ) -> None:
+        if self.model is None:
+            raise AttributeError(
+                "Saving a checkpoint is only possible if a model is attached to the Trainer. Did you call"
+                " `Trainer.save_checkpoint()` before calling `Trainer.{fit,validate,test,predict}`?"
+            )
+        checkpoint = self._checkpoint_connector.dump_checkpoint(weights_only)
+        checkpoint.pop('state_dict')
+        save_dir = Path(filepath)
+        if self.is_global_zero:
+            self.peft_model.save_pretrained(str(save_dir / 'adapter'))
+        self.strategy.save_checkpoint(checkpoint, save_dir / 'state.ckpt', storage_options=storage_options)
+        self.strategy.barrier("Trainer.save_checkpoint")
