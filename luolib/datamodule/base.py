@@ -5,6 +5,7 @@ from typing import Callable, Sequence, final
 
 import cytoolz
 from lightning import LightningDataModule
+from lightning.fabric.utilities.distributed import DistributedSamplerWrapper
 from torch.utils.data import Dataset as TorchDataset, RandomSampler
 
 from luolib.utils import DataKey
@@ -60,15 +61,24 @@ class ExpDataModuleBase(LightningDataModule):
     def train_dataloader(self):
         dataset = self.train_dataset()
         conf = self.dataloader_conf
+        sampler = RandomSampler(
+            # the only useful information provided by `data_source` is its length
+            range(len(dataset)),
+            replacement=False,
+            num_samples=conf.num_batches * conf.train_batch_size * self.trainer.world_size,
+        )
+        if self.trainer.world_size > 1:
+            # TODO: make this lazy (_DatasetSamplerWrapper)
+            sampler = DistributedSamplerWrapper(
+                sampler,
+                num_replicas=self.trainer.world_size,
+                rank=self.trainer.global_rank,
+                shuffle=False,
+            )
         return DataLoader(
             dataset,
             batch_size=conf.train_batch_size,
-            sampler=RandomSampler(
-                # the only useful information provided by `data_source` is its length
-                range(len(dataset)),
-                replacement=False,
-                num_samples=conf.num_batches * conf.train_batch_size,
-            ),
+            sampler=sampler,
             num_workers=conf.num_workers,
             pin_memory=conf.pin_memory,
             prefetch_factor=conf.prefetch_factor,
