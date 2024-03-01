@@ -55,6 +55,38 @@ class Trainer(TrainerBase):
     def play(self, *, ckpt_path: str | None, **kwargs):
         """have to define this function in Trainer or CLI can't find the `ckpt_path` parameter"""
 
+    def _check_save_checkpoint(self):
+        if self.model is None:
+            raise AttributeError(
+                "Saving a checkpoint is only possible if a model is attached to the Trainer. Did you call"
+                " `Trainer.save_checkpoint()` before calling `Trainer.{fit,validate,test,predict}`?"
+            )
+
+    def dump_checkpoint(self, weights_only: bool) -> dict:
+        return self._checkpoint_connector.dump_checkpoint(weights_only)
+
+    def _save_checkpoint_with_strategy(self, checkpoint: dict, filepath, storage_options: ..., local: bool):
+        if local:
+            # NOTE: this is copied from the `Strategy` class, other implementations are not supported
+            self.strategy.checkpoint_io.save_checkpoint(checkpoint, filepath, storage_options=storage_options)
+        else:
+            self.strategy.save_checkpoint(checkpoint, filepath, storage_options)
+
+    def save_checkpoint(
+        self,
+        filepath,
+        weight_only: bool = False,
+        storage_options: Optional[Any] = None,
+        local: bool = False,
+    ) -> None:
+        if local:
+            self._check_save_checkpoint()
+            checkpoint = self.dump_checkpoint(weight_only)
+            self._save_checkpoint_with_strategy(
+                checkpoint, filepath, storage_options, False,
+            )
+        else:
+            super().save_checkpoint(filepath, weight_only, storage_options)
 
 class PeftTrainer(Trainer):
     lightning_module: lpl.LightningModule
@@ -63,18 +95,25 @@ class PeftTrainer(Trainer):
     def peft_model(self):
         return self.lightning_module.peft_model
 
-    def save_checkpoint(
-        self, filepath, weights_only: bool = False, storage_options: Optional[Any] = None,
-    ) -> None:
-        if self.model is None:
-            raise AttributeError(
-                "Saving a checkpoint is only possible if a model is attached to the Trainer. Did you call"
-                " `Trainer.save_checkpoint()` before calling `Trainer.{fit,validate,test,predict}`?"
-            )
-        checkpoint = self._checkpoint_connector.dump_checkpoint(weights_only)
+    def dump_checkpoint(self, weights_only: bool):
+        checkpoint = super().dump_checkpoint(weights_only)
         checkpoint.pop('state_dict')
-        save_dir = Path(filepath)
-        if self.is_global_zero:
+        return checkpoint
+
+    def save_checkpoint(
+        self,
+        save_dir,
+        weights_only: bool = False,
+        storage_options: Optional[Any] = None,
+        local: bool = False,
+    ) -> None:
+        self._check_save_checkpoint()
+        save_dir = Path(save_dir)
+        if local or self.is_global_zero:
             self.peft_model.save_pretrained(str(save_dir / 'adapter'))
-        self.strategy.save_checkpoint(checkpoint, save_dir / 'state.ckpt', storage_options=storage_options)
-        self.strategy.barrier("Trainer.save_checkpoint")
+        checkpoint = self.dump_checkpoint(weights_only)
+        self._save_checkpoint_with_strategy(
+            checkpoint, save_dir / 'state.ckpt', storage_options, local,
+        )
+        if not local:
+            self.strategy.barrier("Trainer.save_checkpoint")
