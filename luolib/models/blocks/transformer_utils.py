@@ -1,11 +1,11 @@
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import einops
 import torch
 from torch import nn
 
 from torch.nn import functional as nnf
-from xformers import ops as xops
 
 from luolib.utils import fall_back_none
 from ..param import NoWeightDecayParameter
@@ -16,6 +16,9 @@ __all__ = [
     'with_pos_embed',
     'MemoryEfficientAttention',
 ]
+
+if TYPE_CHECKING:
+    from xformers import ops as xops
 
 def with_pos_embed(x: torch.Tensor, pos_embed: torch.Tensor | None = None):
     return x if pos_embed is None else x + pos_embed
@@ -97,8 +100,14 @@ class MemoryEfficientAttention(nn.Module):
         query: torch.Tensor,
         key: torch.Tensor | None = None,
         value: torch.Tensor | None = None,
-        attn_bias: torch.Tensor | xops.AttentionBias | None = None,
+        attn_bias=None,
     ):
+        """
+        I add this docstring because Python sucks
+        Args:
+            attn_bias (torch.Tensor | xops.AttentionBias)
+        """
+        from xformers import ops as xops  # noqa
         key = fall_back_none(key, query)
         value = fall_back_none(value, key)
         q = self.expand_head(nnf.linear(query, self.q_proj.weight, self.q_bias))

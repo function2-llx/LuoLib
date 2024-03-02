@@ -3,11 +3,11 @@ from functools import lru_cache
 import itertools as it
 
 import einops
+from lightning_utilities.core.imports import lazy_import
 import numpy as np
 import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint
-from xformers import ops as xops
 
 from monai.networks.blocks import MLPBlock
 from monai.networks.layers import DropPath
@@ -63,6 +63,9 @@ class WindowAttention(nn.Module):
         nn.init.trunc_normal_(self.relative_position_bias_table, std=0.02)
 
     def forward(self, x: torch.Tensor, mask: torch.BoolTensor | None, relative_position_index: torch.LongTensor):
+        # make it lazy since it will initialize CUDA context: https://github.com/facebookresearch/xformers/blob/v0.0.24/xformers/__init__.py#L52
+        from xformers import ops as xops
+
         qkv = einops.rearrange(
             self.qkv(x), 'n l (qkv nh ch) -> qkv n l nh ch', qkv=3, nh=self.num_heads,
         ).contiguous()
