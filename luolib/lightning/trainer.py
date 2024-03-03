@@ -91,6 +91,10 @@ class Trainer(TrainerBase):
 class PeftTrainer(Trainer):
     lightning_module: lpl.LightningModule
 
+    def __init__(self, *, save_embedding_layers: bool | str, **kwargs):
+        super().__init__(**kwargs)
+        self.save_embedding_layers = save_embedding_layers
+
     @property
     def peft_model(self):
         return self.lightning_module.peft_model
@@ -110,7 +114,12 @@ class PeftTrainer(Trainer):
         self._check_save_checkpoint()
         save_dir = Path(save_dir)
         if local or self.is_global_zero:
-            self.peft_model.save_pretrained(str(save_dir / 'adapter'))
+            self.peft_model.save_pretrained(
+                # NOTE: if using save_embedding_layers='auto', it may access the HF hub every time, and your program will
+                # crush with no mercy when the Internet becomes unavailable during training due to uncaught exception
+                # see: https://github.com/huggingface/peft/blob/v0.8.2/src/peft/utils/save_and_load.py#L146
+                str(save_dir / 'adapter'), save_embedding_layers=self.save_embedding_layers,
+            )
         checkpoint = self.dump_checkpoint(weights_only)
         self._save_checkpoint_with_strategy(
             checkpoint, save_dir / 'state.ckpt', storage_options, local,
