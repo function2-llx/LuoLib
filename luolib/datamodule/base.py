@@ -58,6 +58,10 @@ class ExpDataModuleBase(LightningDataModule):
         from luolib.data.utils import list_data_collate
         return list_data_collate
 
+    @property
+    def world_size(self):
+        return 1 if self.trainer is None else self.trainer.world_size
+
     def train_dataloader(self):
         dataset = self.train_dataset()
         conf = self.dataloader_conf
@@ -65,13 +69,13 @@ class ExpDataModuleBase(LightningDataModule):
             # the only useful information provided by `data_source` is its length
             range(len(dataset)),
             replacement=False,
-            num_samples=conf.num_batches * conf.train_batch_size * self.trainer.world_size,
+            num_samples=conf.num_batches * conf.train_batch_size * self.world_size,
         )
-        if self.trainer.world_size > 1:
+        if self.world_size > 1:
             # TODO: make this lazy (_DatasetSamplerWrapper)
             sampler = DistributedSamplerWrapper(
                 sampler,
-                num_replicas=self.trainer.world_size,
+                num_replicas=self.world_size,
                 rank=self.trainer.global_rank,
                 shuffle=False,
             )
