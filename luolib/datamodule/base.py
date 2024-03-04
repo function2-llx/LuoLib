@@ -20,9 +20,9 @@ class CacheDatasetConf:
 
 @dataclass(kw_only=True)
 class DataLoaderConf:
-    train_batch_size: int
+    train_batch_size: int | None = None
     val_batch_size: int = 1
-    num_batches: int
+    num_batches: int | None = None
     num_workers: int = 8
     pin_memory: bool = True
     persistent_workers: bool = True
@@ -65,6 +65,7 @@ class ExpDataModuleBase(LightningDataModule):
     def train_dataloader(self):
         dataset = self.train_dataset()
         conf = self.dataloader_conf
+        assert conf.train_batch_size is not None and conf.num_batches is not None
         sampler = RandomSampler(
             # the only useful information provided by `data_source` is its length
             range(len(dataset)),
@@ -72,7 +73,7 @@ class ExpDataModuleBase(LightningDataModule):
             num_samples=conf.num_batches * conf.train_batch_size * self.world_size,
         )
         if self.world_size > 1:
-            # TODO: make this lazy (_DatasetSamplerWrapper)
+            # TODO: make this lazy (_DatasetSamplerWrapper). currently, it will consume the whole sampler at once
             sampler = DistributedSamplerWrapper(
                 sampler,
                 num_replicas=self.world_size,
