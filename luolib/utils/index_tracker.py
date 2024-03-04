@@ -20,6 +20,7 @@ class IndexTracker:
         choose_max: bool = False,
         vmin: float | None = None,
         vmax: float | None = None,
+        labels: list[str] | None = None,
     ):
         img = convert_to_numpy(img)
         if seg is not None:
@@ -54,7 +55,7 @@ class IndexTracker:
             )
             from matplotlib.colorbar import Colorbar
             cbar: matplotlib.colorbar.Colorbar = fig.colorbar(self.ax_seg)
-            cbar.set_ticks(np.arange(num_classes))
+            cbar.set_ticks(np.arange(num_classes), labels=labels)
 
         self.update()
         fig.canvas.mpl_connect('scroll_event', self.on_scroll)
