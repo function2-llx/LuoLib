@@ -47,6 +47,9 @@ def execute_compose(
     return data
 
 class OneOf(mt.OneOf):
+    """
+    temporary solution for https://github.com/Project-MONAI/MONAI/issues/7139
+    """
     def __init__(
         self,
         transforms: Sequence[Callable] | Callable | None = None,
