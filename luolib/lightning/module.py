@@ -40,9 +40,12 @@ class LightningModule(LightningModuleBase):
     def peft_model(self) -> PeftModel:
         return self._peft_model[0]
 
-    @peft_model.setter
-    def peft_model(self, value):
-        self._peft_model = value
+    # @peft_model.setter
+    # def peft_model(self, value):
+    #     self._peft_model = value
+
+    def set_peft_model(self, value: PeftModel):
+        self._peft_model = (value, )
 
     @property
     def batch(self):
@@ -99,9 +102,10 @@ class LightningModule(LightningModuleBase):
                     super().lr_scheduler_step(inner_scheduler, metric)
 
     def on_after_backward(self):
-        for name, param in self.named_parameters():
-            if param.requires_grad and param.grad is None:
-                print(f'[rank {self.global_rank}] none grad', name)
+        if self.trainer.world_size > 1:
+            for name, param in self.named_parameters():
+                if param.requires_grad and param.grad is None:
+                    print(f'[rank {self.global_rank}] none grad', name)
 
     def configure_gradient_clipping(
         self,
