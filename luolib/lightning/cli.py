@@ -90,7 +90,10 @@ class LightningCLI(LightningCLIBase):
 
     def add_arguments_to_parser(self, parser: LightningArgumentParser):
         parser.add_argument('--float32_matmul_precision', type=Literal['medium', 'high', 'highest'], default='medium')
-        parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
+        if self.subclass_mode_data:
+            parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
+        else:
+            parser.link_arguments('trainer.max_steps', 'data.dataloader.num_batches')
         parser.add_argument('--compile', type=bool, default=True)
         parser.add_argument('--trace_numpy', type=bool, default=False)
         if self.is_preparing_fit:
