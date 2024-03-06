@@ -33,10 +33,12 @@ class PlainConvUNetDecoder(nn.Module):
     ):
         """
         Args:
+            kernel_sizes: kernel_sizes[-1] is not used
             strides: strides[0] is not used (usually = 1)
             layer_channels: resolution: high → low
         """
         super().__init__(**kwargs)
+        self.layer_channels = layer_channels
         num_layers = len(layer_channels) - 1
         self.layers = nn.ModuleList([
             UNetUpLayer(
