@@ -1,7 +1,7 @@
-from collections.abc import Hashable, Mapping
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
-from typing import Callable, Sequence, final
+from typing import final
 
 import cytoolz
 from lightning import LightningDataModule
