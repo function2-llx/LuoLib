@@ -21,15 +21,15 @@ class UNetBackbone(nn.Module):
         layer_channels: list[int],
         kernel_sizes: Sequence[spatial_param_t[int]],
         strides: Sequence[spatial_param_t[int]],
-        num_blocks: list[int] | None,
+        num_blocks: list[int] | int = 2,
         norm: str | tuple = (Norm.INSTANCE, {'affine': True}),
         act: str | tuple = Act.LEAKYRELU,
         res_block: bool = False,
     ):
         super().__init__()
         num_layers = len(layer_channels)
-        if num_blocks is None:
-            num_blocks = [2] * num_layers
+        if isinstance(num_blocks, int):
+            num_blocks = [num_blocks] * num_layers
         self.layers = nn.ModuleList([
             BasicConvLayer(
                 spatial_dims,
