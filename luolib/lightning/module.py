@@ -119,6 +119,8 @@ class LightningModule(LightningModuleBase):
         self.clip_gradients(
             optimizer, gradient_clip_val=gradient_clip_val, gradient_clip_algorithm=gradient_clip_algorithm,
         )
+        if self.log_grad_norm:
+            self.log('grad_norm-clipped', grad_norm(self))
         # save bad state for diagnosis
         # TODO: also check:
         #  - loss, but I can't get the step output, over-engineering, 作茧自缚了 :( PL should really officially support "training step context"
