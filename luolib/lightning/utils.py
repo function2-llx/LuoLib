@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 import lightning
@@ -14,7 +14,7 @@ from luolib.optim import (
     normalize_param_groups,
 )
 from luolib.scheduler import HybridScheduler, LRSchedulerConfig, LRSchedulerConfigWithCallable
-from luolib.types import named_params_t
+from luolib.types import named_param_t
 
 __all__ = [
     'OptimizationConf',
@@ -28,15 +28,16 @@ class OptimizationConf:
     lr_scheduler: LRSchedulerConfigWithCallable
 
 def create_param_groups(
-    named_parameters: named_params_t,
+    named_parameters: Iterable[named_param_t],
     optimizations: Sequence[OptimizationConf],
-) -> list[list[tuple[str, nn.Parameter]]]:
+) -> list[list[named_param_t]]:
     param_groups = [[] for _ in range(len(optimizations))]
     for pn, p in named_parameters:
         if not p.requires_grad:
             # will I ever encounter the abstract case that some parameter is optimized without gradient?
             continue
         for i, optimization in enumerate(optimizations):
+            # TODO: build a AC automaton (really?!)
             if any(pn.startswith(prefix) for prefix in ensure_tuple(optimization.prefix)):
                 param_groups[i].append((pn, p))
                 break

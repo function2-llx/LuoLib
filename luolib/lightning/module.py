@@ -68,16 +68,16 @@ class LightningModule(LightningModuleBase):
         return self.get_decay_keys()
 
     @property
-    def optimization(self):
-        return self._optimization
+    def optim(self):
+        return self._optim
 
-    @optimization.setter
-    def optimization(self, optimization: list[OptimizationConf]):
-        self._optimization = optimization
+    @optim.setter
+    def optim(self, optim: dict[str, OptimizationConf]):
+        self._optim = list(optim.values())
 
     def configure_optimizers(self):
         optimizer, lr_scheduler_config = build_hybrid_optimization(
-            self, self.optimization, self._get_decay_keys(), self.trainer,
+            self, self.optim, self._get_decay_keys(), self.trainer,
         )
         return {
             'optimizer': optimizer,
