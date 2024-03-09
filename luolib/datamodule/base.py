@@ -92,6 +92,7 @@ class ExpDataModuleBase(LightningDataModule):
         )
 
     def build_eval_dataloader(self, dataset: TorchDataset, batch_size: int):
+        # FIXME: collate_fn for eval dataloader?
         conf = self.dataloader_conf
         return DataLoader(
             dataset,

@@ -27,11 +27,17 @@ class TrainingStepContext:
 class LightningModule(LightningModuleBase):
     trainer: lpl.Trainer
 
-    def __init__(self, *, log_grad_norm: bool = True, **kwargs):
+    def __init__(
+        self, *,
+        log_grad_norm: bool = True,
+        optim: dict[str, OptimizationConf] | None = None,
+        **kwargs,
+    ):
         # TODO: should I move log_grad_norm to some callback?
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
         self.training_step_context = TrainingStepContext()
+        self.optim = None if optim is None else list(optim.values())
 
     def get_decay_keys(self) -> set[str]:
         return infer_weight_decay_keys(self)
@@ -67,13 +73,13 @@ class LightningModule(LightningModuleBase):
     def _get_decay_keys(self) -> set[str]:
         return self.get_decay_keys()
 
-    @property
-    def optim(self):
-        return self._optim
-
-    @optim.setter
-    def optim(self, optim: dict[str, OptimizationConf]):
-        self._optim = list(optim.values())
+    # @property
+    # def optim(self):
+    #     return self._optim
+    #
+    # @optim.setter
+    # def optim(self, optim: dict[str, OptimizationConf]):
+    #     self._optim = list(optim.values())
 
     def configure_optimizers(self):
         optimizer, lr_scheduler_config = build_hybrid_optimization(

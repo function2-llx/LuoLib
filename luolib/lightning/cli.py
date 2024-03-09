@@ -88,12 +88,17 @@ class LightningCLI(LightningCLIBase):
     def is_preparing_fit(self):
         return self._subcommand_preparing in {'fit', 'play'}
 
+    @property
+    def model_prefix(self):
+        return 'model.init_args' if self.subclass_mode_model else 'model'
+
+    @property
+    def data_prefix(self):
+        return 'data.init_args' if self.subclass_mode_data else 'data'
+
     def add_arguments_to_parser(self, parser: LightningArgumentParser):
         parser.add_argument('--float32_matmul_precision', type=Literal['medium', 'high', 'highest'], default='medium')
-        if self.subclass_mode_data:
-            parser.link_arguments('trainer.max_steps', 'data.init_args.dataloader.num_batches')
-        else:
-            parser.link_arguments('trainer.max_steps', 'data.dataloader.num_batches')
+        parser.link_arguments('trainer.max_steps', f'{self.data_prefix}.dataloader.num_batches')
         parser.add_argument('--compile', type=bool, default=True)
         parser.add_argument('--trace_numpy', type=bool, default=False)
         if self.is_preparing_fit:
@@ -106,6 +111,7 @@ class LightningCLI(LightningCLIBase):
         parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
         if self.is_preparing_fit:
             parser.add_argument('--optim', type=dict[str, OptimizationConf], enable_path=True)
+            parser.link_arguments('optim', f'{self.model_prefix}.optim')
         super().add_arguments_to_parser(parser)
 
     def before_instantiate_classes(self):
@@ -123,7 +129,6 @@ class LightningCLI(LightningCLIBase):
         super().before_instantiate_classes()
 
     def fit(self, model: LightningModule, **kwargs):
-        model.optim = self._get(self.config_init, 'optim')
         # https://github.com/Lightning-AI/lightning/issues/17283
         if self._get(self.config, 'compile'):
             # https://github.com/pytorch/pytorch/issues/112335
