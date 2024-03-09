@@ -111,7 +111,6 @@ class LightningCLI(LightningCLIBase):
         parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
         if self.is_preparing_fit:
             parser.add_argument('--optim', type=dict[str, OptimizationConf], enable_path=True)
-            parser.link_arguments('optim', f'{self.model_prefix}.optim')
         super().add_arguments_to_parser(parser)
 
     def before_instantiate_classes(self):
@@ -129,6 +128,7 @@ class LightningCLI(LightningCLIBase):
         super().before_instantiate_classes()
 
     def fit(self, model: LightningModule, **kwargs):
+        model.optim = self._get(self.config_init, 'optim')
         # https://github.com/Lightning-AI/lightning/issues/17283
         if self._get(self.config, 'compile'):
             # https://github.com/pytorch/pytorch/issues/112335
