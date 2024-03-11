@@ -91,7 +91,7 @@ class Trainer(TrainerBase):
 class PeftTrainer(Trainer):
     lightning_module: lpl.LightningModule
 
-    def __init__(self, *, save_embedding_layers: bool | str, **kwargs):
+    def __init__(self, *, save_embedding_layers: bool | str | None = None, **kwargs):
         super().__init__(**kwargs)
         self.save_embedding_layers = save_embedding_layers
 
@@ -113,6 +113,7 @@ class PeftTrainer(Trainer):
     ) -> None:
         self._check_save_checkpoint()
         save_dir = Path(save_dir)
+        assert self.save_embedding_layers is not None
         if local or self.is_global_zero:
             self.peft_model.save_pretrained(
                 # NOTE: if using save_embedding_layers='auto', it may access the HF hub every time, and your program will

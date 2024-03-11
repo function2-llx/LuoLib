@@ -70,6 +70,14 @@ class LightningCLI(LightningCLIBase):
             **kwargs,
         )
 
+    @property
+    def active_config(self):
+        return self.config if self.subcommand is None else self.config[self.subcommand]
+
+    @property
+    def active_config_init(self):
+        return self.config_init if self.subcommand is None else self.config_init[self.subcommand]
+
     @staticmethod
     def subcommands() -> dict[str, set[str]]:
         """Defines the list of available subcommands and the arguments to skip."""
@@ -114,7 +122,7 @@ class LightningCLI(LightningCLIBase):
         super().add_arguments_to_parser(parser)
 
     def before_instantiate_classes(self):
-        config = self.config[self.subcommand]
+        config = self.active_config
         if self.subcommand in {'fit', 'validate', 'play'}:
             logger_args = config.logger.init_args
             save_dir = Path(logger_args.save_dir) / logger_args.name / f'seed-{config.seed_everything}'
