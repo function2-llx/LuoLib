@@ -5,7 +5,12 @@ import warnings
 
 from lightning import Trainer as TrainerBase
 from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT
+from lightning.fabric.plugins.precision.utils import _convert_fp_tensor
 from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.plugins import Precision
+from lightning_utilities import apply_to_collection
+import torch
+from torch import nn
 
 from luolib import lightning as lpl
 
@@ -13,6 +18,15 @@ __all__ = [
     'Trainer',
     'PeftTrainer',
 ]
+
+def _convert_input_patch(self, data: ...):
+    return apply_to_collection(data, function=_convert_fp_tensor, dtype=torch.Tensor, dst_type=torch.float32)
+
+def _convert_module_patch(self, module: nn.Module):
+    return module.float()
+
+Precision.convert_input = _convert_input_patch
+Precision.convert_module = _convert_module_patch
 
 class Trainer(TrainerBase):
     def __init__(
