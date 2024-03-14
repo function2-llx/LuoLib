@@ -17,19 +17,19 @@ from luolib.scheduler import HybridScheduler, LRSchedulerConfig, LRSchedulerConf
 from luolib.types import named_param_t
 
 __all__ = [
-    'OptimizationConf',
+    'OptimConf',
     'build_hybrid_optimization',
 ]
 
 @dataclass(kw_only=True)
-class OptimizationConf:
+class OptimConf:
     prefix: str | list[str] = ''
     optimizer: OptimizerCallable
     lr_scheduler: LRSchedulerConfigWithCallable
 
 def create_param_groups(
     named_parameters: Iterable[named_param_t],
-    optimizations: Sequence[OptimizationConf],
+    optimizations: Sequence[OptimConf],
 ) -> list[list[named_param_t]]:
     param_groups = [[] for _ in range(len(optimizations))]
     for pn, p in named_parameters:
@@ -47,7 +47,7 @@ def create_param_groups(
 
 def instantiate_optimization(
     param_groups: list[NamedParamGroup],
-    optimization: OptimizationConf,
+    optimization: OptimConf,
     weight_decay_keys: set[str],
     trainer: lightning.Trainer | None = None,
 ) -> tuple[Optimizer, LRSchedulerConfig]:
@@ -67,7 +67,7 @@ def instantiate_optimization(
 
 def build_hybrid_optimization(
     model: nn.Module,
-    optimizations: list[OptimizationConf],
+    optimizations: list[OptimConf],
     weight_decay_keys: set[str] | None = None,
     trainer: lightning.Trainer | None = None,
 ) -> tuple[HybridOptim, LRSchedulerConfig]:

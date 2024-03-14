@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
@@ -14,7 +15,7 @@ from luolib.datamodule import CrossValDataModule, ExpDataModuleBase
 from luolib.utils import fall_back_none
 from .module import LightningModule
 from .trainer import Trainer
-from .utils import OptimizationConf
+from .utils import OptimConf
 
 class SaveConfigCallback(SaveConfigCallbackBase):
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str):
@@ -23,6 +24,10 @@ class SaveConfigCallback(SaveConfigCallbackBase):
         if self.save_to_log_dir and trainer.log_dir is None:
             return
         return super().setup(trainer, pl_module, stage)
+
+@dataclass
+class OptimDict:
+    pass
 
 class LightningCLI(LightningCLIBase):
     _subcommand_preparing: str | None = None
@@ -44,8 +49,13 @@ class LightningCLI(LightningCLIBase):
         subclass_mode_model: bool = True,
         subclass_mode_data: bool = True,
         auto_configure_optimizers: bool = False,
+        optim_dict_class: type[OptimDict] | None = None,
         **kwargs,
     ):
+        """
+        Args:
+            optim_dict_class: key -> OptimizationConf
+        """
         save_config_kwargs = fall_back_none(save_config_kwargs, {'config_filename': 'conf.yaml'})
         if trainer_defaults is None:
             trainer_defaults = {
@@ -55,6 +65,7 @@ class LightningCLI(LightningCLIBase):
                 ]
             }
         parser_kwargs = fall_back_none(parser_kwargs, {'parser_mode': "omegaconf"})
+        self.optim_dict_class = optim_dict_class
         super().__init__(
             model_class=model_class,
             datamodule_class=datamodule_class,
@@ -118,7 +129,10 @@ class LightningCLI(LightningCLIBase):
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
         parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
         if self.is_preparing_fit:
-            parser.add_argument('--optim', type=dict[str, OptimizationConf], enable_path=True)
+            if self.optim_dict_class is None:
+                parser.add_dataclass_arguments(OptimConf, 'optim')
+            else:
+                parser.add_dataclass_arguments(self.optim_dict_class, 'optim')
         super().add_arguments_to_parser(parser)
 
     def before_instantiate_classes(self):
@@ -136,7 +150,11 @@ class LightningCLI(LightningCLIBase):
         super().before_instantiate_classes()
 
     def fit(self, model: LightningModule, **kwargs):
-        model.optim = self._get(self.config_init, 'optim')
+        optim: OptimConf | OptimDict = self.active_config_init.optim
+        if isinstance(optim, OptimConf):
+            model.optim = [optim]
+        else:
+            model.optim = [optim_conf for optim_conf in vars(optim).values() if isinstance(optim_conf, OptimConf)]
         # https://github.com/Lightning-AI/lightning/issues/17283
         if self._get(self.config, 'compile'):
             # https://github.com/pytorch/pytorch/issues/112335
