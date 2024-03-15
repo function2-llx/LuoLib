@@ -78,6 +78,9 @@ def build_hybrid_optimization(
     if weight_decay_keys is None:
         weight_decay_keys = infer_weight_decay_keys(model)
     for param_group, optimization in zip(param_groups, optimizations):
+        if len(param_group) == 0:
+            print(f'no parameter for prefix: {optimization.prefix}')
+            continue
         optimizer, lr_scheduler_config = instantiate_optimization(
             [{'params': param_group}], optimization, weight_decay_keys, trainer,
         )
