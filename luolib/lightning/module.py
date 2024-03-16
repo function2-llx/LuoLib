@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 import json
@@ -131,12 +132,12 @@ class LightningModule(LightningModuleBase):
     ) -> None:
         if self.log_grad_norm:
             # log gradient before gradient clipping
-            self.log('grad_norm', grad_norm(self), sync_dist=True)
+            self.log('grad_norm', grad_norm(self))
         self.clip_gradients(
             optimizer, gradient_clip_val=gradient_clip_val, gradient_clip_algorithm=gradient_clip_algorithm,
         )
         if self.log_grad_norm:
-            self.log('grad_norm-clipped', grad_norm(self), sync_dist=True)
+            self.log('grad_norm-clipped', grad_norm(self))
         # save bad state for diagnosis
         # TODO: also check:
         #  - loss, but I can't get the step output, over-engineering, 作茧自缚了 :( PL should really officially support "training step context"
@@ -160,3 +161,21 @@ class LightningModule(LightningModuleBase):
             # let me do it for you: https://github.com/Lightning-AI/pytorch-lightning/issues/19195
             ret = apply_to_collection(ret, torch.Tensor, lambda x: x[None])
         return ret
+
+    def log_dict(
+        self,
+        data: Mapping[str, ...],
+        *args,
+        sync_dist: bool = False,
+        **kwargs,
+    ) -> None:
+        """reduce sync_dist cost"""
+        if not sync_dist or not all(isinstance(value, (int, float, torch.Tensor)) for value in data.values()):
+            return super().log_dict(data, *args, sync_dist=False, **kwargs)
+        data = dict(data)
+        values = torch.tensor([*data.values()])
+        values = self.all_gather(values)
+        values = values.mean(dim=0)
+        for i, name in enumerate(data):
+            data[name] = values[i]
+        super().log_dict(data, *args, sync_dist=False, **kwargs)
