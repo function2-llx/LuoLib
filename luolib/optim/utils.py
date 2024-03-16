@@ -13,7 +13,7 @@ __all__ = [
     'OptimizerCallable',
     'infer_weight_decay_keys',
     'NamedParamGroup',
-    'normalize_param_groups',
+    'split_param_groups_by_weight_decay',
 ]
 
 OptimizerCallable = Callable[[Iterable], Optimizer]
@@ -95,18 +95,18 @@ class NamedParamGroup(TypedDict, total=False):
     weight_decay: float
     lr_scale: float  # inserted by timm
 
-def normalize_param_groups(param_groups: list[NamedParamGroup], decay_keys: set[str]) -> list[NamedParamGroup]:
+def split_param_groups_by_weight_decay(param_groups: list[NamedParamGroup], decay_keys: set[str]) -> list[NamedParamGroup]:
     """
-    remove param names, and partition each param group into decay/no decay group
+    partition each param group into decay/no decay group
     """
-    normalized_param_groups = []
+    split_param_groups = []
     for param_group in param_groups:
         name = param_group.pop('name')
         params = param_group.pop('params')
 
         no_decay_params, decay_params = partition_by_predicate(lambda np: np[0] in decay_keys, params)
         if no_decay_params:
-            normalized_param_groups.append(
+            split_param_groups.append(
                 {
                     'name': f'{name} (nd)',
                     'params': no_decay_params,
@@ -115,13 +115,11 @@ def normalize_param_groups(param_groups: list[NamedParamGroup], decay_keys: set[
                 }
             )
         if decay_params:
-            normalized_param_groups.append(
+            split_param_groups.append(
                 {
                     'name': name,
                     'params': decay_params,
                     **param_group,
                 }
             )
-    for param_group in normalized_param_groups:
-        param_group['params'] = [p for _, p in param_group.pop('params')]
-    return normalized_param_groups
+    return split_param_groups

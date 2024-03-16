@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cache
+import json
 from typing import final
 
 from lightning import LightningDataModule, LightningModule as LightningModuleBase
@@ -81,8 +82,18 @@ class LightningModule(LightningModuleBase):
         self._optim = optim
 
     def configure_optimizers(self):
-        optimizer, lr_scheduler_config = build_hybrid_optim(
+        optimizer, lr_scheduler_config, param_groups = build_hybrid_optim(
             self, self.optims, self._get_decay_keys(), self.trainer,
+        )
+        (self.trainer.log_dir / 'optim.json').write_text(
+            json.dumps(
+                {
+                    param_group['name']: [pn for pn, _ in param_group['params']]
+                    for param_group in param_groups
+                },
+                indent=4,
+                ensure_ascii=False,
+            ),
         )
         return {
             'optimizer': optimizer,

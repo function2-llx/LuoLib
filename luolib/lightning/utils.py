@@ -11,7 +11,7 @@ from monai.utils import ensure_tuple
 
 from luolib.optim import (
     HybridOptim, NamedParamGroup, OptimizerCallable, infer_weight_decay_keys,
-    normalize_param_groups,
+    split_param_groups_by_weight_decay,
 )
 from luolib.scheduler import HybridScheduler, LRSchedulerConfig, LRSchedulerConfigWithCallable
 from luolib.types import named_param_t
@@ -50,9 +50,13 @@ def instantiate_optim(
     optim: OptimConf,
     weight_decay_keys: set[str],
     trainer: lightning.Trainer | None = None,
-) -> tuple[Optimizer, LRSchedulerConfig]:
-    normalized_param_groups = normalize_param_groups(param_groups, weight_decay_keys)
-    optimizer = optim.optimizer(normalized_param_groups)
+) -> tuple[Optimizer, LRSchedulerConfig, list[NamedParamGroup]]:
+    split_param_groups = split_param_groups_by_weight_decay(param_groups, weight_decay_keys)
+    # remove name from parameters for optimizer init
+    optim_param_groups = [*map(dict, split_param_groups)]
+    for param_group in optim_param_groups:
+        param_group['params'] = [p for _, p in param_group.pop('params')]
+    optimizer = optim.optimizer(optim_param_groups)
     lr_scheduler_config = LRSchedulerConfig(**vars(optim.lr_scheduler))  # no type checks here, thanks
     if lr_scheduler_config.frequency == 0:
         assert trainer is not None
@@ -63,28 +67,30 @@ def instantiate_optim(
             lr_scheduler_config.frequency = trainer.check_val_every_n_epoch
     scheduler = optim.lr_scheduler.scheduler(optimizer)
     lr_scheduler_config.scheduler = scheduler
-    return optimizer, lr_scheduler_config
+    return optimizer, lr_scheduler_config, split_param_groups
 
 def build_hybrid_optim(
     model: nn.Module,
     optims: dict[str, OptimConf],
     weight_decay_keys: set[str] | None = None,
     trainer: lightning.Trainer | None = None,
-) -> tuple[HybridOptim, LRSchedulerConfig]:
+) -> tuple[HybridOptim, LRSchedulerConfig, list[NamedParamGroup]]:
     # idea credit: https://github.com/Lightning-AI/lightning/issues/3346
     optimizers, schedulers = [], []
     param_groups = create_param_groups(model.named_parameters(), optims)
     ref_lr_scheduler_config = None
     if weight_decay_keys is None:
         weight_decay_keys = infer_weight_decay_keys(model)
+    final_param_groups = []
     for name, optim in optims.items():
         param_group = param_groups[name]
         if len(param_group) == 0:
             print(f'no parameter for optimization group: {name}')
             continue
-        optimizer, lr_scheduler_config = instantiate_optim(
+        optimizer, lr_scheduler_config, split_param_groups = instantiate_optim(
             [{'name': name, 'params': param_group}], optim, weight_decay_keys, trainer,
         )
+        final_param_groups.extend(split_param_groups)
         optimizers.append(optimizer)
         schedulers.append(lr_scheduler_config.scheduler)
         lr_scheduler_config = lr_scheduler_config
@@ -100,4 +106,4 @@ def build_hybrid_optim(
 
     optimizer = HybridOptim(optimizers)
     ref_lr_scheduler_config.scheduler = HybridScheduler(optimizer, schedulers)
-    return optimizer, ref_lr_scheduler_config
+    return optimizer, ref_lr_scheduler_config, final_param_groups
