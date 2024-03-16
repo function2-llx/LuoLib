@@ -27,7 +27,7 @@ class SaveConfigCallback(SaveConfigCallbackBase):
 
 @dataclass
 class OptimDict:
-    pass
+    """The order of fields matters since it will affect the matching process"""
 
 class LightningCLI(LightningCLIBase):
     _subcommand_preparing: str | None = None
@@ -151,10 +151,14 @@ class LightningCLI(LightningCLIBase):
 
     def fit(self, model: LightningModule, **kwargs):
         optim: OptimConf | OptimDict = self.active_config_init.optim
+
         if isinstance(optim, OptimConf):
-            model.optim = [optim]
+            model.optims = {'default': optim}
         else:
-            model.optim = [optim_conf for optim_conf in vars(optim).values() if isinstance(optim_conf, OptimConf)]
+            model.optims = {
+                name: optim_conf for name, optim_conf in vars(optim).items()
+                if isinstance(optim_conf, OptimConf)
+            }
         # https://github.com/Lightning-AI/lightning/issues/17283
         if self._get(self.config, 'compile'):
             # https://github.com/pytorch/pytorch/issues/112335

@@ -52,8 +52,9 @@ def infer_weight_decay_keys(module: nn.Module):
     for mn, m in module.named_modules():
         if hasattr(m, 'no_weight_decay'):
             no_decay |= {f'{mn}.{pn}' if mn else pn for pn in m.no_weight_decay()}
-        if isinstance(m, (LoraLayer, nn.Module)):
+        if isinstance(m, LoraLayer):
             # weights from LoRA layers will not be decayed
+            assert isinstance(m, nn.Module)
             no_decay |= {pn for pn, p in m.named_parameters(prefix=mn)}
         for pn, p in m.named_parameters(prefix=mn, recurse=False):
             if not p.requires_grad:
@@ -88,6 +89,7 @@ def infer_weight_decay_keys(module: nn.Module):
 
 class NamedParamGroup(TypedDict, total=False):
     # set total=False to comfort IDE
+    name: str
     params: list[tuple[str, nn.Parameter]]
     lr: float
     weight_decay: float
@@ -99,11 +101,14 @@ def normalize_param_groups(param_groups: list[NamedParamGroup], decay_keys: set[
     """
     normalized_param_groups = []
     for param_group in param_groups:
+        name = param_group.pop('name')
         params = param_group.pop('params')
+
         no_decay_params, decay_params = partition_by_predicate(lambda np: np[0] in decay_keys, params)
         if no_decay_params:
             normalized_param_groups.append(
                 {
+                    'name': f'{name} (nd)',
                     'params': no_decay_params,
                     **param_group,
                     'weight_decay': 0,
@@ -112,6 +117,7 @@ def normalize_param_groups(param_groups: list[NamedParamGroup], decay_keys: set[
         if decay_params:
             normalized_param_groups.append(
                 {
+                    'name': name,
                     'params': decay_params,
                     **param_group,
                 }

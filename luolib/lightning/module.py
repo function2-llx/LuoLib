@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cache
-from typing import Optional, Union, final
+from typing import final
 
 from lightning import LightningDataModule, LightningModule as LightningModuleBase
+from lightning_utilities import apply_to_collection
 from peft import PeftModel
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
@@ -14,7 +15,7 @@ from luolib import lightning as lpl
 from luolib.optim import infer_weight_decay_keys
 from luolib.scheduler import HybridScheduler
 from luolib.utils.grad import grad_norm
-from .utils import OptimConf, build_hybrid_optimization
+from .utils import OptimConf, build_hybrid_optim
 
 __all__ = [
     'LightningModule',
@@ -72,16 +73,16 @@ class LightningModule(LightningModuleBase):
         return self.get_decay_keys()
 
     @property
-    def optim(self):
+    def optims(self):
         return self._optim
 
-    @optim.setter
-    def optim(self, optim: list[OptimConf]):
+    @optims.setter
+    def optims(self, optim: dict[str, OptimConf]):
         self._optim = optim
 
     def configure_optimizers(self):
-        optimizer, lr_scheduler_config = build_hybrid_optimization(
-            self, self.optim, self._get_decay_keys(), self.trainer,
+        optimizer, lr_scheduler_config = build_hybrid_optim(
+            self, self.optims, self._get_decay_keys(), self.trainer,
         )
         return {
             'optimizer': optimizer,
@@ -114,17 +115,17 @@ class LightningModule(LightningModuleBase):
     def configure_gradient_clipping(
         self,
         optimizer: Optimizer,
-        gradient_clip_val: Optional[Union[int, float]] = None,
-        gradient_clip_algorithm: Optional[str] = None,
+        gradient_clip_val: int | float | None = None,
+        gradient_clip_algorithm: str | None = None,
     ) -> None:
         if self.log_grad_norm:
             # log gradient before gradient clipping
-            self.log('grad_norm', grad_norm(self))
+            self.log('grad_norm', grad_norm(self), sync_dist=True)
         self.clip_gradients(
             optimizer, gradient_clip_val=gradient_clip_val, gradient_clip_algorithm=gradient_clip_algorithm,
         )
         if self.log_grad_norm:
-            self.log('grad_norm-clipped', grad_norm(self))
+            self.log('grad_norm-clipped', grad_norm(self), sync_dist=True)
         # save bad state for diagnosis
         # TODO: also check:
         #  - loss, but I can't get the step output, over-engineering, 作茧自缚了 :( PL should really officially support "training step context"
@@ -141,3 +142,10 @@ class LightningModule(LightningModuleBase):
     @property
     def datamodule(self) -> LightningDataModule:
         return self.trainer.datamodule
+
+    def all_gather(self, *args, **kwargs):
+        ret = super().all_gather(*args, **kwargs)
+        if self.trainer.world_size == 1:
+            # let me do it for you: https://github.com/Lightning-AI/pytorch-lightning/issues/19195
+            ret = apply_to_collection(ret, torch.Tensor, lambda x: x[None])
+        return ret
