@@ -91,6 +91,11 @@ class ExpDataModuleBase(LightningDataModule):
             collate_fn=self.get_train_collate_fn(),
         )
 
+    def get_eval_collate_fn(self):
+        # TODO: investigate whether `self` will be copied to worker processes and the memory consumption
+        from luolib.data.utils import list_data_collate
+        return list_data_collate
+
     def build_eval_dataloader(self, dataset: TorchDataset, batch_size: int):
         # FIXME: collate_fn for eval dataloader?
         conf = self.dataloader_conf
@@ -100,6 +105,7 @@ class ExpDataModuleBase(LightningDataModule):
             batch_size=batch_size,
             pin_memory=conf.pin_memory,
             persistent_workers=conf.persistent_workers,
+            collate_fn=self.get_eval_collate_fn()
         )
 
     def val_data(self) -> Sequence:
