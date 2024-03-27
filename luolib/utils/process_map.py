@@ -20,7 +20,7 @@ def process_map(fn: Callable, *iterables, new_mapper: bool = True, **tqdm_kwargs
         longest_iterable_len = max(map(length_hint, iterables))
         if 'total' not in tqdm_kwargs:
             tqdm_kwargs['total'] = longest_iterable_len
-        tqdm_kwargs.pop('chunksize')
+        tqdm_kwargs.pop('chunksize', None)
         return [*starmap(fn, tqdm(zip(*iterables), **tqdm_kwargs))]
     else:
         return tqdm_process_map(fn, *iterables, **tqdm_kwargs, max_workers=max_workers)

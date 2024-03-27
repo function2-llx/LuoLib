@@ -7,7 +7,10 @@ __all__ = [
     'fall_back_none',
     'RGB_TO_GRAY_WEIGHT',
     'ema_update',
+    'as_tensor',
 ]
+
+from monai.data import MetaTensor
 
 T = TypeVar('T')
 U = TypeVar('U')
@@ -30,3 +33,8 @@ def ensure_rgb(x: torch.Tensor, batched: bool = False) -> tuple[torch.Tensor, bo
         x = einops.repeat(x, f'{maybe_batch} 1 ... -> c ...', c=3)
         not_rgb = True
     return x, not_rgb
+
+def as_tensor(x: torch.Tensor):
+    if isinstance(x, MetaTensor):
+        x = x.as_tensor()
+    return x

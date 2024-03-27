@@ -6,7 +6,8 @@ from .file import *
 from .misc import *
 from .toolz import *
 from .einops import *
-from .pandas import  *
+from .pandas import *
+from .zstd import *
 
 class SimpleReprMixin(object):
     """A mixin implementing a simple __repr__."""
