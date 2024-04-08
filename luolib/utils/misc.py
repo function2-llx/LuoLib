@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import TypeVar
 
 from einops import einops
@@ -8,8 +9,10 @@ __all__ = [
     'RGB_TO_GRAY_WEIGHT',
     'ema_update',
     'as_tensor',
+    'to_nifti',
 ]
 
+from luolib.types import PathLike
 from monai.data import MetaTensor
 
 T = TypeVar('T')
@@ -38,3 +41,16 @@ def as_tensor(x: torch.Tensor):
     if isinstance(x, MetaTensor):
         x = x.as_tensor()
     return x
+
+def to_nifti(path: PathLike, output_path: Path | None = None):
+    import monai.transforms as mt
+    import nibabel as nib
+    loader = mt.LoadImage()
+    path = Path(path)
+    x: MetaTensor = loader(path)
+    if output_path is None:
+        output_path = path.with_name(path.name + '.nii.gz')
+    nib.save(
+        nib.Nifti1Image(x.numpy(), x.affine.numpy()),
+        output_path,
+    )
