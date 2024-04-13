@@ -135,6 +135,12 @@ class LightningCLI(LightningCLIBase):
                 parser.add_dataclass_arguments(self.optim_dict_class, 'optim')
         super().add_arguments_to_parser(parser)
 
+    def _set_seed(self) -> None:
+        super()._set_seed()
+        if (seed := self.active_config.get('seed_everything')) is not None:
+            import monai.utils.misc
+            monai.utils.misc._seed = seed
+
     def before_instantiate_classes(self):
         config = self.active_config
         if self.subcommand in {'fit', 'validate', 'play'}:
