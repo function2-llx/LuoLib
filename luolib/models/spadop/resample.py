@@ -10,8 +10,10 @@ __all__ = [
 
 def resample(x: torch.Tensor, shape: tuple[int, ...], upsample_mode: str | None = None, scale: bool = False):
     """
+    downsampling always uses area mode, while upsampling uses mode specified by `upsample_mode`.
     Args:
         scale: whether to scale the values based on size, this can be useful for adapting convolution weights
+        upsample_mode: interpolation mode for upsampling, default: (2D, cubic), (3D, linear)
     """
     scale_ratio = np.prod(x.shape[2:]) / np.prod(shape) if scale else 1.
     # without `.tolist()`, PyTorch will complain it is not int
