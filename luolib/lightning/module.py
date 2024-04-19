@@ -8,6 +8,7 @@ from typing import final
 
 from lightning import LightningDataModule, LightningModule as LightningModuleBase
 from lightning_utilities import apply_to_collection
+from lightning_utilities.core.rank_zero import rank_prefixed_message
 from peft import PeftModel
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
@@ -122,7 +123,7 @@ class LightningModule(LightningModuleBase):
         if self.trainer.world_size > 1:
             for name, param in self.named_parameters():
                 if param.requires_grad and param.grad is None:
-                    print(f'[rank {self.global_rank}] none grad', name)
+                    print(rank_prefixed_message(f'none grad: {name}', self.global_rank))
 
     def configure_gradient_clipping(
         self,
@@ -171,7 +172,7 @@ class LightningModule(LightningModuleBase):
     ) -> None:
         """reduce sync_dist cost"""
         if not sync_dist or not all(isinstance(value, (int, float, torch.Tensor)) for value in data.values()):
-            return super().log_dict(data, *args, sync_dist=False, **kwargs)
+            return super().log_dict(data, *args, sync_dist=sync_dist, **kwargs)
         data = dict(data)
         values = torch.tensor([*data.values()])
         values = self.all_gather(values)
