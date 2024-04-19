@@ -27,7 +27,7 @@ RGB_TO_GRAY_WEIGHT = (0.299, 0.587, 0.114)
 def ema_update(ema: torch.Tensor, x: torch.Tensor, decay: float):
     return ema.mul_(decay).add_(x, alpha=1 - decay)
 
-def ensure_rgb(x: torch.Tensor, batched: bool = False) -> tuple[torch.Tensor, bool]:
+def ensure_rgb(x: torch.Tensor, batched: bool = False, contiguous: bool = False) -> tuple[torch.Tensor, bool]:
     if x.shape[batched] == 3:
         not_rgb = False
     else:
@@ -35,6 +35,8 @@ def ensure_rgb(x: torch.Tensor, batched: bool = False) -> tuple[torch.Tensor, bo
         maybe_batch = 'n' if batched else ''
         x = einops.repeat(x, f'{maybe_batch} 1 ... -> c ...', c=3)
         not_rgb = True
+    if contiguous:
+        x = x.contiguous()
     return x, not_rgb
 
 def as_tensor(x: torch.Tensor):
