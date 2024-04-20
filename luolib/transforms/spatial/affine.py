@@ -4,10 +4,9 @@ import numpy as np
 import torch
 
 from monai import transforms as mt
-from monai.config import KeysCollection, SequenceStr
-from monai.data import get_track_meta, set_track_meta, MetaTensor
+from monai.config import KeysCollection
 from monai.transforms.spatial.array import RandRange
-from monai.utils import GridSampleMode, GridSamplePadMode, ensure_tuple_rep
+from monai.utils import GridSampleMode, GridSamplePadMode
 
 from luolib.types import maybe_seq_t, tuple2_t
 
@@ -15,6 +14,7 @@ __all__ = [
     'RandAffineGridWithIsotropicScale',
     'RandAffineWithIsotropicScale',
     'RandAffineWithIsotropicScaleD',
+    'affine_resize',
 ]
 
 class RandAffineGridWithIsotropicScale(mt.RandAffineGrid):
@@ -112,3 +112,31 @@ class RandAffineWithIsotropicScaleD(mt.RandAffineD):
             spatial_dims=spatial_dims,
             ignore_dim=ignore_dim,
         )
+
+def affine_resize(
+    image: torch.Tensor,
+    size: Sequence[int],
+    mode: GridSampleMode = GridSampleMode.BICUBIC,
+    antialias: bool = True,
+    dtype: torch.dtype = torch.float32,
+) -> torch.Tensor:
+    origin_size = np.array(image.shape[1:])
+    if np.array_equiv(origin_size, size):
+        resized = image
+    else:
+        scale = origin_size / size
+        if antialias:
+            anti_aliasing_filter = mt.GaussianSmooth(np.maximum((scale - 1) / 2, 0))
+            filtered = anti_aliasing_filter(image)
+        else:
+            filtered = image
+        resizer = mt.Affine(
+            scale_params=scale.tolist(),
+            spatial_size=size,
+            mode=mode,
+            image_only=True,
+            dtype=dtype,
+        )
+        resized = resizer(filtered)
+    resized = resized.to(dtype=dtype)
+    return resized
