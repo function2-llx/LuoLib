@@ -64,7 +64,7 @@ class WindowAttention(nn.Module):
 
     def forward(self, x: torch.Tensor, mask: torch.BoolTensor | None, relative_position_index: torch.LongTensor):
         # make it lazy since it will initialize CUDA context: https://github.com/facebookresearch/xformers/blob/v0.0.24/xformers/__init__.py#L52
-        from xformers import ops as xops
+        import xformers.ops as xops
 
         qkv = einops.rearrange(
             self.qkv(x), 'n l (qkv nh ch) -> qkv n l nh ch', qkv=3, nh=self.num_heads,

@@ -1,3 +1,5 @@
+from __future__ import annotations as _
+
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -18,7 +20,7 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from xformers import ops as xops
+    import xformers.ops as xops
 
 def with_pos_embed(x: torch.Tensor, pos_embed: torch.Tensor | None = None):
     return x if pos_embed is None else x + pos_embed
@@ -100,14 +102,10 @@ class MemoryEfficientAttention(nn.Module):
         query: torch.Tensor,
         key: torch.Tensor | None = None,
         value: torch.Tensor | None = None,
-        attn_bias=None,
+        attn_bias: torch.Tensor | xops.AttentionBias | None = None,
     ):
-        """
-        I add this docstring because Python sucks
-        Args:
-            attn_bias (torch.Tensor | xops.AttentionBias)
-        """
-        from xformers import ops as xops  # noqa
+        # noinspection PyShadowingNames
+        import xformers.ops as xops
         key = fall_back_none(key, query)
         value = fall_back_none(value, key)
         q = self.expand_head(nnf.linear(query, self.q_proj.weight, self.q_bias))
