@@ -131,7 +131,7 @@ class PeftTrainer(Trainer):
         if local or self.is_global_zero:
             self.peft_model.save_pretrained(
                 # NOTE: if using save_embedding_layers='auto', it may access the HF hub every time, and your program will
-                # crush with no mercy when the Internet becomes unavailable during training due to uncaught exception
+                # crash with no mercy when the Internet becomes unavailable during training due to uncaught exception
                 # see: https://github.com/huggingface/peft/blob/v0.8.2/src/peft/utils/save_and_load.py#L146
                 str(save_dir / 'adapter'), save_embedding_layers=self.save_embedding_layers,
             )

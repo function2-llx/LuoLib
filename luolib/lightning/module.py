@@ -1,4 +1,4 @@
-from __future__ import annotations
+from __future__ import annotations as _
 
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -6,7 +6,7 @@ from functools import cache
 import json
 from typing import final
 
-from lightning import LightningDataModule, LightningModule as LightningModuleBase
+from lightning import LightningDataModule, LightningModule as _LightningModuleBase
 from lightning_utilities import apply_to_collection
 from lightning_utilities.core.rank_zero import rank_prefixed_message
 from peft import PeftModel
@@ -28,7 +28,7 @@ __all__ = [
 class TrainingStepContext:
     batch: ... = None
 
-class LightningModule(LightningModuleBase):
+class LightningModule(_LightningModuleBase):
     trainer: lpl.Trainer
 
     def __init__(
