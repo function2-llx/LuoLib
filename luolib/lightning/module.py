@@ -175,6 +175,7 @@ class LightningModule(_LightningModuleBase):
             return super().log_dict(data, *args, sync_dist=sync_dist, **kwargs)
         data = dict(data)
         values = torch.tensor([*data.values()])
+        # NOTE: make sure that len(values) are consistent across processes
         values = self.all_gather(values)
         values = values.mean(dim=0)
         for i, name in enumerate(data):
