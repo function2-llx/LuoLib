@@ -120,6 +120,7 @@ def affine_resize(
     antialias: bool = True,
     dtype: torch.dtype = torch.float32,
 ) -> torch.Tensor:
+    # NOTE: dtype = torch.float16 can produce severe artifact when downsampling for a large scale (observed on VinDr-CXR)
     origin_size = np.array(image.shape[1:])
     if np.array_equiv(origin_size, size):
         resized = image
