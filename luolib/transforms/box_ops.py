@@ -11,9 +11,9 @@ from monai.utils import convert_to_dst_type, convert_to_tensor
 assert TO_REMOVE == 0
 
 def apply_affine_to_boxes_int(boxes: NdarrayTensor, affine: NdarrayOrTensor) -> NdarrayTensor:
-    boxes_t: torch.Tensor = convert_to_tensor(boxes)
+    boxes_t: torch.Tensor = convert_to_tensor(boxes).clone()
     boxes_t[:, 3:] -= 1
-    boxes_f = apply_affine_to_boxes(boxes, affine)
+    boxes_f = apply_affine_to_boxes(boxes_t.double(), affine)
     boxes_t = boxes_f.floor().long()
     boxes_t[:, 3:] += 1
     boxes, *_ = convert_to_dst_type(boxes_t, boxes)
@@ -27,9 +27,9 @@ def convert_boxes_to_int(boxes: NdarrayTensor) -> NdarrayTensor:
     boxes_int, *_ = convert_to_dst_type(boxes_int, boxes, dtype=torch.int64)
     return boxes_int
 
-def norm_boxes(boxes: NdarrayTensor, norm_size: Sequence[int]):
+def norm_boxes(boxes: NdarrayTensor, norm_size: Sequence[int]) -> NdarrayTensor:
     boxes_t = convert_to_tensor(boxes)
     norm_size_t = einops.repeat(torch.tensor(norm_size), 'd -> (l2 d)', l2=2)
-    boxes_t = boxes_t / norm_size_t
-    boxes = convert_to_dst_type(boxes_t, boxes)
+    boxes_t = boxes_t.double() / norm_size_t
+    boxes, *_ = convert_to_dst_type(boxes_t, boxes, dtype=torch.float64)
     return boxes
