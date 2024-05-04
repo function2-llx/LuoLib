@@ -56,3 +56,6 @@ def to_nifti(path: PathLike, output_path: Path | None = None):
         nib.Nifti1Image(x.numpy(), x.affine.numpy()),
         output_path,
     )
+
+def ceil_divide(a: T, b: U) -> T | U:
+    return -(a // -b)
