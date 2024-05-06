@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
@@ -59,3 +60,13 @@ def to_nifti(path: PathLike, output_path: Path | None = None):
 
 def ceil_divide(a: T, b: U) -> T | U:
     return -(a // -b)
+
+def pairwise_forward(forward: Callable, x: torch.Tensor, y: torch.Tensor, **kwargs) -> torch.Tensor:
+    n, m = x.shape[0], y.shape[0]
+    # flatten the prefixed dimension, in case the forward function does not support arbitrary prefix
+    x = einops.repeat(x, 'n ... -> (n m) ...', m=m)
+    y = einops.repeat(x, 'm ... -> (n m) ...', n=n)
+    # NOTE: make sure that the results of forward is not reduced, may be ensured by kwargs
+    ret = forward(x, y, **kwargs)
+    ret = einops.reduce(ret, '(n m) ... -> n m', 'mean', n=n, m=m)
+    return ret
