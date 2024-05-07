@@ -101,10 +101,3 @@ def round_boxes(boxes: NdarrayTensor) -> NdarrayTensor:
     boxes_int[:, d:] = (boxes_t[:, d:] - EPS).ceil()
     boxes_int, *_ = convert_to_dst_type(boxes_int, boxes, dtype=torch.int64)
     return boxes_int
-
-def norm_boxes(boxes: NdarrayTensor, norm_size: Sequence[int]) -> NdarrayTensor:
-    boxes_t = convert_to_tensor(boxes)
-    norm_size_t = einops.repeat(torch.tensor(norm_size), 'd -> (l2 d)', l2=2)
-    boxes_t = boxes_t.double() / norm_size_t
-    boxes, *_ = convert_to_dst_type(boxes_t, boxes, dtype=torch.float64)
-    return boxes
