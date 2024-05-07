@@ -112,7 +112,7 @@ class LightningModule(_LightningModuleBase):
         return None  # make PyCharm happy
 
     def lr_scheduler_step(self, scheduler: HybridScheduler, metric=None):
-        for inner_scheduler in scheduler.schedulers:
+        for inner_scheduler in scheduler._schedulers:
             match inner_scheduler:
                 case TIMMScheduler():
                     inner_scheduler.step_update(self.global_step + 1, metric)

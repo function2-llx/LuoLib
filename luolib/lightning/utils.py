@@ -23,6 +23,7 @@ __all__ = [
 
 @dataclass(kw_only=True)
 class OptimConf:
+    # TODO: support re pattern?
     prefix: str | list[str] = ''
     optimizer: OptimizerCallable
     lr_scheduler: LRSchedulerConfigWithCallable

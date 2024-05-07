@@ -17,17 +17,17 @@ class HybridScheduler:
     """
     def __init__(self, optimizer: HybridOptim, schedulers: list[LRScheduler]):
         self.optimizer = optimizer
-        self.schedulers = schedulers
+        self._schedulers = schedulers
 
     def state_dict(self) -> list:
-        return [scheduler.state_dict() for scheduler in self.schedulers]
+        return [scheduler.state_dict() for scheduler in self._schedulers]
 
     def load_state_dict(self, state_dict: list) -> None:
-        for state, scheduler in zip(state_dict, self.schedulers):
+        for state, scheduler in zip(state_dict, self._schedulers):
             scheduler.load_state_dict(state)
 
     def step(self, global_step: int, metric=None):
-        for scheduler in self.schedulers:
+        for scheduler in self._schedulers:
             match scheduler:
                 case TIMMScheduler():
                     scheduler.step_update(global_step + 1, metric)
