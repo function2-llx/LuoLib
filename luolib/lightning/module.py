@@ -34,11 +34,13 @@ class LightningModule(_LightningModuleBase):
     def __init__(
         self, *,
         log_grad_norm: bool = True,
+        check_grad: bool = True,
         **kwargs,
     ):
         # TODO: should I move log_grad_norm to some callback?
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
+        self.check_grad = check_grad
         self.training_step_context = TrainingStepContext()
 
     def get_decay_keys(self) -> set[str]:
@@ -120,7 +122,7 @@ class LightningModule(_LightningModuleBase):
                     super().lr_scheduler_step(inner_scheduler, metric)
 
     def on_after_backward(self):
-        if self.trainer.world_size > 1:
+        if self.check_grad and self.trainer.world_size > 1:
             for name, param in self.named_parameters():
                 if param.requires_grad and param.grad is None:
                     print(rank_prefixed_message(f'none grad: {name}', self.global_rank))

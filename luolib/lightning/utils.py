@@ -75,7 +75,7 @@ def build_hybrid_optim(
     optims: dict[str, OptimConf],
     weight_decay_keys: set[str] | None = None,
     trainer: lightning.Trainer | None = None,
-) -> tuple[HybridOptim, LRSchedulerConfig, list[NamedParamGroup]]:
+) -> tuple[Optimizer, LRSchedulerConfig, list[NamedParamGroup]]:
     # idea credit: https://github.com/Lightning-AI/lightning/issues/3346
     optimizers, schedulers = [], []
     param_groups = create_param_groups(model.named_parameters(), optims)
@@ -104,7 +104,10 @@ def build_hybrid_optim(
                     "Hey, inconsistent scheduler config is not supported. "
                     "You don't want some abstract stuff like manual optimization, do you?"
                 )
-
-    optimizer = HybridOptim(optimizers)
-    ref_lr_scheduler_config.scheduler = HybridScheduler(optimizer, schedulers)
-    return optimizer, ref_lr_scheduler_config, final_param_groups
+    assert (num_optimizers := len(optimizers)) > 0
+    if num_optimizers == 1:
+        return optimizers[0], ref_lr_scheduler_config, final_param_groups
+    else:
+        optimizer = HybridOptim(optimizers)
+        ref_lr_scheduler_config.scheduler = HybridScheduler(optimizer, schedulers)
+        return optimizer, ref_lr_scheduler_config, final_param_groups
