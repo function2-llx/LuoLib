@@ -1,4 +1,4 @@
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, MutableMapping, Sequence
 import inspect
 
 import cytoolz
@@ -10,20 +10,20 @@ __all__ = [
     'HybridOptim',
 ]
 
-class _HybridSequence:
-    def __init__(self, seqs: Sequence[Sequence]):
-        self._seqs = seqs
+class _HybridList:
+    def __init__(self, lists: Sequence[list]):
+        self._lists = list(lists)
         self._build_map()
 
     def __len__(self):
-        return sum(map(len, self._seqs))
+        return sum(map(len, self._lists))
 
     def __iter__(self):
-        yield from cytoolz.concat(self._seqs)
+        yield from cytoolz.concat(self._lists)
 
     @property
     def _num_seqs(self):
-        return len(self._seqs)
+        return len(self._lists)
 
     def __getitem__(self, i: ...):
         # simple sequential search, should not be a problem for most cases
@@ -31,17 +31,17 @@ class _HybridSequence:
             raise NotImplementedError
         if i < 0:
             raise IndexError
-        for seq in self._seqs:
-            if i < len(seq):
-                return seq[i]
-            i -= len(seq)
+        for _list in self._lists:
+            if i < len(_list):
+                return _list[i]
+            i -= len(_list)
         raise IndexError
 
     def _build_map(self):
         self._map = {}
-        for seq_id, seq in enumerate(self._seqs):
-            for x in seq:
-                self._map[id(x)] = seq_id
+        for list_id, _list in enumerate(self._lists):
+            for x in _list:
+                self._map[id(x)] = list_id
 
     def __setitem__(self, key: ..., value: Sequence):
         if isinstance(key, slice) and key.start is None and key.stop is None:
@@ -52,10 +52,44 @@ class _HybridSequence:
                     raise NotImplementedError
                 seqs[seq_id].append(x)
             for i in range(self._num_seqs):
-                self._seqs[i][:] = seqs[i]
+                self._lists[i][:] = seqs[i]
         else:
             raise NotImplementedError
         self._build_map()
+
+class _HybridDict:
+    """it is assumed that no duplicated keys present in different maps"""
+    def __init__(self, dicts: Sequence[Mapping]):
+        self._dicts = list(dicts)
+        # NOTE: abort pre-processing, since this proxy object will be constructed too many times in a for loop
+        # self._map = {}
+        # for dict_id, _dict in enumerate(self._dicts):
+        #     for k in _dict:
+        #         self._map[k] = dict_id
+
+    def __iter__(self):
+        yield from cytoolz.concat(self._dicts)
+
+    def items(self):
+        yield from cytoolz.concat(map(Mapping.items, self._dicts))
+
+    @property
+    def _num_maps(self):
+        return len(self._dicts)
+
+    def _get_dict_id(self, key: Hashable):
+        for i, _dict in enumerate(self._dicts):
+            if key in _dict:
+                return i
+        raise KeyError
+
+    def __getitem__(self, key: Hashable):
+        dict_id = self._get_dict_id(key)
+        return self._dicts[dict_id][key]
+
+    def __setitem__(self, key: Hashable, value: ...):
+        dict_id = self._get_dict_id(key)
+        self._dicts[dict_id] = value
 
 class HybridOptim(Optimizer):
     """
@@ -71,21 +105,18 @@ class HybridOptim(Optimizer):
         # super().__init__()
         assert not any(isinstance(optimizer, HybridOptim) for optimizer in optimizers)
         self._optimizers = list(optimizers)
-        # self.defaults = {}
+        # NOTE: `LearningRateMonitor` check betas from defaults
+        self.defaults = {}
 
     @property
     def param_groups(self):
         """Return the combined parameter groups for each optimizer in ``self.optimizers``."""
-        return _HybridSequence([optimizer.param_groups for optimizer in self._optimizers])
+        return _HybridList([optimizer.param_groups for optimizer in self._optimizers])
 
     @property
-    def state(self) -> dict[str, torch.Tensor]:
+    def state(self):
         """Return the combined state for each optimizer in ``self.optimizers``."""
-        return {
-            f'optim{i}-{key}': value
-            for i, optimizer in enumerate(self._optimizers)
-            for key, value in optimizer.state.items()
-        }
+        return _HybridDict([optimizer.state for optimizer in self._optimizers])
 
     def __getstate__(self) -> list[Optimizer]:
         """Return ``self.optimizers`` for pickling purposes."""
@@ -103,12 +134,15 @@ class HybridOptim(Optimizer):
 
         return repr_str
 
-    def state_dict(self) -> list[StateDict]:
-        return [optimizer.state_dict() for optimizer in self._optimizers]
+    def state_dict(self) -> StateDict:
+        return {
+            f'optim-{i}': optimizer.state_dict()
+            for i, optimizer in enumerate(self._optimizers)
+        }
 
-    def load_state_dict(self, state_dict: list[StateDict]) -> None:
-        for state, optimizer in zip(state_dict, self._optimizers):
-            optimizer.load_state_dict(state)
+    def load_state_dict(self, state_dict: StateDict):
+        for i, optimizer in enumerate(self._optimizers):
+            optimizer.load_state_dict(state_dict[f'optim-{i}'])
 
     def zero_grad(self, set_to_none: bool = True) -> None:
         for optimizer in self._optimizers:
