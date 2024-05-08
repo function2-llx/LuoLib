@@ -8,6 +8,7 @@ from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT
 from lightning.fabric.plugins.precision.utils import _convert_fp_tensor
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.plugins import Precision
+from lightning.pytorch.utilities import GradClipAlgorithmType
 from lightning_utilities import apply_to_collection
 import torch
 from torch import nn
@@ -19,14 +20,14 @@ __all__ = [
     'PeftTrainer',
 ]
 
-def _convert_input_patch(self, data: ...):
-    return apply_to_collection(data, function=_convert_fp_tensor, dtype=torch.Tensor, dst_type=torch.float32)
-
-def _convert_module_patch(self, module: nn.Module):
-    return module.float()
-
-Precision.convert_input = _convert_input_patch
-Precision.convert_module = _convert_module_patch
+# def _convert_input_patch(self, data: ...):
+#     return apply_to_collection(data, function=_convert_fp_tensor, dtype=torch.Tensor, dst_type=torch.float32)
+#
+# def _convert_module_patch(self, module: nn.Module):
+#     return module.float()
+#
+# Precision.convert_input = _convert_input_patch
+# Precision.convert_module = _convert_module_patch
 
 class Trainer(TrainerBase):
     def __init__(
@@ -45,7 +46,8 @@ class Trainer(TrainerBase):
             use_distributed_sampler=use_distributed_sampler,
             **kwargs,
         )
-
+        if self.gradient_clip_algorithm is None:
+            self.gradient_clip_algorithm = GradClipAlgorithmType.NORM
         from monai.config import USE_COMPILED
         if not USE_COMPILED:
             warnings.warn('MONAI is not using compiled')

@@ -58,12 +58,12 @@ class LightningCLI(LightningCLIBase):
         """
         save_config_kwargs = fall_back_none(save_config_kwargs, {'config_filename': 'conf.yaml'})
         if trainer_defaults is None:
-            trainer_defaults = {
-                'callbacks': [
-                    LearningRateMonitor(),
-                    ModelSummary(max_depth=2),
-                ]
-            }
+            trainer_defaults = {}
+        if 'callbacks' not in trainer_defaults:
+            trainer_defaults['callbacks'] = [
+                LearningRateMonitor(),
+                ModelSummary(max_depth=2),
+            ]
         parser_kwargs = fall_back_none(parser_kwargs, {'parser_mode': "omegaconf"})
         self.optim_dict_class = optim_dict_class
         super().__init__(

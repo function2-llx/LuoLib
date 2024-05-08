@@ -7,22 +7,27 @@ import json
 from typing import final
 
 from lightning import LightningDataModule, LightningModule as _LightningModuleBase
+from lightning.pytorch.strategies import FSDPStrategy
+from lightning.pytorch.utilities import GradClipAlgorithmType
 from lightning_utilities import apply_to_collection
 from lightning_utilities.core.rank_zero import rank_prefixed_message
 from peft import PeftModel
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
+from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.optim import Optimizer
 
 from luolib import lightning as lpl
 from luolib.optim import infer_weight_decay_keys
 from luolib.scheduler import HybridScheduler
-from luolib.utils.grad import grad_norm
+from luolib.utils.grad import compute_grad_norm
 from .utils import OptimConf, build_hybrid_optim
 
 __all__ = [
     'LightningModule',
 ]
+
+from ..utils import fall_back_none
 
 @dataclass
 class TrainingStepContext:
@@ -110,6 +115,7 @@ class LightningModule(_LightningModuleBase):
             (self.trainer.log_dir / 'model.txt').write_text(repr(self))
 
     def on_train_batch_start(self, batch: ..., batch_idx: int) -> int | None:
+        super().on_train_batch_start(batch, batch_idx)
         self.training_step_context.batch = batch
         return None  # make PyCharm happy
 
@@ -131,28 +137,36 @@ class LightningModule(_LightningModuleBase):
         self,
         optimizer: Optimizer,
         gradient_clip_val: int | float | None = None,
-        gradient_clip_algorithm: str | None = None,
+        gradient_clip_algorithm: GradClipAlgorithmType | None = None,
     ) -> None:
+        # NOTE: PL's design for gradient clipping is incomplete, and I don't have time to be comprehensive enough, either
+        #   see https://github.com/Lightning-AI/pytorch-lightning/issues/19235
+        gradient_clip_algorithm = fall_back_none(gradient_clip_algorithm, self.trainer.gradient_clip_algorithm)
+        if gradient_clip_algorithm == GradClipAlgorithmType.NORM and isinstance(self.trainer.model, FullyShardedDataParallel):
+            grad_norm = self.trainer.model.clip_grad_norm_(gradient_clip_val)
+            grad_norm_clipped = min(grad_norm, gradient_clip_val)
+        else:
+            grad_norm = compute_grad_norm(self)
+            self.clip_gradients(
+                optimizer, gradient_clip_val=gradient_clip_val, gradient_clip_algorithm=gradient_clip_algorithm,
+            )
+            grad_norm_clipped = compute_grad_norm(self)
         if self.log_grad_norm:
             # log gradient before gradient clipping
-            self.log('grad_norm', grad_norm(self))
-        self.clip_gradients(
-            optimizer, gradient_clip_val=gradient_clip_val, gradient_clip_algorithm=gradient_clip_algorithm,
-        )
-        if self.log_grad_norm:
-            self.log('grad_norm-clipped', grad_norm(self))
-        # save bad state for diagnosis
-        # TODO: also check:
-        #  - loss, but I can't get the step output, over-engineering, 作茧自缚了 :( PL should really officially support "training step context"
-        #  - parameters after optimizer step, but this seems to require save the state before optimization
-        if (save_dir := self.trainer.log_dir / 'bad-state' / f'rank-{self.global_rank}').exists():
-            return
-        for param in self.parameters():
-            if param.grad is not None and not param.isfinite().all():
-                save_dir.mkdir(parents=True)
-                self.trainer.save_checkpoint(save_dir, local=True)
-                torch.save(self.training_step_context.batch, save_dir / f'batch.pt')
-                break
+            self.log('grad_norm', grad_norm)
+            self.log('grad_norm-clipped', grad_norm_clipped)
+        # # save bad state for diagnosis
+        # # TODO: also check:
+        # #  - loss, but I can't get the step output, over-engineering, 作茧自缚了 :( PL should really officially support "training step context"
+        # #  - parameters after optimizer step, but this seems to require save the state before optimization
+        # if (save_dir := self.trainer.log_dir / 'bad-state' / f'rank-{self.global_rank}').exists():
+        #     return
+        # for param in self.parameters():
+        #     if param.grad is not None and not param.isfinite().all():
+        #         save_dir.mkdir(parents=True)
+        #         self.trainer.save_checkpoint(save_dir, local=True)
+        #         torch.save(self.training_step_context.batch, save_dir / f'batch.pt')
+        #         break
 
     @property
     def datamodule(self) -> LightningDataModule:
