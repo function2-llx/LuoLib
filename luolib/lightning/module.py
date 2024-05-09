@@ -119,13 +119,15 @@ class LightningModule(_LightningModuleBase):
         self.training_step_context.batch = batch
         return None  # make PyCharm happy
 
-    def lr_scheduler_step(self, scheduler: HybridScheduler, metric=None):
-        for inner_scheduler in scheduler._schedulers:
-            match inner_scheduler:
-                case TIMMScheduler():
-                    inner_scheduler.step_update(self.global_step + 1, metric)
-                case _:
-                    super().lr_scheduler_step(inner_scheduler, metric)
+    def lr_scheduler_step(self, scheduler: ..., metric=None):
+        match scheduler:
+            case HybridScheduler():
+                for inner_scheduler in scheduler._schedulers:
+                    self.lr_scheduler_step(inner_scheduler, metric)
+            case TIMMScheduler():
+                scheduler.step_update(self.global_step + 1, metric)
+            case _:
+                super().lr_scheduler_step(scheduler, metric)
 
     def on_after_backward(self):
         if self.check_grad and self.trainer.world_size > 1:

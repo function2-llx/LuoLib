@@ -26,3 +26,13 @@ class LRSchedulerConfig(LRSchedulerConfigBase):
 @dataclass
 class LRSchedulerConfigWithCallable(LRSchedulerConfig):
     scheduler: LRSchedulerCallable
+
+def lr_scheduler_step(scheduler: ..., global_step: int, metric: ... = None):
+    match scheduler:
+        case HybridScheduler() | TIMMScheduler():
+            scheduler.step_update(global_step + 1, metric)
+        case _:
+            if metric is None:
+                scheduler.step()
+            else:
+                scheduler.step(metric)
