@@ -21,7 +21,7 @@ from luolib import lightning as lpl
 from luolib.optim import infer_weight_decay_keys
 from luolib.scheduler import HybridScheduler
 from luolib.utils.grad import compute_grad_norm
-from .utils import OptimConf, build_hybrid_optim
+from .utils import OptimConf, build_single_optim
 
 __all__ = [
     'LightningModule',
@@ -91,7 +91,7 @@ class LightningModule(_LightningModuleBase):
         self._optim = optim
 
     def configure_optimizers(self):
-        optimizer, lr_scheduler_config, param_groups = build_hybrid_optim(
+        optimizer, lr_scheduler_config, param_groups = build_single_optim(
             self, self.optims, self._get_decay_keys(), self.trainer,
         )
         (self.trainer.log_dir / 'optim.json').write_text(

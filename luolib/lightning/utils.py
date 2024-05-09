@@ -1,13 +1,11 @@
-from __future__ import annotations
+from __future__ import annotations as _
 
-from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 
 import lightning
 from torch import nn
 from torch.optim import Optimizer
-
-from monai.utils import ensure_tuple
 
 from luolib.optim import (
     HybridOptim, NamedParamGroup, OptimizerCallable, infer_weight_decay_keys,
@@ -18,33 +16,44 @@ from luolib.types import named_param_t
 
 __all__ = [
     'OptimConf',
-    'build_hybrid_optim',
+    'build_single_optim',
 ]
 
 @dataclass(kw_only=True)
-class OptimConf:
+class _ParamGroup:
     # TODO: support re pattern?
-    prefix: str | list[str] = ''
+    prefix: list[str]
+    kwargs: dict = field(default_factory=dict)
+
+@dataclass(kw_only=True)
+class OptimConf:
+    param_groups: list[_ParamGroup]
     optimizer: OptimizerCallable
     lr_scheduler: LRSchedulerConfigWithCallable
 
-def create_param_groups(
+def _match(name: str, optims: dict[str, OptimConf]) -> tuple[str, int]:
+    for key, optim in optims.items():
+        for i, para_group in enumerate(optim.param_groups):
+            # TODO: build a AC automaton (really?!)
+            if any(name.startswith(prefix) for prefix in para_group.prefix):
+                return key, i
+    raise ValueError(f'unable to match optimization for {name}')
+
+def match_param_groups(
     named_parameters: Iterable[named_param_t],
-    optimizations: dict[str, OptimConf],
-) -> dict[str, list[named_param_t]]:
-    param_groups = {name: [] for name in optimizations}
+    optims: dict[str, OptimConf],
+) -> dict[str, list[NamedParamGroup]]:
+    param_groups_by_optim = {
+        name: [{'params': [], **param_group.kwargs} for param_group in optim.param_groups]
+        for name, optim in optims.items()
+    }
     for pn, p in named_parameters:
         if not p.requires_grad:
             # will I ever encounter the abstract case that some parameter is optimized without gradient?
             continue
-        for name, optimization in optimizations.items():
-            # TODO: build a AC automaton (really?!)
-            if any(pn.startswith(prefix) for prefix in ensure_tuple(optimization.prefix)):
-                param_groups[name].append((pn, p))
-                break
-        else:
-            raise ValueError(f'unable to match optimization for {pn}')
-    return param_groups
+        optim_key, param_group_idx = _match(pn, optims)
+        param_groups_by_optim[optim_key][param_group_idx]['params'].append((pn, p))
+    return param_groups_by_optim
 
 def instantiate_optim(
     param_groups: list[NamedParamGroup],
@@ -70,7 +79,7 @@ def instantiate_optim(
     lr_scheduler_config.scheduler = scheduler
     return optimizer, lr_scheduler_config, split_param_groups
 
-def build_hybrid_optim(
+def build_single_optim(
     model: nn.Module,
     optims: dict[str, OptimConf],
     weight_decay_keys: set[str] | None = None,
@@ -78,18 +87,24 @@ def build_hybrid_optim(
 ) -> tuple[Optimizer, LRSchedulerConfig, list[NamedParamGroup]]:
     # idea credit: https://github.com/Lightning-AI/lightning/issues/3346
     optimizers, schedulers = [], []
-    param_groups = create_param_groups(model.named_parameters(), optims)
+    param_groups_by_optim = match_param_groups(model.named_parameters(), optims)
     ref_lr_scheduler_config = None
     if weight_decay_keys is None:
         weight_decay_keys = infer_weight_decay_keys(model)
     final_param_groups = []
-    for name, optim in optims.items():
-        param_group = param_groups[name]
-        if len(param_group) == 0:
-            print(f'no parameter for optimization group: {name}')
+    for optim_key, optim in optims.items():
+        param_groups = param_groups_by_optim[optim_key]
+        filtered_param_groups = []
+        for i, param_group in enumerate(param_groups):
+            if len(param_group['params']) == 0:
+                print(f'no parameter matched for ({optim_key}, {i}), pattern: {optim.param_groups[i].prefix}')
+            else:
+                filtered_param_groups.append(param_group)
+        if len(filtered_param_groups) == 0:
+            print(f'no parameter matched for optim: {optim_key}')
             continue
         optimizer, lr_scheduler_config, split_param_groups = instantiate_optim(
-            [{'name': name, 'params': param_group}], optim, weight_decay_keys, trainer,
+            filtered_param_groups, optim, weight_decay_keys, trainer,
         )
         final_param_groups.extend(split_param_groups)
         optimizers.append(optimizer)

@@ -1,4 +1,5 @@
-from collections.abc import Callable, Hashable, Iterable, Mapping, MutableMapping, Sequence
+from collections.abc import Callable, Hashable, Iterable, Mapping, Sequence
+from copy import copy
 import inspect
 
 import cytoolz
@@ -11,9 +12,19 @@ __all__ = [
 ]
 
 class _HybridList:
-    def __init__(self, lists: Sequence[list]):
+    def __init__(self, lists: Sequence[Sequence]):
         self._lists = list(lists)
         self._build_map()
+
+    def _build_map(self):
+        self._map = {}
+        for list_id, _list in enumerate(self._lists):
+            for x in _list:
+                self._map[id(x)] = list_id
+
+    def _detach(self):
+        # stop holding reference of param groups
+        self._lists = list(map(copy, self._lists))
 
     def __len__(self):
         return sum(map(len, self._lists))
@@ -37,35 +48,29 @@ class _HybridList:
             i -= len(_list)
         raise IndexError
 
-    def _build_map(self):
-        self._map = {}
-        for list_id, _list in enumerate(self._lists):
-            for x in _list:
-                self._map[id(x)] = list_id
-
     def __setitem__(self, key: ..., value: Sequence):
         if isinstance(key, slice) and key.start is None and key.stop is None:
-            # DeepSpeed filter empty parameter groups
+            # DeepSpeed may set parameter groups
             seqs = [[] for _ in range(self._num_seqs)]
             for x in value:
                 if (seq_id := self._map.get(id(x))) is None:
+                    # it is assumed that parameter groups to be set always present in the beginning
                     raise NotImplementedError
                 seqs[seq_id].append(x)
             for i in range(self._num_seqs):
+                # modify the original parameter groups in the optimizer inplace
                 self._lists[i][:] = seqs[i]
         else:
             raise NotImplementedError
-        self._build_map()
 
 class _HybridDict:
     """it is assumed that no duplicated keys present in different maps"""
     def __init__(self, dicts: Sequence[Mapping]):
         self._dicts = list(dicts)
-        # NOTE: abort pre-processing, since this proxy object will be constructed too many times in a for loop
-        # self._map = {}
-        # for dict_id, _dict in enumerate(self._dicts):
-        #     for k in _dict:
-        #         self._map[k] = dict_id
+        self._map = {}
+        for dict_id, _dict in enumerate(self._dicts):
+            for k in _dict:
+                self._map[k] = dict_id
 
     def __iter__(self):
         yield from cytoolz.concat(self._dicts)
@@ -105,18 +110,29 @@ class HybridOptim(Optimizer):
         # super().__init__()
         assert not any(isinstance(optimizer, HybridOptim) for optimizer in optimizers)
         self._optimizers = list(optimizers)
-        # NOTE: `LearningRateMonitor` check betas from defaults
+        self._state = _HybridDict([optimizer.state for optimizer in self._optimizers])
+        self._param_groups = _HybridList([optimizer.param_groups for optimizer in self._optimizers])
+        # NOTE: `LearningRateMonitor` check betas from the `defaults` attribute,
+        #  therefore something must be set for this attribute or there will be an `AttributeError`
         self.defaults = {}
 
     @property
     def param_groups(self):
-        """Return the combined parameter groups for each optimizer in ``self.optimizers``."""
-        return _HybridList([optimizer.param_groups for optimizer in self._optimizers])
+        return self._param_groups
+
+    @param_groups.setter
+    def param_groups(self, param_groups: Sequence[Mapping]):
+        # NOTE: some abstract library will call param_groups's setter while holding the reference and make our trick fail,
+        #  (yes I'm talking about you DxxpSpxxd ZxRO 1/2), therefore we need to detach the reference in the setter
+        old = self._param_groups
+        self._param_groups = copy(old)
+        old._detach()
+        self._param_groups[:] = param_groups
 
     @property
     def state(self):
         """Return the combined state for each optimizer in ``self.optimizers``."""
-        return _HybridDict([optimizer.state for optimizer in self._optimizers])
+        return self._state
 
     def __getstate__(self) -> list[Optimizer]:
         """Return ``self.optimizers`` for pickling purposes."""
