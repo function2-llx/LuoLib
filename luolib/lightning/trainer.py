@@ -143,7 +143,10 @@ class PeftTrainer(Trainer):
                 # see: https://github.com/huggingface/peft/blob/v0.8.2/src/peft/utils/save_and_load.py#L146
                 str(save_dir / 'adapter'),
                 save_embedding_layers=self.save_embedding_layers,
-                state_dict=state_dict,
+                state_dict={
+                    f'base_model.model.{key}': value
+                    for key, value in state_dict.items()
+                },
             )
         if not local:
             self.strategy.barrier("Trainer.save_checkpoint")
