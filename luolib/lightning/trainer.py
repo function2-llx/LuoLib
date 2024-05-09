@@ -115,10 +115,10 @@ class PeftTrainer(Trainer):
     def peft_model(self):
         return self.lightning_module.peft_model
 
-    def dump_checkpoint(self, weights_only: bool):
-        checkpoint = super().dump_checkpoint(weights_only)
-        checkpoint.pop('state_dict')
-        return checkpoint
+    # def dump_checkpoint(self, weights_only: bool):
+    #     checkpoint = super().dump_checkpoint(weights_only)
+    #     checkpoint.pop('state_dict')
+    #     return checkpoint
 
     def save_checkpoint(
         self,
@@ -129,17 +129,20 @@ class PeftTrainer(Trainer):
     ) -> None:
         self._check_save_checkpoint()
         save_dir = Path(save_dir)
+        checkpoint = self.dump_checkpoint(weights_only)
+        state_dict = checkpoint.pop('state_dict')
+        self._save_checkpoint_with_strategy(
+            checkpoint, save_dir / 'state.ckpt', storage_options, local,
+        )
         assert self.save_embedding_layers is not None
         if local or self.is_global_zero:
             self.peft_model.save_pretrained(
                 # NOTE: if using save_embedding_layers='auto', it may access the HF hub every time, and your program will
-                # crash with no mercy when the Internet becomes unavailable during training due to uncaught exception
+                #   crash with no mercy when the Internet becomes unavailable during training due to uncaught exception
                 # see: https://github.com/huggingface/peft/blob/v0.8.2/src/peft/utils/save_and_load.py#L146
-                str(save_dir / 'adapter'), save_embedding_layers=self.save_embedding_layers,
+                str(save_dir / 'adapter'),
+                save_embedding_layers=self.save_embedding_layers,
+                state_dict=state_dict,
             )
-        checkpoint = self.dump_checkpoint(weights_only)
-        self._save_checkpoint_with_strategy(
-            checkpoint, save_dir / 'state.ckpt', storage_options, local,
-        )
         if not local:
             self.strategy.barrier("Trainer.save_checkpoint")
