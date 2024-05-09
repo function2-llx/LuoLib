@@ -8,6 +8,7 @@ from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT
 from lightning.fabric.plugins.precision.utils import _convert_fp_tensor
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.plugins import Precision
+from lightning.pytorch.strategies import DeepSpeedStrategy
 from lightning.pytorch.utilities import GradClipAlgorithmType
 from lightning_utilities import apply_to_collection
 import torch
@@ -115,11 +116,6 @@ class PeftTrainer(Trainer):
     def peft_model(self):
         return self.lightning_module.peft_model
 
-    # def dump_checkpoint(self, weights_only: bool):
-    #     checkpoint = super().dump_checkpoint(weights_only)
-    #     checkpoint.pop('state_dict')
-    #     return checkpoint
-
     def save_checkpoint(
         self,
         save_dir,
@@ -131,9 +127,14 @@ class PeftTrainer(Trainer):
         save_dir = Path(save_dir)
         checkpoint = self.dump_checkpoint(weights_only)
         state_dict = checkpoint.pop('state_dict')
-        self._save_checkpoint_with_strategy(
-            checkpoint, save_dir / 'state.ckpt', storage_options, local,
-        )
+        checkpoint_save_path = save_dir / 'ckpt-ex-sd.ckpt'
+        if isinstance(self.strategy, DeepSpeedStrategy):
+            # at least for ZeRO 2, deepspeed engine will save the whole checkpoint
+            self.strategy.checkpoint_io.save_checkpoint(checkpoint, checkpoint_save_path, storage_options=storage_options)
+        else:
+            self._save_checkpoint_with_strategy(
+                checkpoint, save_dir / 'state.ckpt', storage_options, local,
+            )
         assert self.save_embedding_layers is not None
         if local or self.is_global_zero:
             self.peft_model.save_pretrained(
