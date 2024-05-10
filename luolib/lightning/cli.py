@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Literal
 
+from jsonargparse import Namespace
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary
 from lightning.pytorch.cli import (
     LightningArgumentParser,
@@ -164,7 +165,10 @@ class LightningCLI(LightningCLIBase):
         torch.set_float32_matmul_precision(config.float32_matmul_precision)
         if isinstance(profiler := config.trainer.profiler, str):
             profiler_cls: type[Profiler] = _PL_PROFILERS.get(profiler)
-            config.trainer.profiler = profiler_cls(filename=config.profiler_filename)
+            config.trainer.profiler = Namespace({
+                'class_path': profiler_cls.__name__,
+                'init_args': Namespace(filename=config.profiler_filename),
+            })
         super().before_instantiate_classes()
 
     def fit(self, model: LightningModule, **kwargs):
