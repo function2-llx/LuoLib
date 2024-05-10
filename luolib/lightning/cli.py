@@ -9,6 +9,7 @@ from lightning.pytorch.cli import (
     SaveConfigCallback as SaveConfigCallbackBase,
 )
 from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch.profilers import AdvancedProfiler, Profiler, PyTorchProfiler, SimpleProfiler, XLAProfiler
 import torch
 
 from luolib.datamodule import CrossValDataModule, ExpDataModuleBase
@@ -28,6 +29,13 @@ class SaveConfigCallback(SaveConfigCallbackBase):
 @dataclass
 class OptimDict:
     """The order of fields matters since it will affect the matching process"""
+
+_PL_PROFILERS = {
+    "simple": SimpleProfiler,
+    "advanced": AdvancedProfiler,
+    "pytorch": PyTorchProfiler,
+    "xla": XLAProfiler,
+}
 
 class LightningCLI(LightningCLIBase):
     _subcommand_preparing: str | None = None
@@ -128,6 +136,7 @@ class LightningCLI(LightningCLIBase):
             parser.link_arguments('logger', 'trainer.logger')
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
         parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
+        parser.add_argument('--profiler_filename', type=str, default='profile.txt')
         if self.is_preparing_fit:
             if self.optim_dict_class is None:
                 parser.add_dataclass_arguments(OptimConf, 'optim')
@@ -153,6 +162,9 @@ class LightningCLI(LightningCLIBase):
         torch.multiprocessing.set_start_method(config.mp_start_method)
         torch.multiprocessing.set_sharing_strategy(config.mp_sharing_strategy)
         torch.set_float32_matmul_precision(config.float32_matmul_precision)
+        if isinstance(profiler := config.trainer.profiler, str):
+            profiler_cls: type[Profiler] = _PL_PROFILERS.get(profiler)
+            config.trainer.profiler = profiler_cls(filename=config.profiler_filename)
         super().before_instantiate_classes()
 
     def fit(self, model: LightningModule, **kwargs):

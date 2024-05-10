@@ -102,6 +102,10 @@ class HybridOptim(Optimizer):
     a hack to avoid PyTorch Lightning calling ``training_step`` once for each optimizer, which
     increases training time and is not always necessary.
 
+    NOTE: this does not work with DeepSpeed ZeRO 2
+      reason: it excessively relies on the internal data, where it steps the optimizer sequentially by param_groups,
+        and assumes the optimizer.state will be complete after the first step
+
     Modified from the reply in a GitHub Issue thread here:
     https://github.com/Lightning-AI/lightning/issues/3346#issuecomment-1036063687
     """
