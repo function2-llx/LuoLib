@@ -95,13 +95,15 @@ class NamedParamGroup(TypedDict, total=False):
     weight_decay: float
     lr_scale: float  # inserted by timm
 
-def split_param_groups_by_weight_decay(param_groups: list[NamedParamGroup], decay_keys: set[str]) -> list[NamedParamGroup]:
+def split_param_groups_by_weight_decay(
+    optim_key: str, param_groups: list[NamedParamGroup], decay_keys: set[str],
+) -> list[NamedParamGroup]:
     """
     partition each param group into decay/no decay group
     """
     split_param_groups = []
-    for param_group in param_groups:
-        name = param_group.pop('name')
+    for i, param_group in enumerate(param_groups):
+        name = param_group.pop('name', f'{optim_key}-pg{i}')
         params = param_group.pop('params')
 
         no_decay_params, decay_params = partition_by_predicate(lambda np: np[0] in decay_keys, params)

@@ -57,11 +57,12 @@ def match_param_groups(
 
 def instantiate_optim(
     param_groups: list[NamedParamGroup],
+    optim_key: str,
     optim: OptimConf,
     weight_decay_keys: set[str],
     trainer: lightning.Trainer | None = None,
 ) -> tuple[Optimizer, LRSchedulerConfig, list[NamedParamGroup]]:
-    split_param_groups = split_param_groups_by_weight_decay(param_groups, weight_decay_keys)
+    split_param_groups = split_param_groups_by_weight_decay(optim_key, param_groups, weight_decay_keys)
     # remove name from parameters for optimizer init
     optim_param_groups = [*map(dict, split_param_groups)]
     for param_group in optim_param_groups:
@@ -104,7 +105,11 @@ def build_single_optim(
             print(f'no parameter matched for optim: {optim_key}')
             continue
         optimizer, lr_scheduler_config, split_param_groups = instantiate_optim(
-            filtered_param_groups, optim, weight_decay_keys, trainer,
+            filtered_param_groups,
+            optim_key,
+            optim,
+            weight_decay_keys,
+            trainer,
         )
         final_param_groups.extend(split_param_groups)
         optimizers.append(optimizer)
