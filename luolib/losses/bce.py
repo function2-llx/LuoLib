@@ -7,7 +7,9 @@ __all__ = [
     'bce_neg',
 ]
 
-def bce_with_binary_label(input: torch.Tensor, target: torch.Tensor):
+def bce_with_binary_label(input: torch.Tensor, target: torch.Tensor | None):
+    if target is None:
+        return bce_neg(input)
     assert not target.is_floating_point()
     bce = -nnf.logsigmoid(input)
     neg_mask = target == 0
