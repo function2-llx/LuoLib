@@ -127,7 +127,7 @@ class PeftTrainer(Trainer):
         save_dir = Path(save_dir)
         checkpoint = self.dump_checkpoint(weights_only)
         state_dict = checkpoint.pop('state_dict')
-        checkpoint_save_path = save_dir / 'ckpt-ex-sd.ckpt'
+        checkpoint_save_path = save_dir / 'state.ckpt'
         if isinstance(self.strategy, DeepSpeedStrategy):
             # at least for ZeRO 2, deepspeed engine will save the whole checkpoint
             self.strategy.checkpoint_io.save_checkpoint(checkpoint, checkpoint_save_path, storage_options=storage_options)
@@ -140,7 +140,7 @@ class PeftTrainer(Trainer):
             self.peft_model.save_pretrained(
                 # NOTE: if using save_embedding_layers='auto', it may access the HF hub every time, and your program will
                 #   crash with no mercy when the Internet becomes unavailable during training due to uncaught exception
-                # see: https://github.com/huggingface/peft/blob/v0.8.2/src/peft/utils/save_and_load.py#L146
+                #   see: https://github.com/huggingface/peft/blob/v0.8.2/src/peft/utils/save_and_load.py#L146
                 str(save_dir / 'adapter'),
                 save_embedding_layers=self.save_embedding_layers,
                 state_dict={
