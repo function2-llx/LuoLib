@@ -52,10 +52,6 @@ def infer_weight_decay_keys(module: nn.Module):
     for mn, m in module.named_modules():
         if hasattr(m, 'no_weight_decay'):
             no_decay |= {f'{mn}.{pn}' if mn else pn for pn in m.no_weight_decay()}
-        if isinstance(m, LoraLayer):
-            # weights from LoRA layers will not be decayed
-            assert isinstance(m, nn.Module)
-            no_decay |= {pn for pn, p in m.named_parameters(prefix=mn)}
         for pn, p in m.named_parameters(prefix=mn, recurse=False):
             if not p.requires_grad:
                 continue
