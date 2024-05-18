@@ -3,16 +3,11 @@ from pathlib import Path
 from typing import Any, Optional
 import warnings
 
-from lightning import Trainer as TrainerBase
+from lightning import Trainer as _TrainerBase
 from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT
-from lightning.fabric.plugins.precision.utils import _convert_fp_tensor
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.plugins import Precision
 from lightning.pytorch.strategies import DeepSpeedStrategy
 from lightning.pytorch.utilities import GradClipAlgorithmType
-from lightning_utilities import apply_to_collection
-import torch
-from torch import nn
 
 from luolib import lightning as lpl
 
@@ -30,7 +25,7 @@ __all__ = [
 # Precision.convert_input = _convert_input_patch
 # Precision.convert_module = _convert_module_patch
 
-class Trainer(TrainerBase):
+class Trainer(_TrainerBase):
     def __init__(
         self,
         *,
