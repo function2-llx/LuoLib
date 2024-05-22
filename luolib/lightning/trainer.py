@@ -107,10 +107,6 @@ class PeftTrainer(Trainer):
         super().__init__(**kwargs)
         self.save_embedding_layers = save_embedding_layers
 
-    @property
-    def peft_model(self):
-        return self.lightning_module.peft_model
-
     def save_checkpoint(
         self,
         save_dir,
@@ -121,7 +117,7 @@ class PeftTrainer(Trainer):
         self._check_save_checkpoint()
         save_dir = Path(save_dir)
         checkpoint = self.dump_checkpoint(weights_only)
-        state_dict = checkpoint.pop('state_dict')
+        state_dict: dict[str, ...] = checkpoint.pop('state_dict')
         checkpoint_save_path = save_dir / 'state.ckpt'
         if isinstance(self.strategy, DeepSpeedStrategy):
             # at least for ZeRO 2, deepspeed engine will save the whole checkpoint
@@ -132,15 +128,17 @@ class PeftTrainer(Trainer):
             )
         assert self.save_embedding_layers is not None
         if local or self.is_global_zero:
-            self.peft_model.save_pretrained(
+            _prefix = self.lightning_module.peft_model_prefix
+            self.lightning_module.peft_model.save_pretrained(
                 # NOTE: if using save_embedding_layers='auto', it may access the HF hub every time, and your program will
                 #   crash with no mercy when the Internet becomes unavailable during training due to uncaught exception
                 #   see: https://github.com/huggingface/peft/blob/v0.8.2/src/peft/utils/save_and_load.py#L146
                 str(save_dir / 'adapter'),
                 save_embedding_layers=self.save_embedding_layers,
                 state_dict={
-                    f'base_model.model.{key}': value
+                    f'base_model.model.{key[len(_prefix):]}': value
                     for key, value in state_dict.items()
+                    if key.startswith(_prefix)
                 },
             )
         if not local:
