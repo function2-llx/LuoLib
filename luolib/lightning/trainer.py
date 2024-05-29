@@ -103,7 +103,7 @@ class Trainer(_TrainerBase):
 class PeftTrainer(Trainer):
     lightning_module: lpl.LightningModule
 
-    def __init__(self, *, save_embedding_layers: bool | str | None = None, **kwargs):
+    def __init__(self, *, save_embedding_layers: bool | str = False, **kwargs):
         super().__init__(**kwargs)
         self.save_embedding_layers = save_embedding_layers
 
@@ -126,7 +126,6 @@ class PeftTrainer(Trainer):
             self._save_checkpoint_with_strategy(
                 checkpoint, save_dir / 'state.ckpt', storage_options, local,
             )
-        assert self.save_embedding_layers is not None
         if local or self.is_global_zero:
             _prefix = self.lightning_module.peft_model_prefix
             self.lightning_module.peft_model.save_pretrained(

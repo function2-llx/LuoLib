@@ -73,7 +73,6 @@ class IndexTracker:
     def update(self):
         self.ax.set_ylabel('slice %s' % self.ind)
         self.ax_img.set_data(np.rot90(self.img[:, :, self.ind]))
-        self.ax_img.axes.figure.canvas.draw()
         if self.ax_seg is not None:
             self.ax_seg.set_data(np.rot90(self.seg[:, :, self.ind]))
-            self.ax_seg.axes.figure.canvas.draw()
+        self.ax.figure.canvas.draw()
