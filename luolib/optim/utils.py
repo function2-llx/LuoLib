@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Callable, Iterable, TypedDict
 
-from peft.tuners.lora import LoraLayer
 from torch import nn
 from torch.optim import Optimizer
 
