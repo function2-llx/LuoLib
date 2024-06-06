@@ -35,17 +35,19 @@ class TrainingStepContext:
 
 class LightningModule(_LightningModuleBase):
     trainer: lpl.Trainer
+    check_grad: bool = False
 
     def __init__(
         self, *,
         log_grad_norm: bool = True,
-        check_grad: bool = True,
+        check_grad: bool | None = None,
         **kwargs,
     ):
         # TODO: should I move log_grad_norm to some callback?
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
-        self.check_grad = check_grad
+        if check_grad is not None:
+            self.check_grad = check_grad
         self.training_step_context = TrainingStepContext()
 
     def get_decay_keys(self) -> set[str]:
