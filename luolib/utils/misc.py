@@ -11,6 +11,7 @@ __all__ = [
     'ema_update',
     'as_tensor',
     'to_nifti',
+    'pairwise_forward',
 ]
 
 from luolib.types import PathLike

@@ -7,7 +7,7 @@ import json
 from typing import final
 
 from lightning import LightningDataModule, LightningModule as _LightningModuleBase
-from lightning.pytorch.strategies import FSDPStrategy
+from lightning.pytorch.strategies import FSDPStrategy, ParallelStrategy
 from lightning.pytorch.utilities import GradClipAlgorithmType
 from lightning_utilities import apply_to_collection
 from lightning_utilities.core.rank_zero import rank_prefixed_message
@@ -35,7 +35,7 @@ class TrainingStepContext:
 
 class LightningModule(_LightningModuleBase):
     trainer: lpl.Trainer
-    check_grad: bool = False
+    check_grad = False
 
     def __init__(
         self, *,
@@ -145,7 +145,7 @@ class LightningModule(_LightningModuleBase):
                 super().lr_scheduler_step(scheduler, metric)
 
     def on_after_backward(self):
-        if self.check_grad and self.trainer.world_size > 1:
+        if self.check_grad and isinstance(self.trainer.strategy, ParallelStrategy):
             for name, param in self.named_parameters():
                 if param.requires_grad and param.grad is None:
                     print(rank_prefixed_message(f'none grad: {name}', self.global_rank))
