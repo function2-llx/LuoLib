@@ -71,3 +71,6 @@ def pairwise_forward(forward: Callable, x: torch.Tensor, y: torch.Tensor, **kwar
     ret = forward(x, y, **kwargs)
     ret = einops.reduce(ret, '(n m) ... -> n m', 'mean', n=n, m=m)
     return ret
+
+def hash_tensor(x: torch.Tensor) -> int:
+    return hash(tuple(x.flatten().tolist()))
