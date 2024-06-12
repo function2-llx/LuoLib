@@ -26,7 +26,7 @@ class DataLoaderConf:
     num_workers: int = 8
     pin_memory: bool = True
     persistent_workers: bool = True
-    prefetch_factor: int | None = 2
+    prefetch_factor: int | None = None
 
     def __post_init__(self):
         if self.num_workers == 0:
