@@ -74,7 +74,7 @@ class LightningModule(_LightningModuleBase):
         self._peft_model = (value, )
         prefix_remove_dot = prefix[:-1] if prefix.endswith('.') else prefix
         assert self.get_submodule(prefix_remove_dot) is value.base_model.model
-        prefix_with_dot = prefix if prefix.endswith('.') else f'{prefix}.'
+        prefix_with_dot = prefix if prefix == '' or prefix.endswith('.') else f'{prefix}.'
         self._peft_model_prefix = prefix_with_dot
 
     @property
