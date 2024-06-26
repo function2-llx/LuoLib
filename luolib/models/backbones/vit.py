@@ -210,7 +210,7 @@ class ViT(nn.Module):
 
         if (pos_embed := state_dict.get('pos_embed')) is not None:
             if pos_embed.ndim == 3:
-                cls_pos_embed, pos_embed = pos_embed[:, 1], pos_embed[:, 1:]
+                cls_pos_embed, pos_embed = pos_embed[:, 0], pos_embed[:, 1:]
                 state_dict['cls_token'] += cls_pos_embed
                 h, w = self.pretrained_pos_embed_shape
                 pos_embed = einops.repeat(
