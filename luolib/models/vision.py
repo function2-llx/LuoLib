@@ -2,10 +2,10 @@ import torch
 from torch import nn
 
 __all__ = [
-    'Sequential',
+    'VisionModule',
 ]
 
-class Sequential(nn.Sequential):
+class VisionModule(nn.Sequential):
     def __init__(self, modules: list[nn.Module]):
         # https://github.com/omni-us/jsonargparse/issues/407
         super().__init__(*modules)
