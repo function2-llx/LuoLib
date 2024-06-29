@@ -5,6 +5,7 @@ import cytoolz
 import numpy as np
 import pandas as pd
 
+from luolib.types import PathLike
 from monai import transforms as mt
 from monai.data import NumpyReader
 
@@ -29,14 +30,14 @@ class RandomizableLoadImageD(mt.Randomizable, mt.LoadImageD):
 class nnUNetLoader(mt.Transform):
     def __init__(
         self,
-        data_dir: Path | None = None,
+        data_dir: PathLike | None = None,
         img_key: Hashable | None = 'img',
         seg_key: Hashable | None = 'seg',
         unravel_class_locations: bool = False,
         remove_label: bool = True,
         allow_missing: bool = False,
     ):
-        self.data_dir = data_dir
+        self.data_dir = Path(data_dir)
         self.img_key = img_key
         self.seg_key = seg_key
         keys = [*filter(lambda key: key is not None, [img_key, seg_key])]
@@ -78,7 +79,7 @@ class nnUNetLoaderD(mt.Transform):
     def __init__(
         self,
         key: Hashable,
-        data_dir: Path | None = None,
+        data_dir: PathLike | None = None,
         img_key: Hashable | None = 'img',
         seg_key: Hashable | None = 'seg',
         unravel_class_locations: bool = False,
