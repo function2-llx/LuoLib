@@ -61,7 +61,7 @@ class UNetAdapter(nn.Module):
             UNetUpLayer(
                 spatial_dims,
                 layer_channels[i + 1], layer_channels[i],
-                kernel_sizes[i], strides[i],
+                kernel_sizes[i], strides[i + 1],
                 norm, act,
                 upsample_norm, upsample_act,
                 res_block,
