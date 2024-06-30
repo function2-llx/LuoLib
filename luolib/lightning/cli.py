@@ -133,7 +133,7 @@ class LightningCLI(LightningCLIBase):
             parser.add_argument('--logger', type=WandbLogger, enable_path=True)
             parser.link_arguments('logger', 'trainer.logger', apply_on='instantiate')
         else:
-            parser.add_argument('--logger', type=Literal[False], default=False)
+            parser.add_argument('--logger', type=WandbLogger | bool, default=False, enable_path=True)
             parser.link_arguments('logger', 'trainer.logger')
         parser.add_argument('--mp_start_method', type=Literal['fork', 'spawn', 'forkserver'], default='fork')
         parser.add_argument('--mp_sharing_strategy', type=Literal['file_descriptor', 'file_system'], default='file_descriptor')
@@ -155,7 +155,7 @@ class LightningCLI(LightningCLIBase):
         config = self.active_config
         if self.subcommand in {'fit', 'validate', 'play'}:
             logger_args = config.logger.init_args
-            save_dir = Path(logger_args.save_dir) / logger_args.name / f'seed-{config.seed_everything}'
+            save_dir = Path(logger_args.save_dir) / logger_args.name
             # wandb wants to use a directory already existing: https://github.com/wandb/wandb/issues/714#issuecomment-565870686
             Path(save_dir).mkdir(exist_ok=True, parents=True)
             logger_args.save_dir = str(save_dir)

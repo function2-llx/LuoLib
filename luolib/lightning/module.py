@@ -11,7 +11,6 @@ from lightning.pytorch.strategies import FSDPStrategy, ParallelStrategy
 from lightning.pytorch.utilities import GradClipAlgorithmType
 from lightning_utilities import apply_to_collection
 from lightning_utilities.core.rank_zero import rank_prefixed_message
-from peft import PeftModel
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
 from torch.distributed.fsdp import FullyShardedDataParallel
@@ -54,7 +53,7 @@ class LightningModule(_LightningModuleBase):
         return infer_weight_decay_keys(self)
 
     @property
-    def peft_model(self) -> PeftModel:
+    def peft_model(self) -> 'PeftModel':
         return self._peft_model[0]
 
     @property
@@ -65,7 +64,7 @@ class LightningModule(_LightningModuleBase):
     # def peft_model(self, value):
     #     self._peft_model = value
 
-    def set_peft_model(self, value: PeftModel, prefix: str = ''):
+    def set_peft_model(self, value: 'PeftModel', prefix: str = ''):
         """
         Args:
             prefix: must end with "." if nonempty

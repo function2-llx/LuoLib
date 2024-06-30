@@ -1,6 +1,8 @@
 from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
+import json
+from pathlib import Path
 from typing import final
 
 import cytoolz
@@ -8,6 +10,7 @@ from lightning import LightningDataModule
 from lightning.fabric.utilities.distributed import DistributedSamplerWrapper
 from torch.utils.data import Dataset as TorchDataset, RandomSampler
 
+from luolib.types import tuple2_t
 from luolib.utils import DataKey
 from monai.config import PathLike
 from monai.data import CacheDataset, DataLoader, Dataset
@@ -139,6 +142,12 @@ class ExpDataModuleBase(LightningDataModule):
 
     def predict_dataloader(self):
         return self.build_eval_dataloader(self.predict_dataset(), 1)
+
+def load_nnunet_splits(path: Path) -> list[tuple2_t[list[str]]]:
+    return [
+        (split['train'], split['val'])
+        for split in json.loads(path.read_bytes())
+    ]
 
 class CrossValDataModule(ExpDataModuleBase):
     def __init__(self, *args, **kwargs):
