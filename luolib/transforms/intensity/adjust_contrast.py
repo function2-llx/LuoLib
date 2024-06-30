@@ -30,7 +30,7 @@ class RandAdjustContrast(mt.RandomizableTransform):
         super().randomize(None)
         if not self._do_transform:
             return
-        self.factor = self.R.uniform(*self.contrast_range, (num_channels, 1))
+        self.factor = self.R.uniform(*self.contrast_range, size=(num_channels, 1))
 
     def __call__(self, img: NdarrayOrTensor, randomize: bool = True):
         img_t: torch.Tensor = convert_to_tensor(img, track_meta=get_track_meta())

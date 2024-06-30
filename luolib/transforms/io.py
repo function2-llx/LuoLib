@@ -33,7 +33,7 @@ class nnUNetLoader(mt.Transform):
         data_dir: PathLike | None = None,
         img_key: Hashable | None = 'img',
         seg_key: Hashable | None = 'seg',
-        unravel_class_locations: bool = False,
+        unravel_class_locations: bool = True,
         remove_label: bool = True,
         allow_missing: bool = False,
     ):
@@ -59,7 +59,7 @@ class nnUNetLoader(mt.Transform):
         if self.seg_key is not None and (seg_path := data_dir / f'{key}_seg.npy').exists():
             path_data[self.seg_key] = seg_path
         img_data = self.img_loader(path_data)
-        if self.remove_label and (seg := img_data.get('seg')) is not None:
+        if self.remove_label and (seg := img_data.get(self.seg_key)) is not None:
             # https://github.com/MIC-DKFZ/nnUNet/blob/v2.3.1/nnunetv2/preprocessing/cropping/cropping.py#L43
             seg[seg < 0] = 0
 
@@ -67,10 +67,14 @@ class nnUNetLoader(mt.Transform):
         if self.unravel_class_locations:
             class_locations: dict = meta['class_locations']
             shape = cytoolz.first(img_data.values()).shape[1:]
+            keys = list(class_locations.keys())
+            assert min(keys) >= 0
+            num_classes = max(keys) + 1
             meta['class_locations'] = [
                 np.ravel_multi_index(locations[:, 1:].T, shape)
-                if len(locations := class_locations[k]) > 0 else np.array([])
-                for k in sorted(class_locations.keys())
+                # use len instead of `.shape` because it maybe an empty list
+                if (locations := class_locations.get(c)) is not None and len(locations) > 0 else np.array([])
+                for c in range(num_classes)
             ]
 
         return {**img_data, **meta, 'path_base': str(data_dir / key)}
@@ -82,7 +86,7 @@ class nnUNetLoaderD(mt.Transform):
         data_dir: PathLike | None = None,
         img_key: Hashable | None = 'img',
         seg_key: Hashable | None = 'seg',
-        unravel_class_locations: bool = False,
+        unravel_class_locations: bool = True,
         allow_missing: bool = False,
     ):
         """
