@@ -31,7 +31,6 @@ class RandGammaCorrection(mt.RandomizableTransform):
             gamma_range:
             prob_invert:
             retain_stats:
-            rescale: whether to rescale the intensity to [0, 1], only use this if the intensity is between [0, 1]
             eps:
         """
         mt.RandomizableTransform.__init__(self, prob)
@@ -69,10 +68,9 @@ class RandGammaCorrection(mt.RandomizableTransform):
         range_v = img_t.amax(1, True) - min_v + self.eps
         img_t = (img_t - min_v) / range_v
         img_t = img_t.pow(img_t.new_tensor(self.gamma))
-        # img_t = img_t * range_v + min_v
-        new_mean = img_t.mean(1, True)
-        new_std = img_t.std(1, keepdim=True, correction=0)
         if self.retain_stats:
+            new_mean = img_t.mean(1, True)
+            new_std = img_t.std(1, keepdim=True, correction=0)
             img_t = (img_t - new_mean) * (std / torch.clip(new_std, 1e-8)) + mean
         else:
             img_t = img_t * range_v + min_v
