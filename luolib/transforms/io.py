@@ -67,14 +67,14 @@ class nnUNetLoader(mt.Transform):
         if self.unravel_class_locations:
             class_locations: dict = meta['class_locations']
             shape = cytoolz.first(img_data.values()).shape[1:]
-            keys = list(class_locations.keys())
-            assert min(keys) >= 0
-            num_classes = max(keys) + 1
-            meta['class_locations'] = [
+            # NOTE: 
+            #   1. the order of keys is undefined, the foreground class sampling should be uniform; we only ensure that the background is the first 
+            #   2. the key may be int or tuple of ints
+            meta['class_locations'] = np.array([]) + [
                 np.ravel_multi_index(locations[:, 1:].T, shape)
-                # use len instead of `.shape` because it maybe an empty list
-                if (locations := class_locations.get(c)) is not None and len(locations) > 0 else np.array([])
-                for c in range(num_classes)
+                # NOTE:use len instead of `.shape` because it maybe an empty list
+                if len(locations) > 0 else np.array([])
+                for locations in class_locations.values()
             ]
 
         return {**img_data, **meta, 'path_base': str(data_dir / key)}
