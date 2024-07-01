@@ -16,7 +16,7 @@ class DeepSupervisionWrapper(nn.Module):
     def prepare_labels(label: torch.Tensor, spatial_shapes: tuple[torch.Size, ...], mode: InterpolateMode) -> list[torch.Tensor]:
         label_shape = label.shape[2:]
         return [
-            nnf.interpolate(label, shape, mode=mode) if label_shape != shape else label
+            nnf.interpolate(label.byte(), shape, mode=mode).to(dtype=label.dtype) if label_shape != shape else label
             for shape in spatial_shapes
         ]
 
