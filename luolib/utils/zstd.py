@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+from luolib.types import PathLike
 
 import torch
 import zstandard as zstd
@@ -19,7 +20,7 @@ def save_pt_zst(x: ..., path: Path, atomic: bool = False):
             torch.save(x, buffer)
             f.write(zstd.compress(buffer.getvalue()))
 
-def load_pt_zst(path: Path):
+def load_pt_zst(path: PathLike):
     with open(path, 'rb') as f:
         data_zst = f.read()
     data = zstd.decompress(data_zst)
