@@ -7,7 +7,7 @@ import json
 from typing import final
 
 from lightning import LightningDataModule, LightningModule as _LightningModuleBase
-from lightning.pytorch.strategies import FSDPStrategy, ParallelStrategy
+from lightning.pytorch.strategies import ParallelStrategy
 from lightning.pytorch.utilities import GradClipAlgorithmType
 from lightning_utilities import apply_to_collection
 from lightning_utilities.core.rank_zero import rank_prefixed_message
@@ -16,7 +16,7 @@ import torch
 from torch.distributed.fsdp import FullyShardedDataParallel
 from torch.optim import Optimizer
 
-from luolib import lightning as lpl
+import luolib.lightning as lpl
 from luolib.optim import infer_weight_decay_keys
 from luolib.scheduler import HybridScheduler
 from luolib.utils.grad import compute_grad_norm

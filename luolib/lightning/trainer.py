@@ -9,7 +9,7 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.strategies import DeepSpeedStrategy
 from lightning.pytorch.utilities import GradClipAlgorithmType
 
-from luolib import lightning as lpl
+import luolib.lightning as lpl
 
 __all__ = [
     'Trainer',
