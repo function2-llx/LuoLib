@@ -74,3 +74,7 @@ def pairwise_forward(forward: Callable, x: torch.Tensor, y: torch.Tensor, **kwar
 
 def hash_tensor(x: torch.Tensor) -> int:
     return hash(tuple(x.flatten().tolist()))
+
+def min_stem(path: Path):
+    suffix_len = sum(map(len, path.suffixes))
+    return path.name[:-suffix_len]
