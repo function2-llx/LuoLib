@@ -1,8 +1,10 @@
-import nibabel as nib
+from monai.utils import optional_import
 import torch
 
 from monai import transforms as mt
 from monai.data import MetaTensor
+
+nib, _ = optional_import("nibabel")
 
 class AffineOrientation(mt.Transform):
     def __init__(self, original_affine: torch.Tensor):
