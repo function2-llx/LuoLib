@@ -33,8 +33,16 @@ class TrainingStepContext:
     batch: ... = None
 
 class LightningModule(_LightningModuleBase):
-    trainer: lpl.Trainer
     check_grad = False
+
+    @property
+    def trainer(self) -> lpl.Trainer:
+        # make pycharm work
+        return super().trainer
+
+    @trainer.setter
+    def trainer(self, trainer: lpl.Trainer):
+        _LightningModuleBase.trainer.fset(self, trainer)
 
     def __init__(
         self, *,

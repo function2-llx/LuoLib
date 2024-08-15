@@ -6,7 +6,7 @@ import warnings
 from lightning import Trainer as _TrainerBase
 from lightning.fabric.plugins.precision.precision import _PRECISION_INPUT
 from lightning.pytorch.loggers import WandbLogger
-from lightning.pytorch.strategies import DeepSpeedStrategy
+from lightning.pytorch.strategies import DeepSpeedStrategy, ParallelStrategy
 from lightning.pytorch.utilities import GradClipAlgorithmType
 
 import luolib.lightning as lpl
@@ -47,6 +47,10 @@ class Trainer(_TrainerBase):
         from monai.config import USE_COMPILED
         if not USE_COMPILED:
             warnings.warn('MONAI is not using compiled')
+
+    @property
+    def is_parallel(self):
+        return isinstance(self.strategy, ParallelStrategy)
 
     @cached_property
     def log_dir(self) -> Path:
