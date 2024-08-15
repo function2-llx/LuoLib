@@ -20,8 +20,8 @@ def save_pt_zst(x: ..., path: Path, atomic: bool = False):
             torch.save(x, buffer)
             f.write(zstd.compress(buffer.getvalue()))
 
-def load_pt_zst(path: PathLike):
+def load_pt_zst(path: PathLike, map_location: ... = 'cpu'):
     with open(path, 'rb') as f:
         data_zst = f.read()
     data = zstd.decompress(data_zst)
-    return torch.load(BytesIO(data))
+    return torch.load(BytesIO(data), map_location)
