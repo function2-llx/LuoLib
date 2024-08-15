@@ -10,9 +10,9 @@ __all__ = [
     'load_pt_zst',
 ]
 
-def save_pt_zst(x: ..., path: Path, atomic: bool = False):
+def save_pt_zst(x: ..., path: PathLike, atomic: bool = False):
     if atomic:
-        tmp_path = path.with_name(f'.{path.name}')
+        tmp_path = Path(path).with_name(f'.{path.name}')
         save_pt_zst(x, tmp_path, atomic=False)
         tmp_path.rename(path)
     else:
