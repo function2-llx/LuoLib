@@ -4,13 +4,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from functools import cache
 import json
+import os
 from typing import final
 
 from lightning import LightningDataModule, LightningModule as _LightningModuleBase
-from lightning.pytorch.strategies import ParallelStrategy
 from lightning.pytorch.utilities import GradClipAlgorithmType
 from lightning_utilities import apply_to_collection
 from lightning_utilities.core.rank_zero import rank_prefixed_message
+from monai.utils import str2bool
 from timm.scheduler.scheduler import Scheduler as TIMMScheduler
 import torch
 from torch.distributed.fsdp import FullyShardedDataParallel
@@ -32,9 +33,9 @@ from ..utils import fall_back_none
 class TrainingStepContext:
     batch: ... = None
 
-class LightningModule(_LightningModuleBase):
-    check_grad = False
+CHECK_GRAD = str2bool(os.getenv('LUOLIB_CHECK_GRAD', '0'))
 
+class LightningModule(_LightningModuleBase):
     @property
     def trainer(self) -> lpl.Trainer:
         # make pycharm work
@@ -47,14 +48,11 @@ class LightningModule(_LightningModuleBase):
     def __init__(
         self, *,
         log_grad_norm: bool = True,
-        check_grad: bool | None = None,
         **kwargs,
     ):
         # TODO: should I move log_grad_norm to some callback?
         super().__init__(**kwargs)
         self.log_grad_norm = log_grad_norm
-        if check_grad is not None:
-            self.check_grad = check_grad
         self.training_step_context = TrainingStepContext()
 
     def get_decay_keys(self) -> set[str]:
@@ -122,7 +120,7 @@ class LightningModule(_LightningModuleBase):
                 super().lr_scheduler_step(scheduler, metric)
 
     def on_after_backward(self):
-        if self.check_grad and isinstance(self.trainer.strategy, ParallelStrategy):
+        if CHECK_GRAD:
             for name, param in self.named_parameters():
                 if param.requires_grad and param.grad is None:
                     print(rank_prefixed_message(f'none grad: {name}', self.global_rank))
