@@ -6,8 +6,8 @@ from jsonargparse import Namespace
 from lightning.pytorch.callbacks import LearningRateMonitor, ModelSummary
 from lightning.pytorch.cli import (
     LightningArgumentParser,
-    LightningCLI as LightningCLIBase,
-    SaveConfigCallback as SaveConfigCallbackBase,
+    LightningCLI as _LightningCLIBase,
+    SaveConfigCallback as _SaveConfigCallbackBase,
 )
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch.profilers import AdvancedProfiler, Profiler, PyTorchProfiler, SimpleProfiler, XLAProfiler
@@ -19,7 +19,7 @@ from .module import LightningModule
 from .trainer import Trainer
 from .utils import OptimConf
 
-class SaveConfigCallback(SaveConfigCallbackBase):
+class SaveConfigCallback(_SaveConfigCallbackBase):
     def setup(self, trainer: Trainer, pl_module: LightningModule, stage: str):
         if self.already_saved:
             return
@@ -38,7 +38,7 @@ _PL_PROFILERS = {
     "xla": XLAProfiler,
 }
 
-class LightningCLI(LightningCLIBase):
+class LightningCLI(_LightningCLIBase):
     _subcommand_preparing: str | None = None
     trainer: Trainer
     model: LightningModule
@@ -101,7 +101,7 @@ class LightningCLI(LightningCLIBase):
     @staticmethod
     def subcommands() -> dict[str, set[str]]:
         """Defines the list of available subcommands and the arguments to skip."""
-        subcommands = LightningCLIBase.subcommands()
+        subcommands = _LightningCLIBase.subcommands()
         return {
             **subcommands,
             'play': set(),
@@ -177,7 +177,6 @@ class LightningCLI(LightningCLIBase):
 
     def fit(self, model: LightningModule, **kwargs):
         optim: OptimConf | OptimDict = self.active_config_init.optim
-
         if isinstance(optim, OptimConf):
             model.optims = {'default': optim}
         else:
@@ -186,7 +185,7 @@ class LightningCLI(LightningCLIBase):
                 if isinstance(optim_conf, OptimConf)
             }
         # https://github.com/Lightning-AI/lightning/issues/17283
-        if self._get(self.config, 'compile'):
+        if self.active_config.compile:
             # https://github.com/pytorch/pytorch/issues/112335
             from torch._dynamo import config
             config.trace_numpy = self._get(self.config, 'trace_numpy')
