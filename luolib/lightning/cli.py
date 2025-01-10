@@ -39,6 +39,11 @@ _PL_PROFILERS = {
 }
 
 class LightningCLI(_LightningCLIBase):
+    """
+    Args:
+        optim_dict_class: key -> OptimizationConf
+    """
+
     _subcommand_preparing: str | None = None
     trainer: Trainer
     model: LightningModule
@@ -61,10 +66,6 @@ class LightningCLI(_LightningCLIBase):
         optim_dict_class: type[OptimDict] | None = None,
         **kwargs,
     ):
-        """
-        Args:
-            optim_dict_class: key -> OptimizationConf
-        """
         save_config_kwargs = fall_back_none(save_config_kwargs, {'config_filename': 'conf.yaml'})
         if trainer_defaults is None:
             trainer_defaults = {}

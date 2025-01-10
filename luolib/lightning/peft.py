@@ -9,6 +9,7 @@ class PeftMixin:
     def peft_model_prefix(self):
         return self._peft_model_prefix
 
+    # nn.Module does not support property setter
     # @peft_model.setter
     # def peft_model(self, value):
     #     self._peft_model = value

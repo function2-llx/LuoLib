@@ -13,6 +13,18 @@ __all__ = [
 ]
 
 class DeviceMapper:
+    """Manages CUDA device allocation across multiple processes.
+    
+    This class provides a mechanism to distribute CUDA devices among different processes
+    in a multi-processing environment. It ensures balanced device allocation by tracking
+    device usage and assigning the least utilized device to new processes.
+    
+    Attributes:
+        num_devices (int): Number of available CUDA devices
+        pid_to_device_id (dict[int, int]): Mapping of process IDs to assigned device IDs
+        device_ref_count (list[int]): List tracking number of processes using each device
+        lock (threading.Lock): Multiprocessing lock for thread-safe device allocation
+    """
     def __init__(self):
         # don't import these stuffs globally or multiprocessing context will be implicitly set
         from multiprocessing import Manager
@@ -42,9 +54,21 @@ class DeviceMapper:
 _mapper: DeviceMapper
 
 def init_mapper():
+    """Initialize the global DeviceMapper instance.
+    
+    This function must be called before any calls to :func:`get_cuda_device`.
+    It creates a new DeviceMapper instance and assigns it to the global _mapper variable.
+    """
     global _mapper
     _mapper = DeviceMapper()
 
 def get_cuda_device() -> torch.device:
-    """get the cuda device allocated for the current worker process"""
+    """Get a CUDA device for the current process.
+    
+    Returns the same device for repeated calls from the same process.
+    Device allocation is balanced across all processes using the DeviceMapper.
+    
+    Returns:
+        A :class:`torch.device` object representing the allocated CUDA device
+    """
     return _mapper.get()

@@ -20,7 +20,7 @@ from torch.optim import Optimizer
 import luolib.lightning as lpl
 from luolib.optim import infer_weight_decay_keys
 from luolib.scheduler import HybridScheduler
-from luolib.utils.grad import compute_grad_norm
+from luolib.utils import compute_grad_norm
 from .utils import OptimConf, build_single_optim
 
 __all__ = [

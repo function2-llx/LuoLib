@@ -13,8 +13,7 @@ __all__ = [
 def sigmoid_focal_loss(
     input: torch.Tensor, target: torch.Tensor, gamma: float = 2.0, alpha: float | None = None
 ) -> torch.Tensor:
-    """
-    Just convert the target to float by default and make everyone happy
+    """Just convert the target to float by default and make everyone happy
     """
     return _monai_sigmoid_focal_loss(input, target.float(), gamma, alpha)
 

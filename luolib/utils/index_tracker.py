@@ -1,11 +1,7 @@
-from typing import Optional
-
 import matplotlib
+import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.colors import ListedColormap
-import numpy as np
-from numpy import typing as npt
-
 from monai.config import NdarrayOrTensor
 from monai.utils import convert_to_numpy
 

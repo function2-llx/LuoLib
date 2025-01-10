@@ -32,6 +32,15 @@ def flatten(x: torch.Tensor) -> torch.Tensor:
     return einops.rearrange(x, 'n c ... -> n (...) c')
 
 def spatialize(x: torch.Tensor, spatial_shape: Sequence[int]) -> torch.Tensor:
+    """Rearranges a tensor to include spatial dimensions.
+
+    Args:
+        x: Input tensor to be rearranged
+        spatial_shape: Sequence of integers representing the size of each spatial dimension
+
+    Returns:
+        The rearranged tensor with the specified spatial dimensions
+    """
     spatial_dims = len(spatial_shape)
     spatial_pattern = ' '.join(map(lambda i: f's{i}', range(spatial_dims)))
     spatial_dict = {
