@@ -31,6 +31,7 @@ __all__ = [
     'concat_drop_dup',
     'compute_grad_norm',
     'partition_by_predicate',
+    'import_object',
 ]
 
 T = TypeVar('T')
