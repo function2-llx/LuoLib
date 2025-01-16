@@ -152,3 +152,7 @@ benchmark-io
 AAAI23-archive
 
 snim-data
+
+# pixi environments
+.pixi
+*.egg-info

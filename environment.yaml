@@ -1,30 +1,20 @@
 channels:
   - conda-forge
-  - pytorch
-  - nvidia
 dependencies:
-  - python=3.10
-  - omegaconf
+  - python>=3.11
+  - cytoolz
   - numpy
   - einops
-  - pytorch::pytorch
-  - pytorch::torchvision
-  - pytorch::pytorch-cuda=11.8
-  - pytorch-lightning
-  - torchmetrics
+  - pytorch
+  - torchvision
   - timm
+  - lightning
   - wandb
-  - scikit-learn
   - pandas
-  - openpyxl
   - matplotlib
-  - nibabel
   - simpleitk
+  - jsonargparse
 
   - pip
   - pip:
-    - evalutils
-    - mmcv-full
-    - mmsegmentation
-    - cytoolz
-    - -e third-party/MONAI
+    - jsonargparse[signatures,omegaconf]
