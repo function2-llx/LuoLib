@@ -1,9 +1,12 @@
 [project]
-description = "Add a short description here"
+description = "Personal Python library specifically for Medical Image Analysis research"
 name = "LuoLib"
-requires-python = ">= 3.11"
+requires-python = ">= 3.12"
 version = "0.1.0"
 dependencies = ["jsonargparse[omegaconf]"]
+
+[tool.pixi.system-requirements]
+cuda = "12"
 
 [tool.pixi.project]
 channels = ["conda-forge"]
@@ -13,7 +16,7 @@ platforms = ["linux-64"]
 cytoolz = "*"
 numpy = "*"
 einops = "*"
-pytorch = "*"
+pytorch = "2.*"
 torchvision = "*"
 timm = "*"
 lightning = "*"
