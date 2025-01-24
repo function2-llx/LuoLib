@@ -1,0 +1,48 @@
+[workspace]
+name = "LuoLib"
+# version = "0.1.0"
+description = "Personal Python library specifically for Medical Image Analysis research"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+preview = ["pixi-build"]
+
+[package]
+name = "luolib"
+version = "0.1.0"
+
+[package.build] 
+backend = { name = "pixi-build-python", version = "*"}
+channels = [
+    "conda-forge",
+    "https://prefix.dev/pixi-build-backends",
+]
+
+[package.host-dependencies]
+# https://pixi.sh/v0.40.3/build/dependency_types/#python-code
+hatchling = "*"
+
+[system-requirements]
+cuda = "12"
+
+[dependencies]
+python = ">=3.12"
+
+pytorch = "2.*"
+torchvision = "*"
+timm = "*"
+lightning = "*"
+wandb = "*"
+einops = "*"
+
+cytoolz = "*"
+numpy = "*"
+pandas = "*"
+matplotlib = "*"
+
+monai = "*"
+simpleitk = "*"
+
+luolib = {path = "."}
+
+[pypi-dependencies]
+jsonargparse = {extras = ["omegaconf"]}
