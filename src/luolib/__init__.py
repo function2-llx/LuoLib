@@ -1,1 +1,1 @@
-from .resolver import *
+from .oc_resolver import *

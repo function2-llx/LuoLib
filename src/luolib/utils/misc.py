@@ -30,7 +30,6 @@ __all__ = [
     'min_stem',
     'concat_drop_dup',
     'compute_grad_norm',
-    'partition_by_predicate',
     'import_object',
 ]
 
@@ -170,22 +169,6 @@ def compute_grad_norm(m: nn.Module):
             norm += torch.dot(grad, grad)
     return norm ** 0.5
 
-def partition_by_predicate(pred: Callable[[T], bool] | Hashable, seq: Iterable[T]) -> tuple[list[T], list[T]]:
-    """Partitions a sequence into two lists based on a predicate.
-
-    Args:
-        pred: A callable that takes an element of the sequence and returns a boolean,
-            or a hashable object used for grouping
-        seq: An iterable sequence of elements to be partitioned
-
-    Returns:
-        A tuple of two lists:
-        - First list contains elements for which the predicate returns False
-        - Second list contains elements for which the predicate returns True
-    """
-    groups: dict[bool, list] = cytoolz.groupby(pred, seq)
-    assert set(groups.keys()).issubset({False, True})
-    return groups.get(False, []), groups.get(True, [])
 
 def import_object(name: str):
     """Imports an object from a module using its fully qualified name.
