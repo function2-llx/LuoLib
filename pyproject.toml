@@ -1,3 +1,7 @@
 [project]
 name = "LuoLib"
 version = "0.1.0"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]

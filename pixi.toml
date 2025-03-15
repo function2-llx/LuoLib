@@ -31,6 +31,7 @@ timm = "*"
 lightning = "*"
 wandb = "*"
 einops = "*"
+xformers = "*"
 
 cytoolz = "*"
 numpy = "*"
@@ -45,6 +46,7 @@ jsonargparse = "*"
 omegaconf = "*"
 
 [dependencies]
+# standalone usage
 luolib = {path = "."}
 
 # [pypi-dependencies]

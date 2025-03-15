@@ -144,15 +144,7 @@ test.py
 SimMIM
 *.pt
 
-nim-review/
-# hydra
-outputs/
-mvt-data
-benchmark-io
-AAAI23-archive
-
-snim-data
-
 # pixi environments
 .pixi
 *.egg-info
+pixi.lock
