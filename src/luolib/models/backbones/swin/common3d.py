@@ -6,7 +6,7 @@ from typing import Mapping, Sequence
 
 from einops import rearrange
 import numpy as np
-from timm.models.layers import trunc_normal_
+from timm.layers import trunc_normal_
 import torch
 from torch import nn
 from torch.nn import functional as nnf

@@ -1,5 +1,5 @@
 from collections.abc import Callable, Hashable, Iterable
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 # vscode does not support .pyx very well
 if TYPE_CHECKING:
@@ -7,8 +7,7 @@ if TYPE_CHECKING:
 else:
     from cytoolz import *
 
-T = TypeVar('T')
-def partition_by_predicate(pred: Callable[[T], bool] | Hashable, seq: Iterable[T]) -> tuple[list[T], list[T]]:
+def partition_by_predicate[T](pred: Callable[[T], bool] | Hashable, seq: Iterable[T]) -> tuple[list[T], list[T]]:
     """Partitions a sequence into two lists based on a predicate.
 
     Args:
